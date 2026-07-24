@@ -38,7 +38,7 @@ import {
   rendererScheduleApi,
   rendererUpdatesApi,
 } from './app/renderer-settings-apis'
-import type { CaptureRunFilter, ConnectorProvenanceTarget } from './app/capture-navigation'
+import type { ConnectorProvenanceTarget } from './app/capture-navigation'
 import { useWorkspaceLocation } from './app/use-workspace-location'
 import {
   workspaceViews,
@@ -145,7 +145,6 @@ export default function App({
     SETTINGS_PANELS.GENERAL,
   )
   const [settingsRestartRequired, setSettingsRestartRequired] = useState(false)
-  const [captureRunFilter, setCaptureRunFilter] = useState<CaptureRunFilter | null>(null)
   const [focusedConnectorProvenance, setFocusedConnectorProvenance] = useState<ConnectorProvenanceTarget | null>(null)
   const [rendererWorkspaceClient, setRendererWorkspaceClient] = useState(
     getRendererHttpWorkspaceClient,
@@ -270,8 +269,6 @@ export default function App({
           <LifecycleWorkbench
             client={resolvedWorkspaceClient}
             workspaceId={workspace?.id ?? null}
-            key={captureRunFilter?.connectorRunId ?? 'all-captures'}
-            initialConnectorRunId={captureRunFilter?.connectorRunId ?? null}
             selectedPhase={currentView}
             onSelectedPhaseChange={changeView}
             selectedResourceId={currentView === APP_VIEWS.JOBS
@@ -293,11 +290,6 @@ export default function App({
             )}
             workspaceEntry={workspaceNavigation.entry}
             onWorkspaceNavigate={workspaceNavigation.navigate}
-            onConnectorRunFilterChange={setCaptureRunFilter}
-            onOpenConnectorProvenance={(target) => {
-              setFocusedConnectorProvenance(target)
-              setNonWorkspaceView(APP_VIEWS.CONNECTOR_RUNS)
-            }}
           />
         ) : currentView === APP_VIEWS.COMPANIES ? (
           <CompaniesWorkspace
@@ -317,8 +309,7 @@ export default function App({
             connectorsApi={connectorsApi}
             focusedRunId={focusedConnectorProvenance?.connectorRunId ?? null}
             focusedProvenanceTarget={focusedConnectorProvenance}
-            onViewCaptures={(filter) => {
-              setCaptureRunFilter(filter)
+            onViewCaptures={() => {
               changeView(APP_VIEWS.CAPTURES)
             }}
           />

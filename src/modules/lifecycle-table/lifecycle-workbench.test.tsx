@@ -1,10 +1,9 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Capture, Job, ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { CaptureListPresentation, Job, ValedictorianWorkspaceClient } from '@sparxie/sdk'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
-import { openCapturesForRun } from '@/app/capture-navigation'
 import { useWorkspaceLocation } from '@/app/use-workspace-location'
 
 const originalMatchMedia = window.matchMedia
@@ -25,15 +24,29 @@ function emptyPage(): TestPage {
   return { items: [], limit: 50, nextCursor: null }
 }
 
+function capturePage(items: CaptureListPresentation[] = []) {
+  return {
+    items,
+    pageInfo: {
+      startCursor: items.length > 0 ? 'start' : null,
+      endCursor: items.length > 0 ? 'end' : null,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    },
+    totalCount: items.length,
+  }
+}
+
 function makeClient() {
   const lists = {
-    captures: vi.fn(async (_input?: unknown) => emptyPage()),
+    captures: vi.fn(async (_input?: unknown) => capturePage()),
     jobs: vi.fn(async (_input?: unknown) => emptyPage()),
     opportunities: vi.fn(async (_input?: unknown) => emptyPage()),
     applications: vi.fn(async (_input?: unknown) => emptyPage()),
   }
   const client = {
     captures: { list: lists.captures },
+    captureResolution: { list: lists.captures },
     jobs: { list: lists.jobs },
     companyAssignments: {
       get: vi.fn(async (jobId: string) => ({
@@ -142,99 +155,129 @@ describe('LifecycleWorkbench', () => {
     })
   })
 
-  it('keeps All and Processing as accessible modes on the same Capture surface', async () => {
-    const user = userEvent.setup()
-    const { client } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
-
-    const modes = await screen.findByRole('radiogroup', { name: 'Captures view mode' })
-    await user.click(screen.getByRole('radio', { name: 'Processing' }))
-    expect(screen.getByRole('heading', { name: 'Capture processing' })).toBeInTheDocument()
-    const table = screen.getByRole('table', { name: 'Capture processing' })
-    expect(table).toHaveTextContent('Capture → Job')
-    expect(table).toHaveTextContent('Job fact normalization')
-    expect(table).toHaveTextContent('Opportunity admission')
-    expect(table).toHaveTextContent('Opportunity projection')
-    expect(screen.getByRole('radio', { name: 'Processing' })).toHaveAttribute('aria-checked', 'true')
-    expect(modes).toBeInTheDocument()
-  })
-
-  it('uses the complete Jobs projection for Capture links and the lifecycle count', async () => {
+  it('uses the canonical Capture filters on one operational surface', async () => {
     const user = userEvent.setup()
     const { client, lists } = makeClient()
-    const capture = {
-      id: 'capture-linked-off-page',
-      adapter: { id: 'adapter-capture-one', kind: 'test' },
-      evidence: [],
-      observedAt: '2026-07-23T00:00:00Z',
-      revision: 1,
-      removedAt: null,
-    } as unknown as Capture
-    const visibleJobs = Array.from({ length: 50 }, (_, index) => ({
-      id: `visible-job-${index}`,
-      removedAt: null,
-      captureEvidenceReferences: [],
-    })) as unknown as Job[]
-    const offPageJob = {
-      id: 'off-page-linked-job',
-      removedAt: null,
-      captureEvidenceReferences: [{ captureId: capture.id }],
-    } as unknown as Job
-    lists.captures.mockResolvedValue({
-      items: [capture],
-      limit: 100,
-      nextCursor: null,
-    })
-    lists.jobs.mockImplementation(async (input?: unknown) => {
-      const query = input as { cursor?: string; limit?: number }
-      if (query.limit === 50) {
-        return { items: visibleJobs, limit: 50, nextCursor: 'visible-next' }
-      }
-      if (query.cursor === 'complete-next') {
-        return { items: [offPageJob], limit: 100, nextCursor: null }
-      }
-      return { items: visibleJobs, limit: 100, nextCursor: 'complete-next' }
-    })
-
     render(<LifecycleWorkbench client={client} />)
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Jobs/ })).toHaveTextContent('51')
-    })
-    await user.click(screen.getByRole('radio', { name: 'Processing' }))
-    const processing = await screen.findByRole('table', { name: 'Capture processing' })
-    expect(processing).toHaveTextContent(`Linked to ${offPageJob.id}`)
-    expect(processing).not.toHaveTextContent('No linked Job; processing status unavailable')
-    expect(lists.jobs).toHaveBeenCalledWith({
-      includeRemoved: false,
+    const filters = await screen.findByRole('radiogroup', { name: 'Capture filter' })
+    expect(screen.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true')
+    await user.click(screen.getByRole('radio', { name: 'Needs attention' }))
+    await waitFor(() => expect(lists.captures).toHaveBeenLastCalledWith({
+      filter: 'needs_attention',
+      sort: 'observed_desc',
       limit: 50,
+    }))
+    expect(filters).toBeInTheDocument()
+  })
+
+  it('uses opaque Capture cursors in both directions', async () => {
+    const user = userEvent.setup()
+    const { client, lists } = makeClient()
+    lists.captures.mockResolvedValueOnce({
+      ...capturePage(),
+      pageInfo: {
+        startCursor: 'opaque-start',
+        endCursor: 'opaque-end',
+        hasPreviousPage: false,
+        hasNextPage: true,
+      },
     })
-    expect(lists.jobs).toHaveBeenCalledWith({
-      cursor: 'complete-next',
-      includeRemoved: false,
-      limit: 100,
+    const navigate = vi.fn()
+    const { rerender } = render(
+      <LifecycleWorkbench
+        client={client}
+        workspaceEntry={{ location: { view: 'captures' }, cursorChain: [] }}
+        onWorkspaceNavigate={navigate}
+      />,
+    )
+    await user.click(await screen.findByRole('button', { name: 'Go to next page' }))
+    expect(navigate).toHaveBeenCalledWith({
+      view: 'captures',
+      cursor: 'opaque-end',
+      cursorDirection: 'after',
+    }, {
+      cursorChain: [{ view: 'captures' }],
+    })
+
+    lists.captures.mockResolvedValueOnce({
+      ...capturePage(),
+      pageInfo: {
+        startCursor: 'opaque-return',
+        endCursor: 'opaque-end-2',
+        hasPreviousPage: true,
+        hasNextPage: false,
+      },
+    })
+    rerender(
+      <LifecycleWorkbench
+        client={client}
+        workspaceEntry={{
+          location: {
+            view: 'captures',
+            cursor: 'opaque-end',
+            cursorDirection: 'after',
+          },
+          cursorChain: [{ view: 'captures' }],
+        }}
+        onWorkspaceNavigate={navigate}
+      />,
+    )
+    await user.click(await screen.findByRole('button', { name: 'Go to previous page' }))
+    expect(navigate).toHaveBeenLastCalledWith({
+      view: 'captures',
+      cursor: 'opaque-return',
+      cursorDirection: 'before',
+    }, {
+      cursorChain: [],
     })
   })
 
-  it('opens Captures from a connector run and applies the run filter before listing', async () => {
+  it('renders the backend-owned Capture presentation without technical fields', async () => {
     const user = userEvent.setup()
     const { client, lists } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
-    await waitFor(() => expect(lists.captures).toHaveBeenCalledTimes(1))
+    const capture: CaptureListPresentation = {
+      captureId: 'capture-one',
+      captureRevision: 7,
+      observedAt: '2026-07-23T00:00:00Z',
+      lead: {
+        roleTitle: 'Platform Engineer',
+        companyName: 'Acme',
+        fallbackLabel: 'Acme lead',
+      },
+      source: { displayName: 'Jobright', provider: 'jobright' },
+      destination: { state: 'resolved', displayHost: 'jobs.example.com' },
+      readiness: 'ready',
+      processingSummary: 'promoted',
+      activeProcessing: false,
+      linkedJob: {
+        jobId: '01900000-0000-7000-8000-000000000001' as Job['id'],
+        roleTitle: 'Platform Engineer',
+        companyName: 'Acme',
+      },
+      primaryIntent: {
+        kind: 'view_job',
+        jobId: '01900000-0000-7000-8000-000000000001' as Job['id'],
+      },
+    }
+    lists.captures.mockResolvedValue(capturePage([capture]))
+    const openResource = vi.fn()
 
-    await act(async () => openCapturesForRun({
-      connectorInstanceId: 'connector-one',
-      connectorRunId: 'run/one',
-    }))
-    expect(await screen.findByText('Filtered to connector run run/one')).toBeInTheDocument()
-    await waitFor(() => expect(lists.captures).toHaveBeenLastCalledWith(
-      expect.objectContaining({ connectorRunId: 'run/one' }),
-    ))
+    render(<LifecycleWorkbench client={client} onOpenResource={openResource} />)
 
-    await user.click(screen.getByRole('button', { name: 'Clear run filter' }))
-    await waitFor(() => expect(lists.captures).toHaveBeenLastCalledWith(
-      expect.not.objectContaining({ connectorRunId: expect.anything() }),
-    ))
+    const table = await screen.findByRole('table', { name: 'Captures' })
+    expect(table).toHaveTextContent('Platform Engineer')
+    expect(table).toHaveTextContent('Jobright')
+    expect(table).toHaveTextContent('jobs.example.com')
+    expect(table).toHaveTextContent('Job created')
+    expect(table).toHaveTextContent('View Job')
+    expect(table).not.toHaveTextContent('Revision')
+    expect(table).not.toHaveTextContent('Evidence')
+    await user.click(screen.getByRole('button', { name: 'Platform Engineer · Acme' }))
+    expect(openResource).toHaveBeenCalledWith(
+      '01900000-0000-7000-8000-000000000001',
+      'capture-job-link-capture-one',
+    )
   })
 
   it('shows a terminal client-unavailable failure instead of loading forever', async () => {
@@ -248,10 +291,15 @@ describe('LifecycleWorkbench', () => {
   it('recovers when the renderer backend becomes available after initial startup', async () => {
     let available = false
     let backendListener: ((state: { status: string }) => void) | undefined
-    const request = vi.fn(async () => new Response(JSON.stringify(emptyPage()), {
-      headers: { 'content-type': 'application/json' },
-      status: 200,
-    }))
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input)
+      return new Response(JSON.stringify(
+        url.includes('/capture-resolution/captures') ? capturePage() : emptyPage(),
+      ), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      })
+    })
     Object.defineProperty(window, 'valedictorianHttp', {
       configurable: true,
       value: {
@@ -294,7 +342,8 @@ describe('LifecycleWorkbench', () => {
 
   it('keeps the visible Jobs page bounded while draining its complete projection', async () => {
     const { client, lists } = makeClient()
-    for (const [phase, list] of Object.entries(lists).filter(([phase]) => phase !== 'jobs')) {
+    for (const [phase, list] of Object.entries(lists)
+      .filter(([phase]) => phase !== 'jobs' && phase !== 'captures')) {
       list
         .mockResolvedValueOnce({ items: [], limit: 100, nextCursor: `${phase}-page-2` })
         .mockResolvedValueOnce(emptyPage())
@@ -309,12 +358,13 @@ describe('LifecycleWorkbench', () => {
     render(<LifecycleWorkbench client={client} />)
 
     await waitFor(() => {
-      expect(lists.captures).toHaveBeenCalledTimes(2)
+      expect(lists.captures).toHaveBeenCalledTimes(1)
       expect(lists.opportunities).toHaveBeenCalledTimes(2)
       expect(lists.applications).toHaveBeenCalledTimes(2)
       expect(lists.jobs).toHaveBeenCalledTimes(3)
     })
-    for (const [phase, list] of Object.entries(lists).filter(([phase]) => phase !== 'jobs')) {
+    for (const [phase, list] of Object.entries(lists)
+      .filter(([phase]) => phase !== 'jobs' && phase !== 'captures')) {
       expect(list).toHaveBeenNthCalledWith(2, expect.objectContaining({
         cursor: `${phase}-page-2`,
         limit: 100,

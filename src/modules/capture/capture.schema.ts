@@ -206,3 +206,278 @@ export const captureFieldOutcomes = pgTable(
     outcomeKeysCheck: check('chk_capture_field_outcomes_outcome_keys', sql`${table.outcomeJson} ${sql.raw(FORBIDDEN_KEY)}`),
   }),
 )
+
+export const captureEffectiveRevisionInputs = pgTable(
+  'capture_effective_revision_inputs',
+  {
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
+    captureId: text('capture_id').notNull(),
+    captureRevision: integer('capture_revision').notNull(),
+    effectiveInputJson: text('effective_input_json').notNull(),
+    evidenceOriginsJson: text('evidence_origins_json').notNull(),
+    inputFingerprint: text('input_fingerprint').notNull(),
+    materializedAt: text('materialized_at').notNull(),
+    finalizedAt: text('finalized_at'),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: 'capture_effective_revision_inputs_pk',
+      columns: [table.captureId, table.captureRevision],
+    }),
+    revisionFk: foreignKey({
+      name: 'fk_capture_effective_revision_inputs_revision',
+      columns: [table.captureId, table.captureRevision],
+      foreignColumns: [captureRevisions.captureId, captureRevisions.revision],
+    }),
+    workspaceIdx: index('idx_capture_effective_revision_inputs_workspace')
+      .on(table.workspaceId, table.captureId, table.captureRevision),
+    revisionCheck: check(
+      'chk_capture_effective_revision_inputs_revision',
+      sql`${table.captureRevision} > 0`,
+    ),
+    inputBoundCheck: check(
+      'chk_capture_effective_revision_inputs_bound',
+      sql`length(${table.effectiveInputJson}) between 2 and 262144`,
+    ),
+    evidenceOriginsBoundCheck: check(
+      'chk_capture_effective_revision_inputs_evidence_origins_bound',
+      sql`length(${table.evidenceOriginsJson}) between 2 and 8192`,
+    ),
+    fingerprintCheck: check(
+      'chk_capture_effective_revision_inputs_fingerprint',
+      sql`length(${table.inputFingerprint}) = 64`,
+    ),
+  }),
+)
+
+export const captureMaterializationIssues = pgTable(
+  'capture_materialization_issues',
+  {
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
+    captureId: text('capture_id').notNull(),
+    captureRevision: integer('capture_revision').notNull(),
+    code: text('code').notNull(),
+    message: text('message').notNull(),
+    detailsJson: text('details_json').notNull(),
+    createdAt: text('created_at').notNull(),
+    resolvedAt: text('resolved_at'),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: 'capture_materialization_issues_pk',
+      columns: [table.captureId, table.captureRevision],
+    }),
+    revisionFk: foreignKey({
+      name: 'fk_capture_materialization_issues_revision',
+      columns: [table.captureId, table.captureRevision],
+      foreignColumns: [captureRevisions.captureId, captureRevisions.revision],
+    }),
+    unresolvedIdx: index('idx_capture_materialization_issues_unresolved')
+      .on(table.workspaceId, table.captureId, table.captureRevision)
+      .where(sql`${table.resolvedAt} is null`),
+    revisionCheck: check(
+      'chk_capture_materialization_issues_revision',
+      sql`${table.captureRevision} > 0`,
+    ),
+    codeCheck: check(
+      'chk_capture_materialization_issues_code',
+      sql`${table.code} = 'revision_materialization_failed'`,
+    ),
+    messageCheck: check(
+      'chk_capture_materialization_issues_message',
+      sql`length(btrim(${table.message})) between 1 and 500`,
+    ),
+    detailsCheck: check(
+      'chk_capture_materialization_issues_details',
+      sql`length(${table.detailsJson}) between 2 and 4096`,
+    ),
+  }),
+)
+
+export const captureResolutionGenerations = pgTable(
+  'capture_resolution_generations',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
+    captureId: text('capture_id').notNull(),
+    captureRevision: integer('capture_revision').notNull(),
+    ordinal: integer('ordinal').notNull(),
+    trigger: text('trigger').notNull(),
+    status: text('status').notNull(),
+    processingSummary: text('processing_summary').notNull(),
+    inputFingerprint: text('input_fingerprint').notNull(),
+    retryPolicyId: text('retry_policy_id').notNull(),
+    retryPolicySnapshotJson: text('retry_policy_snapshot_json').notNull(),
+    resolverSelectionSnapshotJson: text('resolver_selection_snapshot_json').notNull(),
+    createdByActorJson: text('created_by_actor_json').notNull(),
+    linkedJobId: text('linked_job_id'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    revisionFk: foreignKey({
+      name: 'fk_capture_resolution_generations_revision',
+      columns: [table.captureId, table.captureRevision],
+      foreignColumns: [captureRevisions.captureId, captureRevisions.revision],
+    }),
+    captureOrdinalIdx: uniqueIndex('idx_capture_resolution_generations_ordinal')
+      .on(table.captureId, table.ordinal),
+    currentRevisionIdx: index('idx_capture_resolution_generations_revision')
+      .on(table.captureId, table.captureRevision),
+    activeIdx: uniqueIndex('idx_capture_resolution_generations_active')
+      .on(table.captureId)
+      .where(sql`${table.status} = 'active'`),
+    workspaceQueueIdx: index('idx_capture_resolution_generations_workspace')
+      .on(table.workspaceId, table.processingSummary, table.updatedAt, table.id),
+    revisionCheck: check(
+      'chk_capture_resolution_generations_revision',
+      sql`${table.captureRevision} > 0 and ${table.ordinal} > 0`,
+    ),
+    triggerCheck: check(
+      'chk_capture_resolution_generations_trigger',
+      sql`${table.trigger} in (
+        'intake','correction','restore','retry_destination','replay',
+        'manual_completion','legacy_promotion'
+      )`,
+    ),
+    statusCheck: check(
+      'chk_capture_resolution_generations_status',
+      sql`${table.status} in ('active','promoted','superseded','cancelled')`,
+    ),
+    summaryCheck: check(
+      'chk_capture_resolution_generations_summary',
+      sql`${table.processingSummary} in (
+        'promoted','blocked','needs_action','retrying','processing',
+        'awaiting_destination','awaiting_information','stopped'
+      )`,
+    ),
+    fingerprintCheck: check(
+      'chk_capture_resolution_generations_fingerprint',
+      sql`length(${table.inputFingerprint}) = 64`,
+    ),
+    policyCheck: check(
+      'chk_capture_resolution_generations_policy',
+      sql`length(${table.retryPolicyId}) between 1 and 100
+        and length(${table.retryPolicySnapshotJson}) between 2 and 4096
+        and length(${table.resolverSelectionSnapshotJson}) between 2 and 4096`,
+    ),
+    actorCheck: check(
+      'chk_capture_resolution_generations_actor',
+      sql`length(${table.createdByActorJson}) between 2 and 2048`,
+    ),
+  }),
+)
+
+export const captureResolutionStageResults = pgTable(
+  'capture_resolution_stage_results',
+  {
+    generationId: text('generation_id').notNull(),
+    stage: text('stage').notNull(),
+    captureRevision: integer('capture_revision').notNull(),
+    status: text('status').notNull(),
+    attemptCount: integer('attempt_count').notNull(),
+    issueJson: text('issue_json'),
+    resultJson: text('result_json').notNull(),
+    nextAttemptAt: text('next_attempt_at'),
+    resolverId: text('resolver_id'),
+    resolverVersion: text('resolver_version'),
+    remoteOperationId: text('remote_operation_id'),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: 'capture_resolution_stage_results_pk',
+      columns: [table.generationId, table.stage],
+    }),
+    generationFk: foreignKey({
+      name: 'fk_capture_resolution_stage_results_generation',
+      columns: [table.generationId],
+      foreignColumns: [captureResolutionGenerations.id],
+    }),
+    stageCheck: check(
+      'chk_capture_resolution_stage_results_stage',
+      sql`${table.stage} in ('destination','information','promotion')`,
+    ),
+    revisionCheck: check(
+      'chk_capture_resolution_stage_results_revision',
+      sql`${table.captureRevision} > 0 and ${table.attemptCount} >= 0`,
+    ),
+    statusCheck: check(
+      'chk_capture_resolution_stage_results_status',
+      sql`${table.status} in (
+        'not_required','queued','running','retry_wait','resolved',
+        'action_required','exhausted','blocked','awaiting_manual',
+        'not_ready','promoted','superseded','cancelled'
+      )`,
+    ),
+    issueCheck: check(
+      'chk_capture_resolution_stage_results_issue',
+      sql`${table.issueJson} is null or length(${table.issueJson}) between 2 and 4096`,
+    ),
+    resultCheck: check(
+      'chk_capture_resolution_stage_results_result',
+      sql`length(${table.resultJson}) between 2 and 16384`,
+    ),
+    resolverCheck: check(
+      'chk_capture_resolution_stage_results_resolver',
+      sql`${table.resolverId} is null or length(${table.resolverId}) between 1 and 200`,
+    ),
+  }),
+)
+
+export const captureResolutionCommandReceipts = pgTable(
+  'capture_resolution_command_receipts',
+  {
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    operation: text('operation').notNull(),
+    requestFingerprint: text('request_fingerprint').notNull(),
+    resultJson: text('result_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: 'capture_resolution_command_receipts_pk',
+      columns: [table.workspaceId, table.idempotencyKey],
+    }),
+    operationCheck: check(
+      'chk_capture_resolution_command_receipts_operation',
+      sql`${table.operation} in ('retry','replay','correct','complete')`,
+    ),
+    keyCheck: check(
+      'chk_capture_resolution_command_receipts_key',
+      sql`length(${table.idempotencyKey}) between 1 and 200`,
+    ),
+    fingerprintCheck: check(
+      'chk_capture_resolution_command_receipts_fingerprint',
+      sql`length(${table.requestFingerprint}) = 64`,
+    ),
+    resultCheck: check(
+      'chk_capture_resolution_command_receipts_result',
+      sql`length(${table.resultJson}) between 2 and 16384`,
+    ),
+  }),
+)
+
+export const captureMaterializationState = pgTable(
+  'capture_materialization_state',
+  {
+    workspaceId: text('workspace_id').primaryKey().references(() => workspaces.id),
+    status: text('status').notNull(),
+    completed: integer('completed').notNull(),
+    total: integer('total').notNull(),
+    issueCount: integer('issue_count').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    statusCheck: check(
+      'chk_capture_materialization_state_status',
+      sql`${table.status} in ('migrating','ready','blocked')`,
+    ),
+    countCheck: check(
+      'chk_capture_materialization_state_counts',
+      sql`${table.completed} >= 0 and ${table.total} >= 0
+        and ${table.completed} <= ${table.total} and ${table.issueCount} >= 0`,
+    ),
+  }),
+)

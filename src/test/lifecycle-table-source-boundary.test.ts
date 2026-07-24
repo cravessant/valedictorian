@@ -72,7 +72,7 @@ describe('lifecycle-table source boundary', () => {
     const configs = listFiles(`${sharedLifecycleTableDir}/configs`)
     expect(configs.length).toBeGreaterThanOrEqual(4)
     const names = configs.map((c) => path.basename(c))
-    for (const expected of ['capture-config.ts', 'job-config.ts', 'opportunity-config.ts', 'application-config.ts']) {
+    for (const expected of ['capture-config.tsx', 'job-config.ts', 'opportunity-config.ts', 'application-config.ts']) {
       expect(names).toContain(expected)
     }
   })

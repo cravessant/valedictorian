@@ -33,14 +33,14 @@ const viewModes: Readonly<Record<WorkspaceView, ReadonlySet<string>>> = {
   companies: new Set(['duplicates']),
 }
 const viewFilters: Readonly<Record<WorkspaceView, ReadonlySet<string>>> = {
-  captures: new Set(),
+  captures: new Set(['all', 'needs_attention', 'removed']),
   jobs: new Set(['all', 'include_removed']),
   opportunities: new Set(),
   applications: new Set(),
   companies: new Set(['all', 'active', 'archived', 'merged', 'open']),
 }
 const viewSorts: Readonly<Record<WorkspaceView, ReadonlySet<string>>> = {
-  captures: new Set(),
+  captures: new Set(['observed_desc']),
   jobs: new Set(),
   opportunities: new Set(),
   applications: new Set(),
@@ -109,7 +109,7 @@ export function isWorkspaceLocation(value: unknown): value is WorkspaceLocation 
   }
   if (location.cursor === undefined) return location.cursorDirection === undefined
   if (view === 'jobs') return location.cursorDirection === 'after'
-  if (view === 'companies') {
+  if (view === 'companies' || view === 'captures') {
     return location.cursorDirection === 'after' || location.cursorDirection === 'before'
   }
   return false

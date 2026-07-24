@@ -10,6 +10,8 @@ import {
 import { createLocalLifecycleMethods } from './local-lifecycle-methods'
 import { createPgliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
 import { createPgliteCaptureService } from '../modules/capture/capture.service'
+import { createCaptureMaterializationService } from '../modules/capture/capture.materialization'
+import { createCaptureResolutionService } from '../modules/capture/capture.resolution'
 import { createCaptureFieldOutcomeStore } from '../modules/capture/capture.field-outcomes'
 import { createScheduledWorkSource } from '../modules/scheduling/scheduled-work.source'
 import {
@@ -198,6 +200,8 @@ export async function createLocalValedictorianClient({
   const policyRepository = createPglitePolicyRepository(database)
   const workflowRunRepository = createPgliteWorkflowRunRepository(database)
   const captureService = createPgliteCaptureService(database, { now })
+  const captureMaterialization = createCaptureMaterializationService(database, { now })
+  await captureMaterialization.migrateToReady(workspaceId)
   const captureFieldOutcomes = createCaptureFieldOutcomeStore(database)
   // Static resolver metadata (no connector loading); the resolver function resolves lazily so
   // client construction never loads connector implementations (retirement invariant).
@@ -295,7 +299,10 @@ export async function createLocalValedictorianClient({
     workspaceId,
     connectorScheduling,
     ...lifecycle,
-    captureResolution: unavailableWorkspaceCapability('Capture resolution'),
+    captureResolution: createCaptureResolutionService(database, {
+      workspaceId,
+      materialization: captureMaterialization,
+    }),
     companies: createPgliteCompanyService(database, {
       workspaceId,
       coverage: companyCoverage,
@@ -645,17 +652,6 @@ function scheduleCompanyCoverageInBackground(run: () => Promise<void>) {
   queueMicrotask(() => {
     void run().catch(() => undefined)
   })
-}
-
-function unavailableWorkspaceCapability<T extends object>(name: string): T {
-  const unavailable = new Proxy(
-    () => Promise.reject(new Error(`${name} is not available in the local workspace runtime.`)),
-    {
-      apply: (target) => target(),
-      get: () => unavailable,
-    },
-  )
-  return unavailable as unknown as T
 }
 
 async function reconnectConnectorStatus({

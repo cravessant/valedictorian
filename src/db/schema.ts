@@ -7,7 +7,10 @@ import {
   connectorSchedules,
 } from './schema.connectors'
 import {
-  captureEvidenceItems, captureFieldOutcomes, captureOccurrences, captureRevisions, captures,
+  captureEffectiveRevisionInputs, captureEvidenceItems, captureFieldOutcomes,
+  captureMaterializationIssues, captureMaterializationState, captureOccurrences,
+  captureResolutionCommandReceipts, captureResolutionGenerations,
+  captureResolutionStageResults, captureRevisions, captures,
 } from '../modules/capture/capture.schema'
 import {
   jobCaptureEvidenceReferences, jobExternalIdentities, jobHistory, jobs,
@@ -35,7 +38,10 @@ export {
   connectorSchedules,
 } from './schema.connectors'
 export {
-  captureEvidenceItems, captureFieldOutcomes, captureOccurrences, captureRevisions, captures,
+  captureEffectiveRevisionInputs, captureEvidenceItems, captureFieldOutcomes,
+  captureMaterializationIssues, captureMaterializationState, captureOccurrences,
+  captureResolutionCommandReceipts, captureResolutionGenerations,
+  captureResolutionStageResults, captureRevisions, captures,
 } from '../modules/capture/capture.schema'
 export {
   jobCaptureEvidenceReferences, jobExternalIdentities, jobHistory, jobs,
@@ -170,6 +176,9 @@ export const schema = {
   sources, workflowRuns, workflowRunSteps, workspaceSecrets, policyConfig, policyEvidence,
   sourceExecutionScopes, connectorRunSynchronizations, sourceExecutionSessions,
   captures, captureRevisions, captureOccurrences, captureEvidenceItems, captureFieldOutcomes,
+  captureEffectiveRevisionInputs, captureMaterializationIssues, captureMaterializationState,
+  captureResolutionGenerations, captureResolutionStageResults,
+  captureResolutionCommandReceipts,
   jobs, jobExternalIdentities, jobCaptureEvidenceReferences, jobHistory,
   opportunities, opportunityHistory,
   applications, pursuitLinks, applicationAttemptRecords, applicationEventRecords,

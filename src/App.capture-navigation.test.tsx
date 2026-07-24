@@ -16,7 +16,7 @@ afterEach(() => {
 })
 
 describe('App Capture navigation', () => {
-  it('opens Connector Run Captures on the production lifecycle surface with the run filter', async () => {
+  it('opens the canonical Capture inbox from Connector Runs without a legacy run query', async () => {
     const user = userEvent.setup()
     const connectorsApi = createConnectorsApi()
     await connectorsApi.create({
@@ -58,14 +58,26 @@ describe('App Capture navigation', () => {
       hasMore: false,
     })
 
-    const request = vi.fn(async () => new Response(JSON.stringify({
-      items: [],
-      limit: 100,
-      nextCursor: null,
-    }), {
-      headers: { 'content-type': 'application/json' },
-      status: 200,
-    }))
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input)
+      return new Response(JSON.stringify(
+        url.includes('/capture-resolution/captures')
+          ? {
+              items: [],
+              pageInfo: {
+                startCursor: null,
+                endCursor: null,
+                hasPreviousPage: false,
+                hasNextPage: false,
+              },
+              totalCount: 0,
+            }
+          : { items: [], limit: 100, nextCursor: null },
+      ), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      })
+    })
     Object.defineProperty(window, 'valedictorianHttp', {
       configurable: true,
       value: {
@@ -91,21 +103,20 @@ describe('App Capture navigation', () => {
     await user.click(screen.getByRole('button', { name: 'Connector runs' }))
     await user.click(await screen.findByRole('button', { name: 'View Captures from run/one' }))
 
-    expect(await screen.findByText('Filtered to connector run run/one')).toBeInTheDocument()
+    expect(await screen.findByRole('table', { name: 'Captures' })).toBeInTheDocument()
     await waitFor(() => {
       const urls = request.mock.calls.map(([input]) =>
         input instanceof Request ? input.url : String(input))
-      expect(urls.some((url) => url.includes('connectorRunId=run%2Fone'))).toBe(true)
+      expect(urls.length).toBeGreaterThan(0)
+      expect(urls.some((url) => url.includes('connectorRunId='))).toBe(false)
     })
 
-    await user.click(screen.getByRole('button', { name: 'Clear run filter' }))
-    expect(screen.queryByText('Filtered to connector run run/one')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Connector runs' }))
     await user.click(screen.getByRole('button', { name: 'Captures' }))
     await screen.findByRole('table', { name: 'Captures' })
     expect(screen.queryByText('Filtered to connector run run/one')).not.toBeInTheDocument()
-    const finalUrl = request.mock.calls.at(-4)?.[0]
-    expect(finalUrl instanceof Request ? finalUrl.url : String(finalUrl))
-      .not.toContain('connectorRunId=')
+    expect(request.mock.calls.every(([input]) =>
+      !(input instanceof Request ? input.url : String(input)).includes('connectorRunId=')))
+      .toBe(true)
   })
 })

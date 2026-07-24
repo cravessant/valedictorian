@@ -33,6 +33,7 @@ import type { LocalWorkspaceManager } from './local-workspaces'
 import { handleConnectorRoutes } from './local-server.routes.connectors'
 import { handleLifecycleRoutes } from './local-server.routes.lifecycle'
 import { handleCompanyRoutes } from './local-server.routes.companies'
+import { handleCaptureResolutionRoutes } from './local-server.routes.capture-resolution'
 import {
   handleHttpRequestError,
   type ValedictorianHttpRequestErrorLogger,
@@ -216,6 +217,10 @@ export async function handleRequest({
     }
 
     if (await handleLifecycleRoutes({ client, request, requestUrl, response })) {
+      return
+    }
+
+    if (await handleCaptureResolutionRoutes({ client, request, requestUrl, response })) {
       return
     }
 
@@ -452,7 +457,7 @@ export async function handleRequest({
 }
 
 function isDomainRoute(pathname: string) {
-  return /^\/v1\/(applications|captures|companies|jobs|opportunities|action-queue|connector-descriptors|connectors|policy|profile|runs|scores|secrets)(?:\/|$)/.test(
+  return /^\/v1\/(applications|captures|capture-resolution|companies|jobs|opportunities|action-queue|connector-descriptors|connectors|policy|profile|runs|scores|secrets)(?:\/|$)/.test(
     pathname,
   )
 }

@@ -63,9 +63,22 @@ describe('workspace location', () => {
     'https://app.test/?view=jobs&cursor=x&direction=before',
     'https://app.test/?view=opportunities&cursor=x&direction=after',
     'https://app.test/?view=applications&resource=application-one',
-    'https://app.test/?view=captures&filter=all',
   ])('falls back safely for invalid or incompatible input: %s', (address) => {
     expect(parseWorkspaceLocation(new URL(address))).toEqual({ view: 'captures' })
+  })
+
+  it('round-trips canonical Capture filters and bidirectional cursors', () => {
+    const location = {
+      view: 'captures' as const,
+      filter: 'needs_attention',
+      sort: 'observed_desc',
+      cursor: 'opaque-capture-cursor',
+      cursorDirection: 'before' as const,
+    }
+    expect(parseWorkspaceLocation(serializeWorkspaceLocation(
+      location,
+      new URL('https://app.test/workspace'),
+    ))).toEqual(location)
   })
 
   it('round-trips the separate possible-duplicate queue mode', () => {

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 
 import { LifecycleTable } from './lifecycle-table'
-import { captureConfig, createCaptureConfig } from './configs/capture-config'
+import { captureConfig } from './configs/capture-config'
 import { jobConfig, createJobConfig } from './configs/job-config'
 import { opportunityConfig, createOpportunityConfig } from './configs/opportunity-config'
 import { applicationConfig, createApplicationConfig } from './configs/application-config'
@@ -12,6 +12,7 @@ afterEach(cleanup)
 
 interface WorkspaceClientLike {
   captures: { list: (input?: unknown) => Promise<unknown> }
+  captureResolution: { list: (input?: unknown) => Promise<unknown> }
   jobs: { list: (input?: unknown) => Promise<unknown> }
   opportunities: { list: (input?: unknown) => Promise<unknown> }
   applications: { list: (input?: unknown) => Promise<unknown> }
@@ -20,6 +21,18 @@ interface WorkspaceClientLike {
 function makeClient(): WorkspaceClientLike & Pick<ValedictorianWorkspaceClient, 'captures' | 'jobs' | 'opportunities' | 'applications'> {
   return {
     captures: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
+    captureResolution: {
+      list: vi.fn(async () => ({
+        items: [],
+        pageInfo: {
+          startCursor: null,
+          endCursor: null,
+          hasPreviousPage: false,
+          hasNextPage: false,
+        },
+        totalCount: 0,
+      })),
+    },
     jobs: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
     opportunities: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
     applications: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
@@ -27,17 +40,27 @@ function makeClient(): WorkspaceClientLike & Pick<ValedictorianWorkspaceClient, 
 }
 
 describe('lifecycle typed configs', () => {
-  it('captureConfig exposes Capture labels, columns, and calls workspace.captures.list with includeRemoved', async () => {
+  it('captureConfig exposes the canonical presentation and calls captureResolution.list', async () => {
     const client = makeClient()
     await captureConfig.list(client)
-    expect(client.captures.list).toHaveBeenCalledWith(expect.objectContaining({ includeRemoved: false }))
+    expect(client.captureResolution.list).toHaveBeenCalledWith({
+      filter: 'all',
+      sort: 'observed_desc',
+      limit: 50,
+    })
     const config = captureConfig.table
     expect(config.caption).toMatch(/Captures/)
     expect(config.columns.length).toBeGreaterThan(0)
     const headerLabels = config.columns.map((c) => c.header)
-    expect(headerLabels).toContain('Adapter')
-    expect(headerLabels).toContain('Evidence')
-    expect(headerLabels).toContain('Observed at')
+    expect(headerLabels).toEqual([
+      'Lead',
+      'Source',
+      'Destination',
+      'Status',
+      'Linked Job',
+      'Observed',
+      'Next action',
+    ])
     expect(config.empty.title).not.toBe('')
   })
 
@@ -91,7 +114,6 @@ describe('lifecycle typed configs', () => {
       modalLayer: <div />,
     }
     const configs = [
-      createCaptureConfig(extensionSlots),
       createJobConfig(extensionSlots),
       createOpportunityConfig(extensionSlots),
       createApplicationConfig(extensionSlots),
@@ -105,20 +127,17 @@ describe('lifecycle typed configs', () => {
 
   it('renders the Capture table through the shared LifecycleTable with sample items', () => {
     const items = [{
-      id: 'cap-1',
-      workspaceId: 'ws',
-      revision: 1,
-      evidenceMode: 'reported' as const,
-      adapter: { id: 'jobright', kind: 'connector' as const, version: '0.1' },
+      captureId: 'cap-1',
+      captureRevision: 1,
       observedAt: '2025-01-01T00:00:00Z',
-      receivedAt: '2025-01-01T00:00:00Z',
-      providerRecordId: null,
-      providerSchema: null,
-      payload: null,
-      evidence: [],
-      createdAt: '2025-01-01T00:00:00Z',
-      updatedAt: '2025-01-01T00:00:00Z',
-      removedAt: null,
+      lead: { roleTitle: 'Engineer', companyName: 'Acme', fallbackLabel: 'Acme lead' },
+      source: { displayName: 'Jobright', provider: 'jobright' },
+      destination: { state: 'resolving' as const, displayHost: null },
+      readiness: 'ready' as const,
+      processingSummary: 'processing' as const,
+      activeProcessing: true,
+      linkedJob: null,
+      primaryIntent: null,
     }]
     render(
       <LifecycleTable
@@ -128,6 +147,7 @@ describe('lifecycle typed configs', () => {
       />,
     )
     const table = screen.getByRole('table', { name: /Captures/ })
-    expect(within(table).getByText('jobright')).toBeInTheDocument()
+    expect(within(table).getByText('Engineer')).toBeInTheDocument()
+    expect(within(table).getByText('Jobright')).toBeInTheDocument()
   })
 })
