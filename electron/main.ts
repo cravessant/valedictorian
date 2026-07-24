@@ -4,6 +4,7 @@ import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { runPackagedManualWorkflowProof } from './packaged-manual-workflow-proof'
 import { runPackagedPgliteSmoke } from './pglite-packaged-smoke'
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { removeRuntimeIpcHandlers } from './runtime-ipc'
@@ -604,6 +605,31 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(async () => {
+  const packagedManualWorkflowProofPath = process.env.VALEDICTORIAN_PACKAGE_MANUAL_WORKFLOW_PROOF_PATH
+  if (packagedManualWorkflowProofPath) {
+    try {
+      const packagedManualWorkflowProofPhase = process.env.VALEDICTORIAN_PACKAGE_MANUAL_WORKFLOW_PROOF_PHASE
+      if (packagedManualWorkflowProofPhase !== 'write' && packagedManualWorkflowProofPhase !== 'verify') {
+        throw new Error('Packaged manual workflow proof phase must be write or verify')
+      }
+      fs.mkdirSync(packagedManualWorkflowProofPath, { recursive: true })
+      const result = await runPackagedManualWorkflowProof({
+        dataDirectory: path.join(packagedManualWorkflowProofPath, 'pglite'),
+        phase: packagedManualWorkflowProofPhase,
+      })
+      fs.writeFileSync(
+        path.join(packagedManualWorkflowProofPath, `${packagedManualWorkflowProofPhase}.json`),
+        `${JSON.stringify(result)}\n`,
+        { mode: 0o600 },
+      )
+      app.exit(0)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
+  }
+
   const packagedSmokePath = process.env.VALEDICTORIAN_PGLITE_PACKAGE_SMOKE_PATH
   if (packagedSmokePath) {
     try {

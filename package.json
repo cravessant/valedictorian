@@ -22,6 +22,7 @@
     "inspect:pglite-runtime": "node scripts/inspect-pglite-runtime-assets.mjs",
     "inspect:lifecycle-cutover": "node scripts/lifecycle-cutover-selectors.mjs",
     "smoke:connector-modal-scroll": "node scripts/run-connector-modal-scroll-probe.mjs",
+    "smoke:manual-workflow-package": "node scripts/run-packaged-manual-workflow-proof.mjs",
     "smoke:pglite-package": "node scripts/run-packaged-pglite-smoke.mjs",
     "preview": "vite preview",
     "test": "NODE_OPTIONS=\"--disable-warning=DEP0176 --disable-warning=DEP0205\" vitest run",
