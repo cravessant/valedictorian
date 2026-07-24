@@ -21,7 +21,7 @@ import {
   CliUsageError,
   presentCliFailure,
 } from './valedictorian-cli.failures.js'
-import { formatHumanOutput } from './valedictorian-cli.output.js'
+import { formatHumanOutput, type HumanOutputOptions } from './valedictorian-cli.output.js'
 import {
   parseStrictIntegerOption,
   parseStrictJsonObject,
@@ -203,11 +203,18 @@ export async function workspaceClient(
   context: ValedictorianCliContext,
   flags: RawFlags,
 ): Promise<ValedictorianWorkspaceClient> {
+  return (await workspaceClientWithId(context, flags)).client
+}
+
+export async function workspaceClientWithId(
+  context: ValedictorianCliContext,
+  flags: RawFlags,
+): Promise<{ client: ValedictorianWorkspaceClient; workspaceId: string }> {
   const workspaceId = await resolveWorkspaceId(
     context,
     readRequiredText(optionValue(flags, 'workspace'), '--workspace'),
   )
-  return context.client.forWorkspace(workspaceId)
+  return { client: context.client.forWorkspace(workspaceId), workspaceId }
 }
 
 export async function workspaceConnectorClient(
@@ -364,8 +371,13 @@ export function readJsonObjectFile<T extends object>(path: string, label: string
   return parseStrictJsonObject(text, label) as T
 }
 
-export function writeJson(context: ValedictorianCliContext, value: unknown, pretty = true) {
-  if (isBlockedLifecycleResult(value)) {
+export function writeJson(
+  context: ValedictorianCliContext,
+  value: unknown,
+  pretty = true,
+  humanOutputOptions?: HumanOutputOptions,
+) {
+  if (isTypedConflictResult(value)) {
     context.process.exitCode = 4
   }
   if (context.outputJson) {
@@ -373,15 +385,15 @@ export function writeJson(context: ValedictorianCliContext, value: unknown, pret
     return
   }
 
-  context.process.stdout.write(formatHumanOutput(value))
+  context.process.stdout.write(formatHumanOutput(value, humanOutputOptions))
 }
 
-function isBlockedLifecycleResult(value: unknown): boolean {
-  return typeof value === 'object'
-    && value !== null
-    && 'status' in value
-    && value.status === 'blocked'
-    && 'blocker' in value
+function isTypedConflictResult(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || !('status' in value)) return false
+  const status = value.status
+  if (status === 'duplicate_blocked' || status === 'company_assignment_blocked') return true
+  if (status !== 'blocked') return false
+  return 'blocker' in value || 'failure' in value
 }
 
 export function normalizeArgv(argv: string[]) {

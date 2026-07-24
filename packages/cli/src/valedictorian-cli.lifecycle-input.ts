@@ -15,7 +15,12 @@ type ContractSchema<T> = {
 export function parseContractInput<T>(
   flags: RawFlags,
   schema: ContractSchema<T>,
-  options: { id?: readonly [string, string]; optional?: boolean } = {},
+  options: {
+    id?: readonly [string, string]
+    ids?: readonly (readonly [string, string])[]
+    optional?: boolean
+    workspaceId?: string
+  } = {},
 ): T {
   const inputJson = optionValue(flags, 'input-json')
   const input = inputJson === undefined
@@ -24,9 +29,14 @@ export function parseContractInput<T>(
       : missingInput()
     : parseStrictJsonObject(inputJson, '--input-json')
 
-  if (options.id) {
-    rejectEmbeddedIdentity(input, options.id[0])
-    input[options.id[0]] = options.id[1]
+  const identities = options.ids ?? (options.id ? [options.id] : [])
+  for (const [field, value] of identities) {
+    rejectEmbeddedIdentity(input, field)
+    input[field] = value
+  }
+  if (options.workspaceId) {
+    rejectEmbeddedIdentity(input, 'workspaceId')
+    input.workspaceId = options.workspaceId
   }
   return validateContract(schema, input)
 }

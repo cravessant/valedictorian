@@ -12,6 +12,7 @@ import {
 import { buildActionQueueRoute } from './valedictorian-cli.action-queue-commands.js'
 import { buildApplicationsRoute } from './valedictorian-cli.application-commands.js'
 import { buildCapturesRoute } from './valedictorian-cli.capture-commands.js'
+import { buildCompaniesRoute } from './valedictorian-cli.company-commands.js'
 import { buildConnectorsRoute } from './valedictorian-cli.connector-commands.js'
 import {
   definedEnv,
@@ -109,6 +110,7 @@ const application = buildApplication(
     routes: {
       applications: buildApplicationsRoute(),
       captures: buildCapturesRoute(),
+      companies: buildCompaniesRoute(),
       connectors: buildConnectorsRoute(),
       context: buildContextCommand(),
       doctor: buildDoctorCommand(),

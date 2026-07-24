@@ -30,6 +30,7 @@ import {
   removalRequiredFlags,
   restoreRequiredFlags,
 } from './valedictorian-cli.lifecycle-input.js'
+import { buildCaptureResolutionRoute } from './valedictorian-cli.capture-resolution-commands.js'
 
 export function buildCapturesRoute() {
   return buildRouteMap({
@@ -130,6 +131,7 @@ export function buildCapturesRoute() {
           writeJson(context, await client.captures.promoteToJob(input))
         },
       }),
+      resolution: buildCaptureResolutionRoute(),
     },
   })
 }

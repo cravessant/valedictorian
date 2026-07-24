@@ -9,6 +9,7 @@ import {
   promoteJobToOpportunityInputSchema,
   removeJobExternalIdentityInputSchema,
   removeJobInputSchema,
+  reassignJobCompanyInputSchema,
   restoreJobInputSchema,
   updateJobAvailabilityInputSchema,
 } from '@sparxie/sdk'
@@ -17,6 +18,7 @@ import {
   makeCommand,
   optionFlags,
   workspaceClient,
+  workspaceClientWithId,
   writeJson,
 } from './valedictorian-cli.command-runtime.js'
 import { CliOwnedFailure, CliUsageError } from './valedictorian-cli.failures.js'
@@ -75,6 +77,7 @@ export function buildJobsRoute() {
         'jobId',
         (client, input) => client.jobs.updateAvailability(input),
       ),
+      company: buildJobCompanyRoute(),
       'external-identities': buildExternalIdentitiesRoute(),
       remove: makeCommand({
         docs: { brief: 'Remove a job using an explicit dependent-resource choice' },
@@ -124,6 +127,36 @@ export function buildJobsRoute() {
             jobId,
           ])
           writeJson(context, await client.jobs.promoteToOpportunity(input))
+        },
+      }),
+    },
+  })
+}
+
+function buildJobCompanyRoute() {
+  return buildRouteMap({
+    docs: { brief: 'Inspect and reassign a Job Workspace Company' },
+    routes: {
+      get: makeCommand({
+        docs: { brief: 'Get the current Job Workspace Company assignment' },
+        flags: optionFlags(['workspace']),
+        positionalCount: 1,
+        run: async (context, flags, jobId) => {
+          const client = await workspaceClient(context, flags)
+          writeJson(context, await client.companyAssignments.get(jobId))
+        },
+      }),
+      reassign: makeCommand({
+        docs: { brief: 'Reassign a Job to an active Workspace Company' },
+        flags: optionFlags([], inputJsonFlags),
+        positionalCount: 1,
+        run: async (context, flags, jobId) => {
+          const { client, workspaceId } = await workspaceClientWithId(context, flags)
+          const input = parseContractInput(flags, reassignJobCompanyInputSchema, {
+            id: ['jobId', jobId],
+            workspaceId,
+          })
+          writeJson(context, await client.companyAssignments.reassign(input))
         },
       }),
     },

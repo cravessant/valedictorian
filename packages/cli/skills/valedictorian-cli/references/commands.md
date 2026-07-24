@@ -64,14 +64,46 @@ valedictorian-cli --json applications history <application-id> --workspace "$VAL
 
 ## Lifecycle Commands
 
-The four command groups mirror the `@sparxie/sdk@0.29.0` workspace client:
+The command groups mirror the `@sparxie/sdk@0.29.1` workspace client:
 
 Read `lifecycle.md` for the meaning of each aggregate, the one-boundary-at-a-time promotion protocol, warning/blocker decisions, and lineage verification. Read `promotion-payloads.md` for complete alpha.18 JSON examples.
 
-- `captures list|get|create|correct|remove|restore|history|promote-to-job`
-- `jobs list|get|create|correct-facts|update-availability|external-identities add|remove|remove|restore|history|promote-to-opportunity`
+- `captures list|get|create|correct|remove|restore|history|promote-to-job|resolution list|get|retry|replay|complete`
+- `companies capability|list|get|lookup|search|preview-matches|create|update|notes update|aliases add|update|remove|archive|restore|duplicates list|get|mark-distinct|merge|assigned-jobs list|history list`
+- `jobs list|get|create|correct-facts|update-availability|company get|reassign|external-identities add|remove|remove|restore|history|promote-to-opportunity`
 - `opportunities list|get|create|update-evaluation|update-disposition|remove|restore|history|promote-to-application`
 - `applications list|get|create|update-status|update-company|update-source|links create|update|remove|refresh-snapshot|remove|restore|history|attempts list|events list`
+
+### Capture Completion And Companies
+
+`captures resolution complete <capture-id>`, retry, and replay require fresh exact revision and generation guards. Top-level positional IDs (`capture-id`, `company-id`, `job-id`, candidate ID, alias ID, and merge winner/loser) and `workspaceId` are injected by the CLI and must be omitted from input JSON. Keep required nested references such as `evidenceReferences.captureId`, duplicate target Job IDs, and destination/left/right Company IDs. Idempotency keys are immutable result keys: same command/workspace/key/input replays the saved snapshot, while the same key with different input is invalid. Resubmissions after a duplicate or stale response need a fresh key.
+
+```sh
+completion='{"expectedCaptureRevision":4,"expectedGenerationId":"generation-1","idempotencyKey":"complete-capture-1","actor":{"id":"user-1","type":"user"},"jobFacts":{"companyName":"Delta Labs","roleTitle":"Platform Engineer","sourceName":"Employer site","roleKind":"experienced","term":null,"terms":[],"timingMode":"unknown","startDate":null,"endDate":null,"location":null,"workMode":"remote","employmentType":"full_time","seniority":"mid","compensation":null,"postedAt":null,"destination":{"class":"employer_or_ats","url":"https://jobs.example.com/role"}},"destination":{"class":"employer_or_ats","url":"https://jobs.example.com/role"},"externalIdentities":[],"evidenceReferences":[{"captureId":"capture-1","captureRevision":4,"evidenceIndexes":[0]}],"companyResolution":{"action":"use_local","companyId":"company-1","expectedCompanyRevision":7,"restoreIfArchived":false}}'
+valedictorian-cli --json captures resolution complete capture-1 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json "$completion"
+printf '%s' "$completion" | jq '.idempotencyKey = "complete-capture-2" | .companyResolution = {"action":"create_local","displayName":"Delta Labs","websiteUrl":"https://delta.example.com"}' > completion-create-local.json
+valedictorian-cli --json captures resolution complete capture-1 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json "$(<completion-create-local.json)"
+printf '%s' "$completion" | jq '.idempotencyKey = "complete-capture-3" | .duplicateResolution = {"action":"attach","targetJobId":"018f0f2e-7b16-7a01-8c8c-20c6a9d52301","expectedJobFactsRevision":3,"expectedAssignmentRevision":2}' > completion-duplicate-retry.json
+valedictorian-cli --json captures resolution complete capture-1 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json "$(<completion-duplicate-retry.json)"
+valedictorian-cli --json captures resolution retry capture-1 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"expectedCaptureRevision":4,"expectedGenerationId":"generation-1","idempotencyKey":"retry-capture-1","actor":{"id":"user-1","type":"user"}}'
+valedictorian-cli --json captures resolution replay capture-1 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"expectedCaptureRevision":4,"expectedGenerationId":"generation-1","idempotencyKey":"replay-capture-1","actor":{"id":"user-1","type":"user"},"rationale":"Replay after provider repair."}'
+```
+
+Company write inputs omit `workspaceId`; Company search defaults to active records, while `active_and_archived` is only for explicit restore recovery. Refresh the returned candidate, Company, and assignment revisions before each mutation.
+
+```sh
+valedictorian-cli --json companies create --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"actor":{"id":"user-1","type":"user"},"rationale":"Verified careers site.","idempotencyKey":"company-create-1","displayName":"Delta Labs","websiteUrl":"https://delta.example.com","notes":""}'
+valedictorian-cli --json companies update company-1 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"actor":{"id":"user-1","type":"user"},"rationale":"Legal name verified.","idempotencyKey":"company-update-1","expectedCompanyRevision":7,"displayName":"Delta Labs, Inc."}'
+valedictorian-cli --json companies archive company-1 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"actor":{"id":"user-1","type":"user"},"rationale":"No longer active.","idempotencyKey":"company-archive-1","expectedCompanyRevision":8}'
+valedictorian-cli --json companies restore company-1 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"actor":{"id":"user-1","type":"user"},"rationale":"Restore after review.","idempotencyKey":"company-restore-1","expectedCompanyRevision":9}'
+valedictorian-cli --json companies search --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"query":"delta"}'
+valedictorian-cli --json companies search --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"query":"delta","scope":"active_and_archived"}'
+valedictorian-cli --json companies duplicates mark-distinct candidate-1 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"actor":{"id":"user-1","type":"user"},"rationale":"Different employers.","idempotencyKey":"distinct-1","expectedCandidateRevision":2,"leftCompanyId":"company-1","expectedLeftCompanyRevision":7,"rightCompanyId":"company-2","expectedRightCompanyRevision":3}'
+valedictorian-cli --json jobs company reassign 018f0f2e-7b16-7a01-8c8c-20c6a9d52301 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"actor":{"id":"user-1","type":"user"},"rationale":"Correct grouping.","idempotencyKey":"reassign-job-1","expectedAssignmentRevision":2,"destinationCompanyId":"company-1","expectedDestinationCompanyRevision":7}'
+valedictorian-cli --json companies duplicates merge company-1 company-2 --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"actor":{"id":"user-1","type":"user"},"rationale":"Same employer.","idempotencyKey":"merge-companies-1","expectedWinnerCompanyRevision":7,"expectedLoserCompanyRevision":3,"loserDisplayNameConfirmation":"Delta Laboratories","acknowledgeNoUndo":true}'
+```
+
+Manual Company merge is irreversible: the command has no split or undo and requires the positional explicit winner, current winner/loser revisions, exact loser display name, and `acknowledgeNoUndo: true`.
 
 Create a capture with explicit provenance and Evidence mode:
 

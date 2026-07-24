@@ -1,8 +1,17 @@
-export function formatHumanOutput(value: unknown) {
-  return `${formatValue(value)}\n`
+import {
+  formatCompanyHumanOutput,
+  type CompanyCollectionOutput,
+} from './valedictorian-cli.company-output.js'
+
+export type HumanOutputOptions = {
+  companyCollection?: CompanyCollectionOutput
 }
 
-function formatValue(value: unknown): string {
+export function formatHumanOutput(value: unknown, options: HumanOutputOptions = {}) {
+  return `${formatValue(value, options)}\n`
+}
+
+function formatValue(value: unknown, options: HumanOutputOptions): string {
   if (value === null || value === undefined) {
     return 'No result'
   }
@@ -20,6 +29,12 @@ function formatValue(value: unknown): string {
   if (isOkOnly(record)) {
     return 'OK'
   }
+
+  const resolutionOutput = formatResolutionOutput(record)
+  if (resolutionOutput) return resolutionOutput
+
+  const companyOutput = formatCompanyHumanOutput(record, options.companyCollection)
+  if (companyOutput) return companyOutput
 
   if (Array.isArray(record.items)) {
     return formatList(record)
@@ -181,6 +196,120 @@ function formatLifecycleResult(record: Record<string, unknown>) {
     )
   }
   return lines.join('\n')
+}
+
+function formatResolutionOutput(record: Record<string, unknown>) {
+  const status = primitiveString(record.status)
+  if (status === 'duplicate_blocked') return formatDuplicateBlocked(record)
+  if (status === 'company_assignment_blocked') return formatAssignmentBlocked(record)
+  if (status === 'blocked' && isPlainRecord(record.failure)) return formatFailureBlocked(record)
+  if (status === 'started' && primitiveString(record.captureId) && primitiveString(record.generationId)) {
+    return `Processing started: ${String(record.captureId)} (generation ${String(record.generationId)})`
+  }
+  if (status === 'created' && primitiveString(record.jobId) && primitiveString(record.companyId)) {
+    return `Job ${record.createdJob === true ? 'created' : 'attached'}: ${String(record.jobId)} (company ${String(record.companyId)})`
+  }
+  if (status === 'merged' && isPlainRecord(record.canonical) && isPlainRecord(record.merged)) {
+    const lines = [
+      `Company merged: ${formatCompanyMergeIdentity(record.merged)} into ${formatCompanyMergeIdentity(record.canonical)}`,
+      `Request revisions: winner=${String(record.requestWinnerCompanyRevision)} loser=${String(record.requestLoserCompanyRevision)}`,
+      `Reassigned jobs: ${String(record.reassignedJobCount)}; resolved candidates: ${String(record.resolvedCandidateCount)}`,
+    ]
+    return lines.join('\n')
+  }
+  if (primitiveString(record.captureId) && isPlainRecord(record.sourceSummary)) {
+    return formatCompletionDetail(record)
+  }
+  return null
+}
+
+function formatDuplicateBlocked(record: Record<string, unknown>) {
+  const jobs = Array.isArray(record.conflictingJobs) ? record.conflictingJobs : []
+  const decisions = Array.isArray(record.allowedDecisions) ? record.allowedDecisions.join(', ') : 'none'
+  const lines = [`Duplicate Job conflict: ${String(record.blockerCode)}`]
+  for (const job of jobs) {
+    if (!isPlainRecord(job)) continue
+    lines.push(
+      `- job=${String(job.jobId)} facts-revision=${String(job.jobFactsRevision)} company=${String(job.companyId)} company-revision=${String(job.companyRevision)} assignment-revision=${String(job.assignmentRevision)}`,
+    )
+  }
+  if (jobs.length === 0) lines.push('Conflicting Jobs: none')
+  lines.push(`Allowed: ${decisions}`)
+  return lines.join('\n')
+}
+
+function formatAssignmentBlocked(record: Record<string, unknown>) {
+  const lines = [
+    `Company assignment conflict: ${String(record.existingJobId)}`,
+    `Current Company: ${String(record.currentCompanyId)} (revision ${String(record.currentCompanyRevision)})`,
+    `Assignment revision: ${String(record.assignmentRevision)}`,
+  ]
+  if (Array.isArray(record.allowedRecovery)) lines.push(`Allowed: ${record.allowedRecovery.join(', ')}`)
+  return lines.join('\n')
+}
+
+function formatFailureBlocked(record: Record<string, unknown>) {
+  const failure = record.failure as Record<string, unknown>
+  const blocker = isPlainRecord(failure.blocker) ? failure.blocker : {}
+  const lines = [`Blocked: ${String(blocker.code ?? 'unknown')} - ${String(blocker.message ?? 'No reason provided')}`]
+  const recovery = isPlainRecord(failure.recovery) ? failure.recovery : undefined
+  if (recovery?.action) lines.push(`Recovery: ${String(recovery.action)}`)
+  if (Array.isArray(recovery?.guards)) {
+    for (const guard of recovery.guards) {
+      if (isPlainRecord(guard)) lines.push(`Stale guard: ${formatStaleGuard(guard)}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+function formatStaleGuard(guard: Record<string, unknown>) {
+  const expected = String(guard.expectedRevision ?? guard.expectedGenerationId)
+  const current = String(guard.currentRevision ?? guard.currentGenerationId)
+  if (guard.kind === 'capture_revision') return `capture revision expected=${expected} current=${current}`
+  if (guard.kind === 'generation') return `generation expected=${expected} current=${current}`
+  if (guard.kind === 'company_revision') return `company=${String(guard.companyId)} revision expected=${expected} current=${current}`
+  if (guard.kind === 'assignment_revision') return `job=${String(guard.jobId)} assignment revision expected=${expected} current=${current}`
+  if (guard.kind === 'duplicate_candidate_revision') return `candidate=${String(guard.candidateId)} revision expected=${expected} current=${current}`
+  return `kind=${String(guard.kind)} expected=${expected} current=${current}`
+}
+
+function formatCompletionDetail(record: Record<string, unknown>) {
+  const source = record.sourceSummary as Record<string, unknown>
+  const destination = isPlainRecord(record.destination) ? record.destination : {}
+  const evidence = Array.isArray(record.rawEvidence) ? record.rawEvidence.length : 0
+  const lines = [
+    `Capture ${String(record.captureId)} revision ${String(record.captureRevision)}`,
+    `Expected generation: ${String(record.expectedGenerationId)}`,
+    `Source: ${String(source.displayName)} (${String(source.provider)})`,
+    `Destination: ${String(destination.status ?? 'unknown')}`,
+    `Evidence items: ${evidence}`,
+  ]
+  lines.push(...formatExactEvidenceReferences(record.exactEvidenceReferences))
+  if (isPlainRecord(record.lastIssue)) {
+    lines.push(`Issue: ${String(record.lastIssue.code)}${record.lastIssue.action ? ` (${String(record.lastIssue.action)})` : ''}`)
+  }
+  return lines.join('\n')
+}
+
+function formatCompanyMergeIdentity(company: Record<string, unknown>) {
+  return `${String(company.displayName)} id=${String(company.id)} revision=${String(company.revision)} status=${String(company.status)}`
+}
+
+function formatExactEvidenceReferences(value: unknown) {
+  if (!Array.isArray(value) || value.length === 0) return ['Exact evidence references: none']
+
+  const lines = ['Exact evidence references:']
+  for (const reference of value.slice(0, 50)) {
+    if (!isPlainRecord(reference)) continue
+    const indexes = Array.isArray(reference.evidenceIndexes)
+      ? reference.evidenceIndexes.slice(0, 50).map(String).join(', ')
+      : 'none'
+    lines.push(
+      `- capture=${String(reference.captureId)} revision=${String(reference.captureRevision)} indexes=${indexes || 'none'}`,
+    )
+  }
+  if (value.length > 50) lines.push(`Showing first 50 references from the contract-bounded result.`)
+  return lines
 }
 
 function formatItems(items: unknown[]) {
