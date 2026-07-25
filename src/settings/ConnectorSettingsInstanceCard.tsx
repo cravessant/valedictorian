@@ -83,6 +83,7 @@ import {
   dynamicBindingPointers,
   evaluateVersionedPresentationCompatibility,
 } from './connector-filters/connector-presentation'
+import { connectorDetailsDismissalDecision } from './connector-details-dismissal'
 
 export function ConnectorSettingsInstanceCard({
   instance,
@@ -178,6 +179,7 @@ export function ConnectorSettingsInstanceCard({
   const [providerFiltersCompatible, setProviderFiltersCompatible] = useState(true)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [discardConfirmationOpen, setDiscardConfirmationOpen] = useState(false)
   const [isSavingAll, setIsSavingAll] = useState(false)
   const [saveConfirmationOpen, setSaveConfirmationOpen] = useState(false)
   const [summaryOpen, setSummaryOpen] = useState(true)
@@ -292,7 +294,23 @@ export function ConnectorSettingsInstanceCard({
   const latestRunSummary = latestSynchronization?.label
     ?? (latestRunStatus ? `Run ${latestRunStatus}` : 'No runs yet')
   const interactionBusy = isSavingAll || isSavingSettings || scheduleIsSaving
-  const hasUnsavedChanges = draftDirty || scheduleIsDirty
+  const credentialDirty = isEditingAuth && (
+    credentialDraft.email.length > 0 || credentialDraft.password.length > 0
+  )
+  const credentialAuthenticationUnsafe = isEditingAuth
+    && authenticatingInstanceId === instance.id
+  const hasUnsavedChanges = draftDirty || scheduleIsDirty || credentialDirty
+  const detailsDismissal = connectorDetailsDismissalDecision({
+    credentialAuthenticationUnsafe,
+    credentialDirty,
+    isConnectorRemovalPending: isRemoving,
+    isConnectorRunActive: isRunning,
+    scheduleDirty: scheduleIsDirty,
+    scheduleSavePending: scheduleIsSaving,
+    settingsDirty: draftDirty,
+    settingsSavePending: isSavingSettings,
+    unifiedSavePending: isSavingAll,
+  })
   const unifiedSaveBlockReason = isEditingAuth
     ? 'Save or cancel the credential update before saving other changes.'
     : saveBlockReason
@@ -300,12 +318,27 @@ export function ConnectorSettingsInstanceCard({
     && scheduleDraft.mode === 'manual'
     && scheduleCanonical !== null
 
-  function cancelEditing() {
-    if (interactionBusy) return
-    onDiscardSettings(instance)
-    onDiscardSchedule(instance)
+  function closeDetails() {
+    setDiscardConfirmationOpen(false)
+    setSaveConfirmationOpen(false)
     if (isEditingAuth) onCancelCredentialEdit(instance.id)
     setEditing(false)
+    setDetailsOpen(false)
+  }
+
+  function discardAndCloseDetails() {
+    onDiscardSettings(instance)
+    onDiscardSchedule(instance)
+    closeDetails()
+  }
+
+  function requestDetailsDismissal() {
+    if (detailsDismissal === 'blocked') return
+    if (detailsDismissal === 'confirm_discard') {
+      setDiscardConfirmationOpen(true)
+      return
+    }
+    closeDetails()
   }
 
   async function persistChanges() {
@@ -315,6 +348,7 @@ export function ConnectorSettingsInstanceCard({
       if (draftDirty && !(await onSaveSettings(instance))) return
       if (scheduleIsDirty && !(await onSaveSchedule(instance))) return
       setSaveConfirmationOpen(false)
+      setEditing(false)
     } finally {
       setIsSavingAll(false)
     }
@@ -329,8 +363,11 @@ export function ConnectorSettingsInstanceCard({
   }
 
   function handleDetailsOpenChange(open: boolean) {
-    if (!open && editing) return
-    setDetailsOpen(open)
+    if (open) {
+      setDetailsOpen(true)
+      return
+    }
+    requestDetailsDismissal()
   }
 
   function runNow() {
@@ -411,17 +448,17 @@ export function ConnectorSettingsInstanceCard({
         className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
         data-testid={editing ? `connector-instance-card-${instance.id}` : undefined}
         onEscapeKeyDown={(event) => {
-          if (editing) event.preventDefault()
+          event.preventDefault()
+          requestDetailsDismissal()
         }}
         onPointerDownOutside={(event) => {
-          if (editing) event.preventDefault()
+          event.preventDefault()
+          requestDetailsDismissal()
         }}
-        showCloseButton={!editing}
+        showCloseButton
       >
         <DialogHeader
-          className={editing
-            ? 'border-b border-border px-6 py-5'
-            : 'border-b border-border px-6 py-5 pr-16'}
+          className="border-b border-border px-6 py-5 pr-16"
         >
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
@@ -841,12 +878,12 @@ export function ConnectorSettingsInstanceCard({
             ) : null}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button
-                disabled={interactionBusy}
-                onClick={cancelEditing}
+                disabled={detailsDismissal === 'blocked'}
+                onClick={requestDetailsDismissal}
                 type="button"
                 variant="outline"
               >
-                Discard changes
+                {hasUnsavedChanges ? 'Discard changes' : 'Close details'}
               </Button>
               <Button
                 aria-describedby={unifiedSaveBlockReason ? saveReasonId : undefined}
@@ -889,6 +926,34 @@ export function ConnectorSettingsInstanceCard({
               >
                 {interactionBusy ? 'Saving changes...' : 'Save and remove schedule'}
               </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={discardConfirmationOpen}
+          onOpenChange={(open) => {
+            if (!open) setDiscardConfirmationOpen(false)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Closing connector details will discard the settings, schedule, or credential draft.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep editing</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  if (detailsDismissal === 'blocked') return
+                  discardAndCloseDetails()
+                }}
+              >
+                Discard changes
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

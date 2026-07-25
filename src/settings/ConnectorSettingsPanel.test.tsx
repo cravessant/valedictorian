@@ -103,12 +103,7 @@ describe('ConnectorSettingsPanel', () => {
       name: 'Save changes',
     })).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard changes' }))
-    expect(within(dialog).getByRole('switch', { name: 'Jobright connector enabled' }))
-      .toBeDisabled()
-    expect(within(dialog).getByRole('button', { name: 'Edit connector' })).toBeInTheDocument()
-
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close details' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(detailsTrigger).toHaveFocus()
   })
@@ -387,19 +382,31 @@ describe('ConnectorSettingsPanel', () => {
     fireEvent.click(within(card).getByRole('button', {
       name: 'Discard changes',
     }))
-    await waitFor(() => expect(discovery).toHaveValue(20))
-    expect(within(card).getByLabelText('Schedule mode')).toHaveValue('preset')
-    expect(within(card).getByLabelText('Preset')).toHaveValue('interval-60')
-    expect(within(card).queryByText(/Draft:/i)).not.toBeInTheDocument()
-
-    fireEvent.click(within(card).getByRole('button', { name: 'Edit connector' }))
-    fireEvent.change(discovery, { target: { value: '40' } })
-    fireEvent.click(within(card).getByRole('button', {
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', {
       name: 'Discard changes',
     }))
-    expect(discovery).toHaveValue(20)
-    expect(within(card).queryByText(/Draft:/i)).not.toBeInTheDocument()
-    expect(within(card).queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    const reopened = await openConnectorEditor('Jobright internslist', 'jobright-isolation')
+    const reopenedDiscovery = await within(reopened).findByLabelText('Discovery count')
+    expect(reopenedDiscovery).toHaveValue(20)
+    expect(within(reopened).getByLabelText('Schedule mode')).toHaveValue('preset')
+    expect(within(reopened).getByLabelText('Preset')).toHaveValue('interval-60')
+    expect(within(reopened).queryByText(/Draft:/i)).not.toBeInTheDocument()
+
+    fireEvent.change(reopenedDiscovery, { target: { value: '40' } })
+    fireEvent.click(within(reopened).getByRole('button', {
+      name: 'Discard changes',
+    }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Discard changes',
+    }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    const clean = await openConnectorEditor('Jobright internslist', 'jobright-isolation')
+    expect(await within(clean).findByLabelText('Discovery count')).toHaveValue(20)
+    expect(within(clean).queryByText(/Draft:/i)).not.toBeInTheDocument()
+    expect(within(clean).getByRole('button', { name: 'Close details' })).toBeInTheDocument()
   })
 
   it('saves connector settings and the schedule from one global action', async () => {

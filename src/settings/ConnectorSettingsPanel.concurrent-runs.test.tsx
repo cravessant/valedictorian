@@ -66,7 +66,7 @@ async function openConnectorEditor(displayName: string) {
   }))
   const dialog = await screen.findByRole('dialog', { name: `${displayName} details` })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
-  await within(dialog).findByRole('button', { name: 'Discard changes' })
+  await within(dialog).findByRole('button', { name: 'Close details' })
   return dialog
 }
 
@@ -157,7 +157,6 @@ describe('ConnectorSettingsPanel concurrent manual runs', () => {
     )
 
     const dialogA = await openConnectorEditor('Jobright A')
-    fireEvent.click(within(dialogA).getByRole('button', { name: 'Discard changes' }))
     fireEvent.click(within(dialogA).getByRole('button', { name: 'Run Jobright now' }))
     await waitFor(() => {
       expect(within(dialogA).getByRole('button', { name: 'Running...' })).toBeDisabled()
@@ -165,7 +164,6 @@ describe('ConnectorSettingsPanel concurrent manual runs', () => {
 
     fireEvent.click(within(dialogA).getByRole('button', { name: 'Close' }))
     const dialogB = await openConnectorEditor('Jobright B')
-    fireEvent.click(within(dialogB).getByRole('button', { name: 'Discard changes' }))
     fireEvent.click(within(dialogB).getByRole('button', { name: 'Run Jobright now' }))
     await waitFor(() => {
       expect(connectorsApi.runs.trigger).toHaveBeenCalledTimes(2)
@@ -214,7 +212,6 @@ describe('ConnectorSettingsPanel concurrent manual runs', () => {
     )
 
     const dialog = await openConnectorEditor('Jobright internslist')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard changes' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Run Jobright now' }))
     await waitFor(() => {
       expect(within(dialog).getByRole('button', { name: 'Running...' })).toBeDisabled()

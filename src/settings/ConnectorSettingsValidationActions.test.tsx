@@ -4,6 +4,7 @@ import { projectInstalledConnectorDescriptor } from '../modules/connectors/conne
 import { createDefaultLocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import {
   createFixtureApi,
+  discardFixtureConnectorEditorChangesAndReopen,
   INSTANCE_ID,
   renderPanel,
 } from './ConnectorProviderFilters.test-helpers'
@@ -106,13 +107,19 @@ describe('connector validation and action-state synchronization', () => {
       .toHaveAttribute('aria-invalid', 'true')
     expect(save).toBeDisabled()
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Discard changes' }))
-    await waitFor(() => {
-      expect(minimum).toHaveValue(70_000)
-      expect(maximum).toHaveValue(120_000)
+    const restoredCard = await discardFixtureConnectorEditorChangesAndReopen(card)
+    const restoredMinimum = within(restoredCard).getByRole('spinbutton', {
+      name: 'Minimum compensation',
     })
-    expect(minimum).not.toHaveAttribute('aria-invalid', 'true')
-    expect(within(card).queryByText(/range minimum endpoint/i)).not.toBeInTheDocument()
+    const restoredMaximum = within(restoredCard).getByRole('spinbutton', {
+      name: 'Maximum compensation',
+    })
+    await waitFor(() => {
+      expect(restoredMinimum).toHaveValue(70_000)
+      expect(restoredMaximum).toHaveValue(120_000)
+    })
+    expect(restoredMinimum).not.toHaveAttribute('aria-invalid', 'true')
+    expect(within(restoredCard).queryByText(/range minimum endpoint/i)).not.toBeInTheDocument()
   })
 
   it('keeps Jobright experience range field errors through taxonomy edits and blocks Run with matching disabled visuals', async () => {

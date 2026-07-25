@@ -9,6 +9,7 @@ import {
   boundOptionResult,
   createFixtureApi,
   deferred,
+  discardFixtureConnectorEditorChangesAndReopen,
   fixtureDescriptor,
   INSTANCE_ID,
   optionIdentityForFixture,
@@ -248,10 +249,10 @@ describe('connector optional selects and dependency invalidation', () => {
       target: { value: 'CA' },
     })
     await waitFor(() => expect(resolveInputs).toHaveLength(2))
-    fireEvent.click(within(card).getByRole('button', { name: 'Discard changes' }))
+    const restoredCard = await discardFixtureConnectorEditorChangesAndReopen(card)
 
-    expect(within(card).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
-    expect(await within(card).findByText('Denver, CO')).toBeInTheDocument()
+    expect(within(restoredCard).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
+    expect(await within(restoredCard).findByText('Denver, CO')).toBeInTheDocument()
 
     caResolution.resolve(boundOptionResult(resolveInputs[1]!, {
       status: 'resolve_ready',
@@ -259,13 +260,13 @@ describe('connector optional selects and dependency invalidation', () => {
       unknownValues: ['denver-co'],
     }))
     await waitFor(() => {
-      expect(within(card).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
-      expect(within(card).getByText('Denver, CO')).toBeInTheDocument()
+      expect(within(restoredCard).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
+      expect(within(restoredCard).getByText('Denver, CO')).toBeInTheDocument()
     })
-    expect(within(card).queryByText(/cleared|removed/i)).not.toBeInTheDocument()
+    expect(within(restoredCard).queryByText(/cleared|removed/i)).not.toBeInTheDocument()
   })
 
-  it('discards dependency-triggered clears back to exact persisted values without a later provider mutation', async () => {
+  it('restores exact persisted values when discarding dependency-triggered clears', async () => {
     const resolveInputs: PublicOptionQueryInput[] = []
     const connectorsApi = await createFixtureApi({
       country: 'US',
@@ -300,14 +301,14 @@ describe('connector optional selects and dependency invalidation', () => {
     expect(within(card).queryByText('Denver, CO')).not.toBeInTheDocument()
 
     const resolveCountAfterClear = resolveInputs.length
-    fireEvent.click(within(card).getByRole('button', { name: 'Discard changes' }))
+    const restoredCard = await discardFixtureConnectorEditorChangesAndReopen(card)
 
-    expect(within(card).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
-    expect(await within(card).findByText('Denver, CO')).toBeInTheDocument()
+    expect(within(restoredCard).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
+    expect(await within(restoredCard).findByText('Denver, CO')).toBeInTheDocument()
     await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(resolveInputs.length).toBe(resolveCountAfterClear)
-    expect(within(card).getByText('Denver, CO')).toBeInTheDocument()
-    expect(within(card).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
+    expect(resolveInputs.length).toBe(resolveCountAfterClear + 1)
+    expect(within(restoredCard).getByText('Denver, CO')).toBeInTheDocument()
+    expect(within(restoredCard).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
   })
 
   it('does not clear persisted dynamic values when only catalog/source identity changes', async () => {
@@ -532,18 +533,18 @@ describe('connector optional selects and dependency invalidation', () => {
       target: { value: 'CA' },
     })
     expect(await within(card).findByText('cobol')).toBeInTheDocument()
-    fireEvent.click(within(card).getByRole('button', { name: 'Discard changes' }))
+    const restoredCard = await discardFixtureConnectorEditorChangesAndReopen(card)
 
-    expect(within(card).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
-    expect(await within(card).findByText('cobol')).toBeInTheDocument()
-    expect(within(card).queryByText(/was cleared because/i)).not.toBeInTheDocument()
+    expect(within(restoredCard).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
+    expect(await within(restoredCard).findByText('cobol')).toBeInTheDocument()
+    expect(within(restoredCard).queryByText(/was cleared because/i)).not.toBeInTheDocument()
 
-    fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
+    fireEvent.change(within(restoredCard).getByRole('combobox', { name: 'Country' }), {
       target: { value: 'CA' },
     })
-    expect(await within(card).findByText('cobol')).toBeInTheDocument()
-    expect(within(card).queryByText(/was cleared because/i)).not.toBeInTheDocument()
-    expect(await within(card).findByRole('alert')).toHaveTextContent(/cobol/i)
+    expect(await within(restoredCard).findByText('cobol')).toBeInTheDocument()
+    expect(within(restoredCard).queryByText(/was cleared because/i)).not.toBeInTheDocument()
+    expect(await within(restoredCard).findByRole('alert')).toHaveTextContent(/cobol/i)
   })
 
   it('does not auto-clear any selection when only some many-values were verified in the prior context', async () => {

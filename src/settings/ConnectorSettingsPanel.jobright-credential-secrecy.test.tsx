@@ -74,7 +74,7 @@ async function openConnectorEditor(displayName = 'Jobright internslist') {
   const dialog = await openConnectorDetails(displayName)
   const edit = within(dialog).queryByRole('button', { name: 'Edit connector' })
   if (edit) fireEvent.click(edit)
-  await within(dialog).findByRole('button', { name: 'Discard changes' })
+  await within(dialog).findByRole('button', { name: 'Close details' })
   return dialog
 }
 

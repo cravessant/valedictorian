@@ -48,7 +48,7 @@ async function openConnectorEditor(displayName = 'Jobright internslist') {
   }))
   const dialog = await screen.findByRole('dialog', { name: `${displayName} details` })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
-  await within(dialog).findByRole('button', { name: 'Discard changes' })
+  await within(dialog).findByRole('button', { name: 'Close details' })
   return dialog
 }
 
@@ -133,6 +133,7 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledTimes(1))
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Edit connector' }))
     fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
     fireEvent.click(screen.getByRole('button', {
       name: 'Save changes',
@@ -185,7 +186,6 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
     const dialogB = await openConnectorEditor('Jobright B')
     expect(within(dialogB).getByTestId('connector-earliest-backfill-value-jobright-b'))
       .toHaveTextContent('2026-06-01')
-    fireEvent.click(within(dialogB).getByRole('button', { name: 'Discard changes' }))
     fireEvent.click(within(dialogB).getByRole('button', { name: 'Close' }))
 
     const cardA = await openConnectorEditor('Jobright A')
@@ -220,6 +220,7 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
       expect(within(cardA).getByRole('button', { name: 'Run Jobright now' })).not.toBeDisabled()
     })
 
+    fireEvent.click(within(cardA).getByRole('button', { name: 'Edit connector' }))
     fireEvent.click(within(cardA).getByRole('button', {
       name: 'Choose earliest backfill date for jobright-a',
     }))
@@ -233,8 +234,14 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
         .toHaveTextContent('2026-07-02')
     })
     fireEvent.click(within(cardA).getByRole('button', { name: 'Discard changes' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog', {
+      name: 'Discard unsaved changes?',
+    })).getByRole('button', { name: 'Discard changes' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    const reopenedCardA = await openConnectorEditor('Jobright A')
     await waitFor(() => {
-      expect(within(cardA).getByTestId('connector-earliest-backfill-value-jobright-a'))
+      expect(within(reopenedCardA).getByTestId('connector-earliest-backfill-value-jobright-a'))
         .toHaveTextContent('2026-07-01')
     })
   })

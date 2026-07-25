@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { vi } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { expect, vi } from 'vitest'
 import type {
   ConnectorOptionQueryResult,
   InstalledConnectorDescriptor,
@@ -93,6 +93,23 @@ export function renderPanel(connectorsApi: Awaited<ReturnType<typeof createFixtu
       fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
     })
   return view
+}
+
+export async function discardFixtureConnectorEditorChangesAndReopen(card: HTMLElement) {
+  fireEvent.click(within(card).getByRole('button', { name: 'Discard changes' }))
+  const confirmation = await screen.findByRole('alertdialog', {
+    name: 'Discard unsaved changes?',
+  })
+  fireEvent.click(within(confirmation).getByRole('button', { name: 'Discard changes' }))
+  await waitFor(() => expect(screen.queryByTestId(`connector-instance-card-${INSTANCE_ID}`))
+    .not.toBeInTheDocument())
+
+  fireEvent.click(await screen.findByRole('button', {
+    name: 'View Fixture provider details',
+  }))
+  const dialog = await screen.findByRole('dialog', { name: 'Fixture provider details' })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
+  return screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
 }
 
 function unavailableScheduleApi(): ConnectorScheduleUiApi {
