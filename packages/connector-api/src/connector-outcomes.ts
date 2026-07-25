@@ -223,6 +223,7 @@ export type ConnectorProviderUrlResolverReason =
   | "destination_unavailable"
   | "operation_timeout"
   | "provider_record_invalid"
+  | "provider_internal_destination"
   | "provider_request_failed"
   | "provider_schema_changed"
   | "provider_status_terminal"
