@@ -6,7 +6,7 @@ describe('Electron native UI proof launch', () => {
     expect(electronNativeUiProofLaunch({ nodeExecutable: '/runtime/node', platform: 'linux' })).toEqual({
       args: [
         '--auto-servernum',
-        '--server-args=-screen 0 1280x1024x24',
+        '--server-args=-screen 0 1920x1080x24',
         '/runtime/node',
         '--import',
         'tsx',

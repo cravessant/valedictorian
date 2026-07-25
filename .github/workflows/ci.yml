@@ -144,7 +144,7 @@ jobs:
     name: CLI/UI Development Proof
     if: github.event_name == 'push' || !github.event.pull_request.draft
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 7
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -173,6 +173,17 @@ jobs:
       - name: Prove CLI and Electron UI parity
         working-directory: valedictorian-app
         run: pnpm run proof:dev
+
+      # Geometry proofs measure the merged result. Branch-level checks cannot
+      # catch a validation-copy change and a proof run landing from branches
+      # that never saw each other.
+      - name: Prove Capture completion dialog layout
+        working-directory: valedictorian-app
+        run: pnpm run smoke:capture-completion-dialog-layout
+
+      - name: Prove shared dialog close target
+        working-directory: valedictorian-app
+        run: pnpm run smoke:dialog-close-target
 
   package-smoke:
     name: Package Smoke (${{ matrix.name }})
