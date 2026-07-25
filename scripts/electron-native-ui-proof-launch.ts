@@ -1,4 +1,4 @@
-export type ElectronNativeUiProofMode = 'capture-completion-layout' | 'workflow'
+export type ElectronNativeUiProofMode = 'capture-completion-layout' | 'dialog-close-target' | 'workflow'
 
 export function electronNativeUiProofLaunch({
   display = process.env.DISPLAY,
@@ -16,7 +16,11 @@ export function electronNativeUiProofLaunch({
     '--import',
     'tsx',
     'scripts/run-isolated-validation.ts',
-    proof === 'capture-completion-layout' ? '--proof-electron-layout' : '--proof-electron',
+    proof === 'capture-completion-layout'
+      ? '--proof-electron-layout'
+      : proof === 'dialog-close-target'
+        ? '--proof-electron-close-target'
+        : '--proof-electron',
     '--timeout-ms',
     '120000',
   ]

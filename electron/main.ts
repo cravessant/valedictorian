@@ -10,6 +10,9 @@ import {
   runIsolatedCaptureCompletionLayoutProof as runCaptureCompletionLayoutProof,
 } from './capture-completion-layout-proof'
 import {
+  runIsolatedDialogCloseTargetProof as runDialogCloseTargetProof,
+} from './dialog-close-target-proof'
+import {
   captureRendererConsole,
   createElectronNativeUiDriver,
   runElectronNativeUiProof,
@@ -337,6 +340,15 @@ function createMainWindow() {
             }
             if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_LAYOUT_PROOF === '1') {
               void runIsolatedCaptureCompletionLayoutProof(
+                mainWindow,
+                validationManifest,
+                validationWorkspace,
+                reportValidationTerminalState,
+              )
+              return
+            }
+            if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_CLOSE_TARGET_PROOF === '1') {
+              void runIsolatedDialogCloseTargetProof(
                 mainWindow,
                 validationManifest,
                 validationWorkspace,
@@ -873,8 +885,41 @@ async function runIsolatedCaptureCompletionLayoutProof(
   workspace: WorkspaceSummary,
   reportTerminalState: (outcome: 'child_failure' | 'completed') => void,
 ) {
+  return runIsolatedEvidenceProof({
+    errorPrefix: 'Capture completion dialog layout proof',
+    reportTerminalState,
+    runProof: () => runCaptureCompletionLayoutProof({ manifest, window, workspace }),
+    window,
+  })
+}
+
+async function runIsolatedDialogCloseTargetProof(
+  window: BrowserWindow,
+  manifest: IsolatedValidationManifest | null,
+  workspace: WorkspaceSummary,
+  reportTerminalState: (outcome: 'child_failure' | 'completed') => void,
+) {
+  return runIsolatedEvidenceProof({
+    errorPrefix: 'Dialog close target proof',
+    reportTerminalState,
+    runProof: () => runDialogCloseTargetProof({ manifest, window, workspace }),
+    window,
+  })
+}
+
+async function runIsolatedEvidenceProof({
+  errorPrefix,
+  reportTerminalState,
+  runProof,
+  window,
+}: {
+  readonly errorPrefix: string
+  readonly reportTerminalState: (outcome: 'child_failure' | 'completed') => void
+  readonly runProof: () => Promise<{ readonly outcome: 'completed' | 'failed' }>
+  readonly window: BrowserWindow
+}) {
   try {
-    const proof = await runCaptureCompletionLayoutProof({ manifest, window, workspace })
+    const proof = await runProof()
     if (proof.outcome === 'completed') {
       reportTerminalState('completed')
       window.close()
@@ -883,7 +928,7 @@ async function runIsolatedCaptureCompletionLayoutProof(
     reportTerminalState('child_failure')
     app.exit(1)
   } catch (error) {
-    console.error('Capture completion dialog layout proof failed.', error)
+    console.error(`${errorPrefix} failed.`, error)
     reportTerminalState('child_failure')
     app.exit(1)
   }

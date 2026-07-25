@@ -9,15 +9,10 @@ import {
   type ElectronNativeUiProofAssertions,
   type ElectronProofWebContents,
 } from './native-ui-proof'
-import {
-  captureCompletionLongContentFixture,
-  isolatedValidationFixture,
-} from '../src/runtime/isolated-validation.fixture-contract'
-import {
-  readIsolatedValidationEnvironment,
-  type IsolatedValidationManifest,
-} from '../src/runtime/isolated-validation'
+import { captureCompletionLongContentFixture } from '../src/runtime/isolated-validation.fixture-contract'
+import type { IsolatedValidationManifest } from '../src/runtime/isolated-validation'
 import type { WorkspaceSummary } from '../src/workspace/workspace.initializer'
+import { requireIsolatedProofSession } from './isolated-proof-session'
 
 const schemaVersion = 'valedictorian-capture-completion-dialog-layout-proof@3'
 const viewportHeight = 540
@@ -125,24 +120,13 @@ export async function runIsolatedCaptureCompletionLayoutProof({
   readonly window: LayoutProofWindow
   readonly workspace: Pick<WorkspaceSummary, 'id' | 'rootPath'>
 }): Promise<CaptureCompletionLayoutProofResult> {
-  const session = readIsolatedValidationEnvironment()
-  if (!session || !manifest) throw new Error('Capture completion layout proof requires an isolated validation session.')
-  if (
-    window.isDestroyed()
-    || window.webContents.isDestroyed()
-    || manifest.build.branch !== session.branch
-    || manifest.build.commit !== session.commit
-    || JSON.stringify(manifest.build.worktree) !== JSON.stringify(session.worktree)
-    || manifest.workspace.id !== workspace.id
-    || manifest.workspace.path !== workspace.rootPath
-    || manifest.fixture.version !== isolatedValidationFixture.version
-  ) {
-    throw new Error('Capture completion layout proof identity does not match the ready isolated session.')
-  }
+  const { manifest: verifiedManifest, session } = requireIsolatedProofSession({
+    manifest, proofName: 'Capture completion layout proof', window, workspace,
+  })
 
   return measureCaptureCompletionDialog({
     evidenceDirectory: session.evidenceDirectory,
-    manifest,
+    manifest: verifiedManifest,
     window,
   })
 }

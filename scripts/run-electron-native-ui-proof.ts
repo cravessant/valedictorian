@@ -4,10 +4,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { electronNativeUiProofLaunch } from './electron-native-ui-proof-launch'
 import { installElectronNativeUiProofSignalForwarding } from './electron-native-ui-proof-process'
+import {
+  electronNativeUiProofFailureMessage,
+  hasDialogCloseTargetEvidence,
+} from './electron-native-ui-proof-result'
 
-const layoutProof = readLayoutProofArgument(process.argv.slice(2))
+const proofMode = readProofArgument(process.argv.slice(2))
 const launch = electronNativeUiProofLaunch({
-  proof: layoutProof ? 'capture-completion-layout' : 'workflow',
+  proof: proofMode,
 })
 const proof = spawn(launch.command, launch.args, {
   cwd: process.cwd(),
@@ -32,7 +36,11 @@ if (!evidenceDirectory) {
 }
 const resultPath = path.join(
   evidenceDirectory,
-  layoutProof ? 'capture-completion-dialog-layout-proof.json' : 'electron-native-ui-proof.json',
+  proofMode === 'capture-completion-layout'
+    ? 'capture-completion-dialog-layout-proof.json'
+    : proofMode === 'dialog-close-target'
+      ? 'dialog-close-target-proof.json'
+      : 'electron-native-ui-proof.json',
 )
 if (!fs.existsSync(resultPath)) {
   throw new Error(`Electron proof did not produce a result. ${safeOutput(output)}`)
@@ -41,19 +49,28 @@ const result = JSON.parse(fs.readFileSync(resultPath, 'utf8')) as {
   assertions?: unknown
   measurements?: unknown
   outcome?: unknown
+  diagnostics?: {
+    assertionFailure?: unknown
+  }
   screenshots?: unknown
 }
 if (
   code !== 0
   || signal
   || result.outcome !== 'completed'
-  || (layoutProof
+  || (proofMode === 'capture-completion-layout'
     ? !hasLayoutMeasurements(result.measurements) || !hasCompletedCaptureAssertions(result.assertions)
-    : !hasRequiredScreenshots(result.screenshots))
+    : proofMode === 'dialog-close-target'
+      ? !hasDialogCloseTargetEvidence(result.measurements)
+      : !hasRequiredScreenshots(result.screenshots))
 ) {
-  throw new Error(`Electron proof failed. ${safeOutput(output)}`)
+  throw new Error(electronNativeUiProofFailureMessage({ output, result, safeOutput }))
 }
-process.stdout.write(`${layoutProof ? 'Capture completion dialog layout' : 'Electron native UI'} proof evidence: ${resultPath}\n`)
+process.stdout.write(`${proofMode === 'capture-completion-layout'
+  ? 'Capture completion dialog layout'
+  : proofMode === 'dialog-close-target'
+    ? 'Dialog close target'
+    : 'Electron native UI'} proof evidence: ${resultPath}\n`)
 
 function hasRequiredScreenshots(value: unknown) {
   if (!Array.isArray(value)) return false
@@ -87,10 +104,11 @@ function hasCompletedCaptureAssertions(value: unknown) {
     && assertions.workspaceCompanyVisible === true
 }
 
-function readLayoutProofArgument(args: readonly string[]) {
-  if (args.length === 0) return false
-  if (args.length === 1 && args[0] === '--capture-completion-layout') return true
-  throw new Error('Electron native UI proof accepts only --capture-completion-layout.')
+function readProofArgument(args: readonly string[]) {
+  if (args.length === 0) return 'workflow' as const
+  if (args.length === 1 && args[0] === '--capture-completion-layout') return 'capture-completion-layout' as const
+  if (args.length === 1 && args[0] === '--dialog-close-target') return 'dialog-close-target' as const
+  throw new Error('Electron native UI proof accepts --capture-completion-layout or --dialog-close-target.')
 }
 
 function safeOutput(value: string) {

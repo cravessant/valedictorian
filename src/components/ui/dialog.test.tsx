@@ -88,6 +88,24 @@ describe('Dialog', () => {
     })
   })
 
+  it('keeps the shared close control’s ghost hover treatment', async () => {
+    const user = userEvent.setup()
+    render(
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button type="button">Open dialog</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogTitle>Hover dialog</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Open dialog' }))
+
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('hover:bg-accent')
+  })
+
   it('traps Tab navigation within the open dialog', async () => {
     const user = userEvent.setup()
     render(
