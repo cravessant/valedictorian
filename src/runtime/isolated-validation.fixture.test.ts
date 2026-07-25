@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createPgliteClient, migratePgliteDatabase } from '../db/pglite'
 import { createCaptureMaterializationService } from '../modules/capture/capture.materialization'
 import { createCaptureResolutionService } from '../modules/capture/capture.resolution'
+import { validateDestinationUrl } from '../modules/capture/destination-url-safety'
 import {
   captureCompletionLongContentFixture,
   isolatedValidationFixture,
@@ -74,5 +75,17 @@ describe('isolated validation fixture', () => {
     } finally {
       await pglite.close()
     }
+  })
+
+  it('keeps the long-content validation URL rejected with the message completion renders', () => {
+    const seeded = validateDestinationUrl(captureCompletionLongContentFixture.destinationUrl)
+    const rejected = validateDestinationUrl(captureCompletionLongContentFixture.validationUrl)
+
+    expect(seeded.ok).toBe(true)
+    expect(rejected).toMatchObject({
+      code: 'sensitive_query',
+      message: captureCompletionLongContentFixture.validationMessage,
+      ok: false,
+    })
   })
 })
