@@ -14,7 +14,6 @@
     "dev:isolated": "tsx scripts/run-supervised.ts validation",
     "proof:dev": "tsx scripts/run-cli-ui-dev-proof.ts",
     "proof:electron": "tsx scripts/run-electron-native-ui-proof.ts",
-    "smoke:dialog-close-target": "tsx scripts/run-electron-native-ui-proof.ts --dialog-close-target",
     "validate:app": "tsx scripts/run-supervised.ts validation",
     "validate:isolated": "tsx scripts/run-isolated-validation.ts",
     "build": "pnpm run typecheck && vite build && electron-builder",

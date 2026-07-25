@@ -10,9 +10,6 @@ import {
   runIsolatedCaptureCompletionLayoutProof as runCaptureCompletionLayoutProof,
 } from './capture-completion-layout-proof'
 import {
-  runIsolatedDialogCloseTargetProof as runDialogCloseTargetProof,
-} from './dialog-close-target-proof'
-import {
   captureRendererConsole,
   createElectronNativeUiDriver,
   runElectronNativeUiProof,
@@ -340,15 +337,6 @@ function createMainWindow() {
             }
             if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_LAYOUT_PROOF === '1') {
               void runIsolatedCaptureCompletionLayoutProof(
-                mainWindow,
-                validationManifest,
-                validationWorkspace,
-                reportValidationTerminalState,
-              )
-              return
-            }
-            if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_CLOSE_TARGET_PROOF === '1') {
-              void runIsolatedDialogCloseTargetProof(
                 mainWindow,
                 validationManifest,
                 validationWorkspace,
@@ -889,20 +877,6 @@ async function runIsolatedCaptureCompletionLayoutProof(
     errorPrefix: 'Capture completion dialog layout proof',
     reportTerminalState,
     runProof: () => runCaptureCompletionLayoutProof({ manifest, window, workspace }),
-    window,
-  })
-}
-
-async function runIsolatedDialogCloseTargetProof(
-  window: BrowserWindow,
-  manifest: IsolatedValidationManifest | null,
-  workspace: WorkspaceSummary,
-  reportTerminalState: (outcome: 'child_failure' | 'completed') => void,
-) {
-  return runIsolatedEvidenceProof({
-    errorPrefix: 'Dialog close target proof',
-    reportTerminalState,
-    runProof: () => runDialogCloseTargetProof({ manifest, window, workspace }),
     window,
   })
 }

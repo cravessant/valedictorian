@@ -1,4 +1,4 @@
-export type ElectronNativeUiProofMode = 'capture-completion-layout' | 'dialog-close-target' | 'workflow'
+export type ElectronNativeUiProofMode = 'capture-completion-layout' | 'workflow'
 
 /**
  * Wide enough for the widest CSS viewport the geometry proofs request (1440)
@@ -26,9 +26,7 @@ export function electronNativeUiProofLaunch({
     'scripts/run-isolated-validation.ts',
     proof === 'capture-completion-layout'
       ? '--proof-electron-layout'
-      : proof === 'dialog-close-target'
-        ? '--proof-electron-close-target'
-        : '--proof-electron',
+      : '--proof-electron',
     '--timeout-ms',
     '120000',
   ]

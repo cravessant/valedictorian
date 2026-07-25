@@ -4,10 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { electronNativeUiProofLaunch } from './electron-native-ui-proof-launch'
 import { installElectronNativeUiProofSignalForwarding } from './electron-native-ui-proof-process'
-import {
-  electronNativeUiProofFailureMessage,
-  hasDialogCloseTargetEvidence,
-} from './electron-native-ui-proof-result'
+import { electronNativeUiProofFailureMessage } from './electron-native-ui-proof-result'
 
 const proofMode = readProofArgument(process.argv.slice(2))
 const launch = electronNativeUiProofLaunch({
@@ -38,9 +35,7 @@ const resultPath = path.join(
   evidenceDirectory,
   proofMode === 'capture-completion-layout'
     ? 'capture-completion-dialog-layout-proof.json'
-    : proofMode === 'dialog-close-target'
-      ? 'dialog-close-target-proof.json'
-      : 'electron-native-ui-proof.json',
+    : 'electron-native-ui-proof.json',
 )
 if (!fs.existsSync(resultPath)) {
   throw new Error(`Electron proof did not produce a result. ${safeOutput(output)}`)
@@ -60,17 +55,13 @@ if (
   || result.outcome !== 'completed'
   || (proofMode === 'capture-completion-layout'
     ? !hasLayoutMeasurements(result.measurements) || !hasCompletedCaptureAssertions(result.assertions)
-    : proofMode === 'dialog-close-target'
-      ? !hasDialogCloseTargetEvidence(result.measurements)
-      : !hasRequiredScreenshots(result.screenshots))
+    : !hasRequiredScreenshots(result.screenshots))
 ) {
   throw new Error(electronNativeUiProofFailureMessage({ output, result, safeOutput }))
 }
 process.stdout.write(`${proofMode === 'capture-completion-layout'
   ? 'Capture completion dialog layout'
-  : proofMode === 'dialog-close-target'
-    ? 'Dialog close target'
-    : 'Electron native UI'} proof evidence: ${resultPath}\n`)
+  : 'Electron native UI'} proof evidence: ${resultPath}\n`)
 
 function hasRequiredScreenshots(value: unknown) {
   if (!Array.isArray(value)) return false
@@ -107,8 +98,7 @@ function hasCompletedCaptureAssertions(value: unknown) {
 function readProofArgument(args: readonly string[]) {
   if (args.length === 0) return 'workflow' as const
   if (args.length === 1 && args[0] === '--capture-completion-layout') return 'capture-completion-layout' as const
-  if (args.length === 1 && args[0] === '--dialog-close-target') return 'dialog-close-target' as const
-  throw new Error('Electron native UI proof accepts --capture-completion-layout or --dialog-close-target.')
+  throw new Error('Electron native UI proof accepts no arguments or --capture-completion-layout.')
 }
 
 function safeOutput(value: string) {

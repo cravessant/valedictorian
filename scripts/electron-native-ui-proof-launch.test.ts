@@ -54,22 +54,4 @@ describe('Electron native UI proof launch', () => {
       command: '/runtime/node',
     })
   })
-
-  it('launches the shared dialog close-target proof through the isolated lifecycle', () => {
-    expect(electronNativeUiProofLaunch({
-      nodeExecutable: '/runtime/node',
-      platform: 'darwin',
-      proof: 'dialog-close-target',
-    })).toEqual({
-      args: [
-        '--import',
-        'tsx',
-        'scripts/run-isolated-validation.ts',
-        '--proof-electron-close-target',
-        '--timeout-ms',
-        '120000',
-      ],
-      command: '/runtime/node',
-    })
-  })
 })

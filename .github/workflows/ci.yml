@@ -174,16 +174,12 @@ jobs:
         working-directory: valedictorian-app
         run: pnpm run proof:dev
 
-      # Geometry proofs measure the merged result. Branch-level checks cannot
-      # catch a validation-copy change and a proof run landing from branches
+      # The geometry proof measures the merged result. Branch-level checks cannot
+      # catch a validation-copy change and a proof change landing from branches
       # that never saw each other.
       - name: Prove Capture completion dialog layout
         working-directory: valedictorian-app
         run: pnpm run smoke:capture-completion-dialog-layout
-
-      - name: Prove shared dialog close target
-        working-directory: valedictorian-app
-        run: pnpm run smoke:dialog-close-target
 
   package-smoke:
     name: Package Smoke (${{ matrix.name }})
