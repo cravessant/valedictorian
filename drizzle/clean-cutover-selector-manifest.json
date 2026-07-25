@@ -495,34 +495,6 @@
     },
     {
       "repo": "app",
-      "file": "src/test/slow-test-boundary-inventory.ts",
-      "category": "canonical_candidate",
-      "count": 3,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/test/slow-test-boundary-inventory.ts",
-      "category": "collapsed_retry_work",
-      "count": 1,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/test/slow-test-boundary-inventory.ts",
-      "category": "raw_source",
-      "count": 20,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/test/slow-test-boundary-inventory.ts",
-      "category": "retired_sourcing_path",
-      "count": 32,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
       "file": "scripts/lifecycle-cutover-selectors.test.mjs",
       "category": "collapsed_retry_work",
       "count": 1,
