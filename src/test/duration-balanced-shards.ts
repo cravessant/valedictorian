@@ -14,22 +14,12 @@ export const CI_TEST_SHARD_CAPACITIES = [1, 1] as const
 
 const defaultFileWeight = 1_000
 const currentWeightOverrides = new Map<string, number>([
-  ['src/App.connectors.schedules.test.tsx', 10_000],
-  ['src/App.settings.profile-settings.test.tsx', 2_000],
   ['src/modules/profile/ProfileSettingsPanel.test.tsx', 6_000],
   ['src/modules/connectors/connector.runner.refresh-contract.test.ts', 4_000],
   ['src/server/local-server.connector-capabilities.edge-contracts.test.ts', 5_000],
-  ['src/runtime/raw-normalization.runtime.projection-resolvers.test.ts', 20_000],
-  ['src/modules/sourcing/raw-source.repository.test.ts', 6_000],
-  ['src/modules/sourcing/raw-source-list.repository.test.ts', 7_000],
-  ['src/modules/applications/application.repository.test.ts', 5_000],
-  ['src/modules/applications/application.fixtures.test.ts', 5_000],
-  ['src/modules/applications/application.repository.links-events.test.ts', 4_000],
-  ['src/modules/applications/application.repository.list.test.ts', 4_000],
   ['src/modules/source-execution/source-execution-governor.test.ts', 7_000],
   ['src/modules/source-execution/source-session-executor.test.ts', 7_000],
   ['src/modules/action-queue/action-queue.repository.test.ts', 7_000],
-  ['src/test/pglite-cross-repository-reopen.smoke.test.ts', 2_000],
 ])
 const baselineWeights = new Map(
   slowTestBoundaryInventory.map(({ hostedDurationMs, path: file }) => [

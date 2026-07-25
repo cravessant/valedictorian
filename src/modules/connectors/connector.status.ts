@@ -3,7 +3,6 @@ import type {
   ConnectorWarning,
 } from './connector.repository'
 import type {
-  ConnectorOverviewRecord,
   ConnectorStatusAction as PublicConnectorStatusAction,
 } from '@sparxie/sdk'
 import {
@@ -288,35 +287,6 @@ export function mapConnectorStatusSummary(
     warningCount: latestRun.warningCount,
     warnings,
     ...state,
-  }
-}
-
-export function connectorStatusViewFromOverview(
-  overview: ConnectorOverviewRecord,
-): ConnectorStatusView {
-  const actions = overview.actions
-  return {
-    id: overview.id,
-    connectorId: overview.connectorId,
-    displayName: overview.displayName,
-    enabled: overview.enabled,
-    lastRunAt: overview.latestRun?.completedAt ?? overview.latestRun?.startedAt ?? null,
-    latestRunId: overview.latestRun?.id ?? null,
-    nextAttemptAt: overview.cooldown?.retryAt ?? null,
-    observationCount: overview.latestRun?.observationCount ?? 0,
-    severity: overview.health.severity,
-    status: overview.health.status === 'authentication_required'
-      ? 'auth_required'
-      : overview.health.status,
-    statusLabel: overview.health.statusLabel,
-    summary: overview.health.summary,
-    warningCount: overview.health.warningCount,
-    warnings: overview.health.warnings.map((warning) => ({
-      ...warning,
-      label: warning.label ?? 'Connector warning',
-    })),
-    actionLabel: actions[0]?.label ?? null,
-    actions,
   }
 }
 

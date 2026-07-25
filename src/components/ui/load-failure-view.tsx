@@ -5,11 +5,7 @@ import {
   ScopedLoadFailure,
 } from '@/components/ui/error-primitives'
 
-/**
- * Renders the failure's contextual surface in place.
- * App-wide global ownership requires deliberate producer registration via
- * `takeLocalLoadFailure` / `reportGlobalFailure` — this view never registers.
- */
+/** Renders the failure's contextual surface in place; never escalates it app-wide. */
 export function LoadFailureView({
   failure,
   onRetry,

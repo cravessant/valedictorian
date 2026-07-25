@@ -453,20 +453,6 @@
     },
     {
       "repo": "app",
-      "file": "src/test/duration-balanced-shards.ts",
-      "category": "raw_source",
-      "count": 2,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/test/duration-balanced-shards.ts",
-      "category": "retired_sourcing_path",
-      "count": 2,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
       "file": "src/test/lifecycle-migration-harness.ts",
       "category": "collapsed_retry_work",
       "count": 4,
