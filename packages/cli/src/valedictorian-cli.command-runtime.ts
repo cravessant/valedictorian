@@ -12,8 +12,9 @@ import {
   workspaceListItemSchema,
   workspaceListResultSchema,
   type ProfileSecretKind,
-  type ValedictorianClient,
+  type ValedictorianClientV2,
   type ValedictorianWorkspaceClient,
+  type ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
 
 import {
@@ -41,7 +42,7 @@ export interface ValedictorianCliContext extends CommandContext {
    * when the escape marker is absent.
    */
   readonly argvEscapeSuffix: readonly string[] | null
-  readonly client: ValedictorianClient
+  readonly client: ValedictorianClientV2
   readonly cwd: string
   readonly env: Record<string, string | undefined>
   outputJson?: boolean
@@ -202,14 +203,14 @@ export function toArgvWithoutWorkspace(flags: RawFlags) {
 export async function workspaceClient(
   context: ValedictorianCliContext,
   flags: RawFlags,
-): Promise<ValedictorianWorkspaceClient> {
+): Promise<ValedictorianWorkspaceClientV2> {
   return (await workspaceClientWithId(context, flags)).client
 }
 
 export async function workspaceClientWithId(
   context: ValedictorianCliContext,
   flags: RawFlags,
-): Promise<{ client: ValedictorianWorkspaceClient; workspaceId: string }> {
+): Promise<{ client: ValedictorianWorkspaceClientV2; workspaceId: string }> {
   const workspaceId = await resolveWorkspaceId(
     context,
     readRequiredText(optionValue(flags, 'workspace'), '--workspace'),

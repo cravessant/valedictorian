@@ -6,7 +6,7 @@ import {
 import {
   createHttpValedictorianClient,
   defaultValedictorianApiBaseUrl,
-  type ValedictorianClient,
+  type ValedictorianClientV2,
 } from '@sparxie/sdk'
 
 import { buildActionQueueRoute } from './valedictorian-cli.action-queue-commands.js'
@@ -97,7 +97,7 @@ export async function runValedictorianCli({
   return mapStricliExitCode(rawExitCode)
 }
 
-function createClient(env: Record<string, string | undefined>): ValedictorianClient {
+function createClient(env: Record<string, string | undefined>): ValedictorianClientV2 {
   return createHttpValedictorianClient({
     baseUrl: env.VALEDICTORIAN_API_URL ?? defaultValedictorianApiBaseUrl,
     token: env.VALEDICTORIAN_API_TOKEN,

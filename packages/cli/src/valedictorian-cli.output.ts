@@ -277,18 +277,55 @@ function formatCompletionDetail(record: Record<string, unknown>) {
   const source = record.sourceSummary as Record<string, unknown>
   const destination = isPlainRecord(record.destination) ? record.destination : {}
   const evidence = Array.isArray(record.rawEvidence) ? record.rawEvidence.length : 0
+  const providerStatus = primitiveString(destination.providerStatus)
   const lines = [
     `Capture ${String(record.captureId)} revision ${String(record.captureRevision)}`,
     `Expected generation: ${String(record.expectedGenerationId)}`,
     `Source: ${String(source.displayName)} (${String(source.provider)})`,
-    `Destination: ${String(destination.status ?? 'unknown')}`,
+    `Destination: ${String(destination.status ?? 'unknown')}${providerStatus ? ` (provider status: ${providerStatus})` : ''}`,
     `Evidence items: ${evidence}`,
   ]
   lines.push(...formatExactEvidenceReferences(record.exactEvidenceReferences))
-  if (isPlainRecord(record.lastIssue)) {
-    lines.push(`Issue: ${String(record.lastIssue.code)}${record.lastIssue.action ? ` (${String(record.lastIssue.action)})` : ''}`)
-  }
+  lines.push(...formatProcessingIssue(record.lastIssue))
   return lines.join('\n')
+}
+
+/**
+ * Issue details are an open app-authored record, so only these keys are ever
+ * rendered and always in this order. Anything outside the list - rejected
+ * destination URLs, provider record identifiers, credentials - stays out of
+ * CLI output.
+ */
+const safeIssueDetailKeys = [
+  'resolverId',
+  'resolverVersion',
+  'providerReason',
+  'providerEvidenceKind',
+  'providerField',
+  'parserChanged',
+  'safetyReason',
+]
+
+function formatProcessingIssue(value: unknown) {
+  if (!isPlainRecord(value)) return ['Issue: none']
+
+  const action = primitiveString(value.action) ?? 'none'
+  const lines = [`Issue: ${String(value.code)} - ${String(value.message)} (action: ${action})`]
+  const details = isPlainRecord(value.details) ? value.details : {}
+  const safeKeys = safeIssueDetailKeys.filter(
+    (key) => details[key] === null || isDisplayablePrimitive(details[key]),
+  )
+
+  if (safeKeys.length > 0) {
+    lines.push('Issue details:')
+    lines.push(...safeKeys.map((key) => `- ${issueDetailLabel(key)}: ${String(details[key])}`))
+  }
+
+  return lines
+}
+
+function issueDetailLabel(key: string) {
+  return labelize(key).replace(/^./, (character) => character.toUpperCase())
 }
 
 function formatCompanyMergeIdentity(company: Record<string, unknown>) {

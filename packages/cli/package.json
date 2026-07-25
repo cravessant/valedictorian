@@ -45,7 +45,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@sparxie/sdk": "0.29.1",
+    "@sparxie/sdk": "0.30.0",
     "@stricli/core": "1.2.7",
     "cosmiconfig": "9.0.2"
   },

@@ -62,6 +62,24 @@ function companySearchResult(overrides: Record<string, unknown> = {}) {
   }
 }
 
+const resolverDetails = { resolverId: 'jobright-url-resolver', resolverVersion: '1.4.0' }
+const detailPath = `workspaces/${workspaceId}/capture-resolution/captures/${captureId}`
+const detailUrlV1 = `https://valedictorian.test/v1/${detailPath}`
+const detailUrlV2 = `https://valedictorian.test/v2/${detailPath}`
+
+function completionDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    captureId, captureRevision: 4, expectedGenerationId: 'generation-1',
+    sourceSummary: { displayName: 'Job board', provider: 'jobright', observedAt: '2026-07-24T12:00:00.000Z' },
+    provenance: [], destination: { status: 'resolved', url: destination.url },
+    rawEvidence: [], exactEvidenceReferences: [], jobDefaults: {}, lastIssue: null, ...overrides,
+  }
+}
+
+function destinationIssue(code: string, action: string | null, message: string, details: Record<string, unknown>) {
+  return { stage: 'destination', code, action, causedBy: null, message, details }
+}
+
 describe('Capture completion and Workspace Company commands', () => {
   afterEach(() => vi.unstubAllGlobals())
 
@@ -109,10 +127,147 @@ describe('Capture completion and Workspace Company commands', () => {
     expect(human.stdout).toContain(`capture=${captureId} revision=4 indexes=0`)
     expect(human.stdout).toContain(`capture=${captureId} revision=4 indexes=1, 2`)
     expect(JSON.parse(structured.stdout)).toEqual(detail)
-    expect(fetchMock).toHaveBeenCalledWith(
-      `https://valedictorian.test/v1/workspaces/${workspaceId}/capture-resolution/captures/${captureId}`,
-      expect.objectContaining({ method: 'GET' }),
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([detailUrlV2, detailUrlV1])
+  })
+
+  it('keeps the v1 JSON contract, including jobDefaults destination class', async () => {
+    const detail = completionDetail({
+      jobDefaults: { companyName: 'Delta Labs', roleTitle: 'Platform Engineer', destination },
+    })
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockImplementation(() => Promise.resolve(jsonResponse(detail)))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const structured = await runCli([
+      'captures', 'resolution', 'get', captureId, '--workspace', workspaceId, '--json',
+    ])
+
+    expect(structured.exitCode).toBe(0)
+    expect(JSON.parse(structured.stdout)).toEqual(detail)
+    expect(JSON.parse(structured.stdout).jobDefaults.destination).toEqual({
+      class: 'employer_or_ats', url: destination.url,
+    })
+    expect(fetchMock).toHaveBeenCalledWith(detailUrlV1, expect.objectContaining({ method: 'GET' }))
+  })
+
+  it.each(['hidden', 'closed'])('reports the resolved %s provider status without an issue', async (providerStatus) => {
+    const detail = completionDetail({
+      destination: { status: 'resolved', url: destination.url, providerStatus },
+    })
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockImplementation(() => Promise.resolve(jsonResponse(detail)))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const human = await runCli(['captures', 'resolution', 'get', captureId, '--workspace', workspaceId])
+
+    expect(human.exitCode).toBe(0)
+    expect(human.stdout).toContain(`Destination: resolved (provider status: ${providerStatus})`)
+    expect(human.stdout).toContain('Issue: none')
+    expect(fetchMock).toHaveBeenCalledWith(detailUrlV2, expect.objectContaining({ method: 'GET' }))
+  })
+
+  it('explains provider-internal suppression with safe details in allowlist order', () => {
+    const output = formatHumanOutput(completionDetail({
+      destination: { status: 'action_required', url: null },
+      lastIssue: destinationIssue(
+        'destination_unsupported', 'complete_job_information',
+        'The provider destination points back to Jobright and was suppressed.',
+        {
+          providerField: 'apply_link',
+          providerEvidenceKind: 'jobright_destination_provider_internal',
+          providerReason: 'provider_internal_destination',
+          ...resolverDetails,
+        },
+      ),
+    }))
+
+    expect(output).toContain(
+      'Issue: destination_unsupported - The provider destination points back to Jobright and was suppressed. (action: complete_job_information)',
     )
+    expect(output).toContain([
+      'Issue details:',
+      '- Resolver id: jobright-url-resolver',
+      '- Resolver version: 1.4.0',
+      '- Provider reason: provider_internal_destination',
+      '- Provider evidence kind: jobright_destination_provider_internal',
+      '- Provider field: apply_link',
+    ].join('\n'))
+  })
+
+  it('explains security rejection without the rejected URL, record identifiers, or credentials', () => {
+    const output = formatHumanOutput(completionDetail({
+      destination: { status: 'blocked', url: null },
+      lastIssue: destinationIssue(
+        'destination_security_rejected', null, 'The provider returned an unsafe destination URL.',
+        {
+          ...resolverDetails, safetyReason: 'blocked_host',
+          rejectedUrl: 'https://internal.jobright.example/apply?sid=zzz999',
+          providerRecordId: 'jobright-record-9911', sessionToken: 'session-zzz999',
+        },
+      ),
+    }))
+
+    expect(output).toContain(
+      'Issue: destination_security_rejected - The provider returned an unsafe destination URL. (action: none)',
+    )
+    expect(output).toContain('- Safety reason: blocked_host')
+    for (const secret of [
+      'rejectedUrl', 'internal.jobright.example', 'zzz999',
+      'providerRecordId', 'jobright-record-9911', 'sessionToken',
+    ]) {
+      expect(output).not.toContain(secret)
+    }
+  })
+
+  it('explains a no-candidate destination outcome with its exact recovery action', () => {
+    const output = formatHumanOutput(completionDetail({
+      destination: { status: 'action_required', url: null },
+      lastIssue: destinationIssue(
+        'destination_not_found', 'complete_job_information',
+        'The provider supplied no usable destination URL.',
+        {
+          ...resolverDetails, providerReason: 'destination_unavailable',
+          providerEvidenceKind: 'jobright_destination_missing',
+        },
+      ),
+    }))
+
+    expect(output).toContain('Destination: action_required')
+    expect(output).toContain(
+      'Issue: destination_not_found - The provider supplied no usable destination URL. (action: complete_job_information)',
+    )
+    expect(output).toContain('- Provider reason: destination_unavailable')
+    expect(output).toContain('- Provider evidence kind: jobright_destination_missing')
+    expect(output).not.toContain('Provider field')
+  })
+
+  it('renders a parser-change diagnostic and preserves the payload exactly in JSON', async () => {
+    const detail = completionDetail({
+      destination: { status: 'action_required', url: null },
+      lastIssue: destinationIssue(
+        'destination_unsupported', 'correct_capture',
+        'The provider destination response schema changed.',
+        { ...resolverDetails, providerReason: 'provider_schema_changed', parserChanged: true },
+      ),
+    })
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockImplementation(() => Promise.resolve(jsonResponse(detail)))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const human = await runCli(['captures', 'resolution', 'get', captureId, '--workspace', workspaceId])
+    const structured = await runCli([
+      'captures', 'resolution', 'get', captureId, '--workspace', workspaceId, '--json',
+    ])
+
+    expect(human.exitCode).toBe(0)
+    expect(human.stdout).toContain(
+      'Issue: destination_unsupported - The provider destination response schema changed. (action: correct_capture)',
+    )
+    expect(human.stdout).toContain('- Provider reason: provider_schema_changed')
+    expect(human.stdout).toContain('- Parser changed: true')
+    expect(structured.exitCode).toBe(0)
+    expect(JSON.parse(structured.stdout)).toEqual(detail)
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([detailUrlV2, detailUrlV1])
   })
 
   it('sends exact completion guards and renders duplicate conflicts as actionable exit 4', async () => {
