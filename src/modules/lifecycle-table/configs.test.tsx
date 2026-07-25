@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
+import type { CaptureListPresentation, ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
 
 import { LifecycleTable } from './lifecycle-table'
 import { captureConfig, createCaptureConfig } from './configs/capture-config'
@@ -181,7 +181,80 @@ describe('lifecycle typed configs', () => {
       currentCompanyId: 'company-assignment',
     }, items[1])
   })
+
+  it('exposes read-only resolution details for destination outcomes no completion intent explains', async () => {
+    const user = userEvent.setup()
+    const onComplete = vi.fn()
+    const onViewResolution = vi.fn()
+    const items = [
+      destinationOutcome('capture-authenticate', 'blocked', {
+        kind: 'authenticate_provider',
+        connectorInstanceId: 'connector-1',
+      }),
+      destinationOutcome('capture-correct', 'unavailable', { kind: 'correct_capture' }),
+      destinationOutcome('capture-security', 'blocked', null),
+      destinationOutcome('capture-completable', 'blocked', { kind: 'complete_job_information' }),
+    ]
+    render(
+      <LifecycleTable
+        config={createCaptureConfig({ onComplete, onViewResolution }).table}
+        data={items}
+        state={{ status: 'loaded' }}
+      />,
+    )
+
+    const table = screen.getByRole('table', { name: /Captures/ })
+    expect(within(table).getAllByText('Needs attention').length).toBeGreaterThan(0)
+    const details = within(table).getAllByRole('button', { name: 'View resolution details' })
+    expect(details).toHaveLength(3)
+    for (const detail of details) await user.click(detail)
+
+    expect(onViewResolution.mock.calls.map(([row]: [CaptureListPresentation]) => row.captureId))
+      .toEqual(['capture-authenticate', 'capture-correct', 'capture-security'])
+    expect(onComplete).not.toHaveBeenCalled()
+  })
+
+  it('withholds resolution details for resolving destinations and non-ready Captures', () => {
+    const items = [
+      destinationOutcome('capture-resolving', 'resolving', null),
+      { ...destinationOutcome('capture-removed', 'blocked', null), readiness: 'removed' as const },
+      {
+        ...destinationOutcome('capture-pending', 'unavailable', null),
+        readiness: 'materialization_pending' as const,
+      },
+    ]
+    render(
+      <LifecycleTable
+        config={createCaptureConfig({ onViewResolution: vi.fn() }).table}
+        data={items}
+        state={{ status: 'loaded' }}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'View resolution details' }))
+      .not.toBeInTheDocument()
+  })
 })
+
+function destinationOutcome(
+  captureId: string,
+  state: CaptureListPresentation['destination']['state'],
+  primaryIntent: CaptureListPresentation['primaryIntent'],
+): CaptureListPresentation {
+  return {
+    captureId,
+    captureRevision: 1,
+    observedAt: '2025-01-01T00:00:00Z',
+    lead: { roleTitle: 'Engineer', companyName: 'Acme', fallbackLabel: 'Acme lead' },
+    source: { displayName: 'Jobright', provider: 'jobright' },
+    destination: { state, displayHost: null },
+    readiness: 'ready',
+    processingSummary: 'blocked',
+    activeProcessing: false,
+    linkedJob: null,
+    primaryIntent,
+  }
+}
 
 function captureWithIntent(
   captureId: string,

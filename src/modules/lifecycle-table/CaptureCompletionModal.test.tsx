@@ -17,6 +17,25 @@ const detail = {
   jobDefaults: { companyName: 'Example', roleTitle: 'Engineer' }, lastIssue: null,
 } as CaptureCompletionDetailV2
 
+/** A destination outcome the server exposes no supported completion action for. */
+const securityDetail = {
+  ...detail,
+  destination: { status: 'blocked', url: null },
+  lastIssue: {
+    stage: 'destination',
+    code: 'destination_security_rejected',
+    action: null,
+    causedBy: null,
+    message: 'The resolved destination was rejected by URL safety.',
+    details: {
+      resolverId: 'jobright.provider-url',
+      safetyReason: 'rejected_scheme',
+      rejectedUrl: 'javascript:alert(document.cookie)',
+      providerSessionToken: 'jr_live_secret_token',
+    },
+  },
+} as CaptureCompletionDetailV2
+
 const activeCompany = {
   companyId: 'company-active', revision: 3, displayName: 'Example Incorporated',
   websiteUrl: null, status: 'active', assignedJobCount: 2,
@@ -117,11 +136,16 @@ function renderModal(
   const onClose = overrides.onClose ?? vi.fn()
   const onCreated = overrides.onCreated ?? vi.fn()
   const onViewJob = overrides.onViewJob ?? vi.fn()
+  // An explicit null intent is the read-only destination-outcome case, so it
+  // must not fall back to the default completion intent.
+  const intent = 'intent' in overrides
+    ? overrides.intent ?? null
+    : { kind: 'complete_job_information' as const }
   render(
     <CaptureCompletionModal
       captureId="cap-1"
       client={client}
-      intent={overrides.intent ?? { kind: 'complete_job_information' }}
+      intent={intent}
       workspaceId={overrides.workspaceId ?? null}
       onClose={onClose}
       onCreated={onCreated}
@@ -301,6 +325,143 @@ describe('CaptureCompletionModal', () => {
       destination: { url: exactUrl },
       jobFacts: expect.objectContaining({ destination: { url: exactUrl } }),
     }))
+  })
+
+  it('shows precise safe destination diagnostics and resolved provider status', async () => {
+    const diagnosticDetail = {
+      ...detail,
+      destination: {
+        status: 'resolved',
+        url: 'https://jobs.example.com/role',
+        providerStatus: 'hidden',
+      },
+      lastIssue: {
+        stage: 'destination',
+        code: 'destination_unsupported',
+        action: 'complete_job_information',
+        causedBy: null,
+        message: 'The provider destination points back to Jobright and was suppressed.',
+        details: {
+          resolverId: 'jobright.provider-url',
+          resolverVersion: 'jobright-provider-url@2',
+          providerReason: 'provider_internal_destination',
+          providerEvidenceKind: 'jobright_destination_provider_internal',
+          providerField: 'apply_link',
+        },
+      },
+    } as CaptureCompletionDetailV2
+    const { client } = makeClient({
+      get: vi.fn().mockResolvedValue(diagnosticDetail),
+    })
+    renderModal(client)
+
+    const outcome = await screen.findByRole('region', {
+      name: 'Destination resolution outcome',
+    })
+    expect(outcome).toHaveTextContent('Provider status: hidden')
+    expect(outcome).toHaveTextContent(
+      'The provider destination points back to Jobright and was suppressed.',
+    )
+    expect(outcome).toHaveTextContent('destination_unsupported')
+    expect(outcome).toHaveTextContent('provider_internal_destination')
+    expect(outcome).toHaveTextContent('jobright-provider-url@2')
+    expect(outcome).not.toHaveTextContent('https://jobright.ai')
+  })
+
+  it('renders a read-only security outcome without a completion intent and drops unknown detail keys', async () => {
+    const { client, jobsGet, assignmentGet } = makeClient({
+      get: vi.fn().mockResolvedValue(securityDetail),
+    })
+    renderModal(client, { intent: null })
+
+    const outcome = await screen.findByRole('region', {
+      name: 'Destination resolution outcome',
+    })
+    const dialog = screen.getByRole('dialog', { name: 'Capture resolution details' })
+    expect(dialog).toContainElement(outcome)
+    expect(within(dialog).getByRole('region', { name: 'Provenance path' })).toBeInTheDocument()
+    expect(outcome).toHaveTextContent('The resolved destination was rejected by URL safety.')
+    expect(outcome).toHaveTextContent('destination_security_rejected')
+    expect(outcome).toHaveTextContent('rejected_scheme')
+    expect(outcome).toHaveTextContent('jobright.provider-url')
+    expect(outcome).not.toHaveTextContent('javascript:')
+    expect(outcome).not.toHaveTextContent('jr_live_secret_token')
+    expect(outcome).not.toHaveTextContent('Rejected url')
+    expect(outcome).not.toHaveTextContent('Provider session token')
+    // A null intent never hydrates persisted completion recovery.
+    expect(jobsGet).not.toHaveBeenCalled()
+    expect(assignmentGet).not.toHaveBeenCalled()
+  })
+
+  it('exposes no completion editor or mutation control in resolution-details mode', async () => {
+    const user = userEvent.setup()
+    const { client, complete } = makeClient({
+      get: vi.fn().mockResolvedValue(securityDetail),
+    })
+    const onRemoveCapture = vi.fn()
+    const { onClose, onCreated } = renderModal(client, { intent: null, onRemoveCapture })
+
+    await screen.findByRole('region', { name: 'Destination resolution outcome' })
+    const dialog = screen.getByRole('dialog', { name: 'Capture resolution details' })
+    expect(dialog).toHaveTextContent('These resolution details are read-only.')
+    expect(within(dialog).queryByRole('region', { name: 'Job destination' }))
+      .not.toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Job facts company')).not.toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Role title')).not.toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Destination URL')).not.toBeInTheDocument()
+    expect(within(dialog).queryAllByRole('textbox')).toHaveLength(0)
+    expect(within(dialog).queryAllByRole('radio')).toHaveLength(0)
+    expect(within(dialog).queryByRole('button', { name: 'Create Job' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Remove Capture' }))
+      .not.toBeInTheDocument()
+
+    // The only dismissal is a plain close; nothing in the dialog can mutate.
+    for (const button of within(dialog).getAllByRole('button')) await user.click(button)
+    expect(complete).not.toHaveBeenCalled()
+    expect(onRemoveCapture).not.toHaveBeenCalled()
+    expect(onCreated).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('keeps the completion editor and mutation controls whenever an intent is supported', async () => {
+    const { client } = makeClient({ get: vi.fn().mockResolvedValue(securityDetail) })
+    renderModal(client, { onRemoveCapture: vi.fn() })
+
+    expect(await screen.findByLabelText('Job facts company')).toHaveValue('Example')
+    const dialog = screen.getByRole('dialog', { name: 'Complete Capture into a Job' })
+    expect(within(dialog).getByRole('region', { name: 'Job destination' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('region', { name: 'Destination resolution outcome' }))
+      .toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Create Job' })).toBeEnabled()
+    expect(within(dialog).getByRole('button', { name: 'Remove Capture' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+  })
+
+  it('never presents a promotion-stage issue as a destination resolution outcome', async () => {
+    const promotionDetail = {
+      ...detail,
+      destination: { status: 'resolved', url: 'https://jobs.example.com/role' },
+      lastIssue: {
+        stage: 'promotion',
+        code: 'duplicate_job_conflict',
+        action: 'resolve_duplicate_job',
+        causedBy: null,
+        message: 'A duplicate Job already exists for this Capture.',
+        details: { resolverId: 'promotion.duplicate-job' },
+      },
+    } as CaptureCompletionDetailV2
+    const { client } = makeClient({
+      get: vi.fn().mockResolvedValue(promotionDetail),
+    })
+    renderModal(client)
+
+    expect(await screen.findByLabelText('Job facts company')).toHaveValue('Example')
+    expect(screen.queryByRole('region', {
+      name: 'Destination resolution outcome',
+    })).not.toBeInTheDocument()
+    expect(screen.queryByText('A duplicate Job already exists for this Capture.'))
+      .not.toBeInTheDocument()
+    expect(screen.queryByText('promotion.duplicate-job')).not.toBeInTheDocument()
   })
 
   it('offers only allowed duplicate decisions and uses a fresh key for the exact target revision', async () => {

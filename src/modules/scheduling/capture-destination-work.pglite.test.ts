@@ -277,6 +277,103 @@ describe.sequential('Capture destination resolution durable work (#362)', () => 
     })
   })
 
+  it.each([
+    {
+      label: 'no candidate URL',
+      outcome: {
+        status: 'terminal', reason: 'destination_unavailable',
+        evidence: [{
+          kind: 'jobright_destination_missing',
+          value: { field: 'apply_link', providerRecordId: 'provider-secret-canary' },
+        }],
+      },
+      code: 'destination_not_found',
+      message: 'The provider supplied no usable destination URL.',
+      evidenceKind: 'jobright_destination_missing',
+    },
+    {
+      label: 'provider-internal URL',
+      outcome: {
+        status: 'terminal', reason: 'provider_internal_destination',
+        evidence: [{
+          kind: 'jobright_destination_provider_internal',
+          value: { field: 'original_url', providerRecordId: 'provider-secret-canary' },
+        }],
+      },
+      code: 'destination_unsupported',
+      message: 'The provider destination points back to Jobright and was suppressed.',
+      evidenceKind: 'jobright_destination_provider_internal',
+    },
+    {
+      label: 'malformed candidate',
+      outcome: {
+        status: 'terminal', reason: 'destination_unavailable',
+        evidence: [{
+          kind: 'jobright_destination_invalid',
+          value: { field: 'apply_link', providerRecordId: 'provider-secret-canary' },
+        }],
+      },
+      code: 'destination_unsupported',
+      message: 'The provider destination candidate is malformed or unsupported.',
+      evidenceKind: 'jobright_destination_invalid',
+    },
+    {
+      label: 'authentication required',
+      outcome: {
+        status: 'terminal', reason: 'authentication_required', action: 'authenticate',
+      },
+      code: 'provider_authentication_required',
+      message: 'Provider authentication is required.',
+      evidenceKind: undefined,
+    },
+    {
+      label: 'provider schema change',
+      outcome: {
+        status: 'terminal', reason: 'provider_schema_changed', parserChanged: true,
+      },
+      code: 'destination_unsupported',
+      message: 'The provider destination response schema changed.',
+      evidenceKind: undefined,
+    },
+  ] as const)('persists and projects the precise $label outcome', async ({
+    code,
+    evidenceKind,
+    message,
+    outcome,
+  }) => {
+    const { captureId, clock, database, destination, generation, materialization, repository } = await setup()
+    const executor = createCaptureDestinationWorkExecutor({
+      repository,
+      state: destination,
+      execute: async () => outcome,
+    })
+    await executor(await claim(repository, clock.now()))
+
+    const stage = await destinationStage(database, generation.id)
+    const storedIssue = JSON.parse(stage.issueJson!)
+    expect(stage).toMatchObject({ status: 'action_required', resultJson: '{}' })
+    expect(storedIssue).toMatchObject({
+      code,
+      message,
+      details: {
+        resolverId: RESOLVER.id,
+        resolverVersion: RESOLVER.version,
+        providerReason: outcome.reason,
+        ...(evidenceKind ? { providerEvidenceKind: evidenceKind } : {}),
+      },
+    })
+    expect(stage.issueJson).not.toContain('provider-secret-canary')
+
+    const resolution = createCaptureResolutionV2Service(database, {
+      workspaceId: WORKSPACE,
+      materialization,
+      destination,
+    })
+    await expect(resolution.get(captureId)).resolves.toMatchObject({
+      lastIssue: storedIssue,
+    })
+  })
+
   it('repairs a crash after rescheduling work but before the stage projection', async () => {
     const { clock, database, destination, generation, repository } = await setup()
     const work = await claim(repository, clock.now())
@@ -330,6 +427,12 @@ describe.sequential('Capture destination resolution durable work (#362)', () => 
     expect(work).toMatchObject({ status: 'terminal', failureReason: 'security_rejected' })
     expect(stage).toMatchObject({ status: 'blocked', resultJson: '{}' })
     expect(stage.issueJson).toContain('destination_security_rejected')
+    expect(JSON.parse(stage.issueJson!)).toMatchObject({
+      details: {
+        resolverId: RESOLVER.id,
+        resolverVersion: RESOLVER.version,
+      },
+    })
     expect(JSON.stringify({ work, stage })).not.toContain(canary)
   })
 
@@ -357,6 +460,14 @@ describe.sequential('Capture destination resolution durable work (#362)', () => 
     expect((await destinationStage(database, generation.id)).issueJson).not.toContain(
       'unsafe destination URL',
     )
+    expect(JSON.parse((await destinationStage(database, generation.id)).issueJson!))
+      .toMatchObject({
+        details: {
+          resolverId: RESOLVER.id,
+          resolverVersion: RESOLVER.version,
+          safetyReason: 'invalid_resolver_method',
+        },
+      })
   })
 
   it('creates successor generations only from a current terminal destination command', async () => {

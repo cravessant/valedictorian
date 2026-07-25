@@ -32,6 +32,7 @@ export function createCaptureConfig(options: {
   ) => void
   readonly onRemove?: (row: CaptureListPresentation) => void
   readonly onRestore?: (row: CaptureListPresentation) => void
+  readonly onViewResolution?: (row: CaptureListPresentation) => void
   readonly onViewHistory?: (row: CaptureListPresentation) => void
 } = {}): CaptureConfig {
   const table: LifecycleTableConfig<CaptureListPresentation> = {
@@ -65,7 +66,24 @@ export function createCaptureConfig(options: {
     {
       key: 'destination',
       header: 'Destination',
-      render: (row) => destinationLabel(row),
+      render: (row) => {
+        if (!options.onViewResolution || !hasUnexplainedDestinationOutcome(row)) {
+          return destinationLabel(row)
+        }
+        return (
+          <div className="min-w-0">
+            <p>{destinationLabel(row)}</p>
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0 text-xs"
+              onClick={() => options.onViewResolution?.(row)}
+            >
+              View resolution details
+            </Button>
+          </div>
+        )
+      },
     },
     {
       key: 'status',
@@ -154,6 +172,20 @@ function isCaptureCompletionIntent(
   return intent.kind === 'complete_job_information'
     || intent.kind === 'resolve_company_assignment'
     || intent.kind === 'resolve_duplicate_job'
+}
+
+/**
+ * A destination outcome no supported completion intent already explains. The
+ * affordance is read-only: it opens the Capture detail with no completion
+ * intent, so no server primary intent is synthesized or replaced.
+ */
+function hasUnexplainedDestinationOutcome(row: CaptureListPresentation): boolean {
+  if (row.readiness !== 'ready') return false
+  if (row.destination.state !== 'blocked' && row.destination.state !== 'unavailable') {
+    return false
+  }
+  const intent = row.primaryIntent
+  return !intent || !isCaptureCompletionIntent(intent)
 }
 
 function destinationLabel(row: CaptureListPresentation): string {

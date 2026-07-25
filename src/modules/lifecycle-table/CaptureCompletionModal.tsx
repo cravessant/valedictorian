@@ -33,6 +33,7 @@ import { JobCompanyReassignmentModal } from '@/modules/workspace-resources/JobCo
 import type { CaptureCompletionIntent } from './configs/capture-config'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from './lifecycle-actor'
 import { validateDestinationUrl } from '../capture/destination-url-safety'
+import { CaptureDestinationOutcome } from './CaptureDestinationOutcome'
 
 export interface CaptureCompletionCompanySelection {
   readonly companyId: CompanySearchResult['companyId']
@@ -126,6 +127,10 @@ export function CaptureCompletionModal({
   const idempotencyKeyRef = useRef('')
   const needsFreshIdempotencyKeyRef = useRef(false)
   const open = captureId !== null
+  // A null intent is the explicit resolution-details mode. The server exposes
+  // no supported completion action for the Capture, so this mode is read-only:
+  // no completion editor, no mutation controls, and no completion call.
+  const detailsMode = intent === null
 
   useEffect(() => {
     if (!captureId || !client) return
@@ -236,7 +241,7 @@ export function CaptureCompletionModal({
   const draftDirty = draft !== null
     && initialDraft !== null
     && !samePersistedCaptureCompletionDraft(draft, initialDraft)
-  const dismissLabel = draftDirty ? 'Discard changes' : 'Cancel'
+  const dismissLabel = detailsMode ? 'Close' : draftDirty ? 'Discard changes' : 'Cancel'
   const interactionPending = pending || removalPending
 
   function closeModal() {
@@ -286,7 +291,9 @@ export function CaptureCompletionModal({
       readonly freshIdempotencyKey?: boolean
     } = {},
   ) {
-    if (!detail || !client) return
+    // Defensive: resolution-details mode must never reach the mutation, even
+    // if a handler were triggered indirectly.
+    if (!detail || !client || detailsMode) return
     const validationMessage = validateDraft(value)
     if (validationMessage) {
       setMessage(validationMessage)
@@ -431,8 +438,10 @@ export function CaptureCompletionModal({
         }}
       >
         <DialogHeader data-probe="capture-completion-header" className="shrink-0 border-b px-5 py-5 pr-14">
-          <DialogTitle>Complete Capture into a Job</DialogTitle>
-          <DialogDescription className="break-words">Confirm the evidence and select the local Company that will group this Job.</DialogDescription>
+          <DialogTitle>{detailsMode ? 'Capture resolution details' : 'Complete Capture into a Job'}</DialogTitle>
+          <DialogDescription className="break-words">{detailsMode
+            ? 'This Capture has no supported completion action. These resolution details are read-only.'
+            : 'Confirm the evidence and select the local Company that will group this Job.'}</DialogDescription>
         </DialogHeader>
         <div
           data-probe="capture-completion-body"
@@ -453,7 +462,11 @@ export function CaptureCompletionModal({
                   <span className="min-w-0 break-words"><span className="font-medium">Resolved destination</span> <span data-probe="capture-completion-provenance-url" className="break-all font-mono text-xs">{detail.destination.url ?? 'No resolved destination'}</span></span>
                 </div>
               </section>
-              <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)]">
+              <CaptureDestinationOutcome
+                destination={detail.destination}
+                issue={detail.lastIssue}
+              />
+              <div className={detailsMode ? 'min-w-0' : 'grid min-w-0 gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)]'}>
               <section aria-label="Capture source" data-probe="capture-completion-source" className="min-w-0 space-y-3 rounded-md border bg-muted/30 p-4">
                 <h3 className="font-medium">Source evidence</h3>
                 <p className="break-words text-sm">{detail.sourceSummary.displayName}</p>
@@ -469,6 +482,7 @@ export function CaptureCompletionModal({
                   </ul>
                 </details>
               </section>
+              {detailsMode ? null : (
               <section aria-label="Job destination" data-probe="capture-completion-destination" className="min-w-0 space-y-4">
                 <h3 className="font-medium">Destination Job</h3>
                 <label data-probe="capture-completion-company-field" className="grid min-w-0 gap-1 text-sm">
@@ -613,6 +627,7 @@ export function CaptureCompletionModal({
                 </fieldset>
                 {message ? <p data-probe="capture-completion-message" role={recovery ? 'alert' : 'status'} aria-live="polite" className="min-w-0 break-words text-sm text-muted-foreground">{message}</p> : null}
               </section>
+              )}
             </div>
               {recoveryLoading ? (
                 <p role="status" className="break-words text-sm text-muted-foreground">Loading current completion recovery guards…</p>
@@ -635,7 +650,7 @@ export function CaptureCompletionModal({
           )}
         </div>
         <DialogFooter data-probe="capture-completion-footer" className="shrink-0 border-t px-5 py-4">
-          {onRemoveCapture ? (
+          {onRemoveCapture && !detailsMode ? (
             <div className="w-full border-t border-destructive/30 pt-3 sm:mr-auto sm:w-auto sm:border-0 sm:p-0">
               <Button
                 type="button"
@@ -648,6 +663,7 @@ export function CaptureCompletionModal({
             </div>
           ) : null}
           <Button type="button" variant="outline" onClick={requestClose} disabled={interactionPending}>{dismissLabel}</Button>
+          {detailsMode ? null : (
           <Button
             type="button"
             disabled={interactionPending || !detail || !draft || recovery !== null || recoveryLoading || recoveryFailure}
@@ -655,6 +671,7 @@ export function CaptureCompletionModal({
           >
             {pending ? 'Completing…' : 'Create Job'}
           </Button>
+          )}
         </DialogFooter>
       </DialogContent>
       {reassignment && client && workspaceId ? (

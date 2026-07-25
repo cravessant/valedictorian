@@ -126,9 +126,11 @@ export function LifecycleWorkbench({
     hasNextPage: false,
   })
   const [captureTotalCount, setCaptureTotalCount] = useState(0)
+  // A null intent opens the Capture detail read-only for destination outcomes
+  // the server exposes no supported completion intent for.
   const [completion, setCompletion] = useState<{
     readonly row: CaptureListPresentation
-    readonly intent: CaptureCompletionIntent
+    readonly intent: CaptureCompletionIntent | null
   } | null>(null)
   const [jobs, setJobs] = useState<PhaseState<Job>>(initial.jobs)
   const [jobAssignments, setJobAssignments] = useState<
@@ -452,6 +454,7 @@ export function LifecycleWorkbench({
     () => createCaptureConfig({
       onOpenJob: onOpenResource,
       onComplete: (_captureId, intent, row) => setCompletion({ row, intent }),
+      onViewResolution: (row) => setCompletion({ row, intent: null }),
       onRemove: captureController.openRemove,
       onRestore: captureController.openRestore,
       onViewHistory: captureController.openHistory,

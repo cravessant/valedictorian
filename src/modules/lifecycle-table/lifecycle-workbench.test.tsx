@@ -497,6 +497,41 @@ describe('LifecycleWorkbench', () => {
     expect(get).toHaveBeenCalledTimes(2)
   })
 
+  it('opens the Capture detail read-only when a destination outcome has no completion intent', async () => {
+    const user = userEvent.setup()
+    const { client, lists } = makeClient()
+    lists.captures.mockResolvedValue(capturePage([securityOutcomeCapture('capture-security')]))
+    const get = vi.fn(async (captureId: string) => securityOutcomeDetail(captureId))
+    const jobsGet = vi.fn()
+    const complete = vi.fn()
+    Object.assign(client.captureResolutionV2, { get, complete })
+    Object.assign(client.jobs, { get: jobsGet })
+    render(<LifecycleWorkbench client={client} />)
+
+    await user.click(await screen.findByRole('button', { name: 'View resolution details' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Capture resolution details' })
+    expect(screen.queryByRole('dialog', {
+      name: 'Complete Capture into a Job',
+    })).not.toBeInTheDocument()
+    expect(get).toHaveBeenCalledWith('capture-security')
+    const outcome = await within(dialog).findByRole('region', {
+      name: 'Destination resolution outcome',
+    })
+    expect(outcome).toHaveTextContent('destination_security_rejected')
+    expect(outcome).toHaveTextContent('rejected_scheme')
+    expect(outcome).not.toHaveTextContent('javascript:')
+    // Read-only: no completion editor and no reachable mutation control.
+    expect(within(dialog).queryByLabelText('Job facts company')).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Create Job' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Remove Capture' }))
+      .not.toBeInTheDocument()
+    expect(within(dialog).getByText('Close')).toBeInTheDocument()
+    // A read-only view synthesizes no completion intent, so no recovery loads.
+    expect(jobsGet).not.toHaveBeenCalled()
+    expect(complete).not.toHaveBeenCalled()
+  })
+
   it('shows a terminal client-unavailable failure instead of loading forever', async () => {
     render(<LifecycleWorkbench client={null} />)
 
@@ -778,6 +813,33 @@ function completionCapture(captureId: string): CaptureListPresentation {
     activeProcessing: false,
     linkedJob: null,
     primaryIntent: { kind: 'complete_job_information' },
+  }
+}
+
+function securityOutcomeCapture(captureId: string): CaptureListPresentation {
+  return {
+    ...completionCapture(captureId),
+    destination: { state: 'blocked', displayHost: null },
+    processingSummary: 'blocked',
+    primaryIntent: null,
+  }
+}
+
+function securityOutcomeDetail(captureId: string) {
+  return {
+    ...completionDetail(captureId),
+    destination: { status: 'blocked', url: null },
+    lastIssue: {
+      stage: 'destination',
+      code: 'destination_security_rejected',
+      action: null,
+      causedBy: null,
+      message: 'The resolved destination was rejected by URL safety.',
+      details: {
+        safetyReason: 'rejected_scheme',
+        rejectedUrl: 'javascript:alert(document.cookie)',
+      },
+    },
   }
 }
 

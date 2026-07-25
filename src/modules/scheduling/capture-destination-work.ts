@@ -4,7 +4,6 @@ import type {
   ConnectorProviderUrlResolverResult,
   TransientRetryReason,
 } from '@sparxie/valedictorian-connectors-core'
-import type { ProcessingIssue } from '@sparxie/sdk'
 import type {
   CaptureDestinationResolutionService,
   DestinationExecution,
@@ -23,6 +22,10 @@ import {
   type ScheduledWorkRepository,
 } from './scheduled-work'
 import { captureDestinationResolutionWork } from './scheduling.schema'
+import {
+  destinationSecurityIssue,
+  terminalDestinationIssue,
+} from './capture-destination-issue'
 
 export type CaptureDestinationWorkRepository = ScheduledWorkRepository<
   CaptureDestinationResolutionSubject,
@@ -165,13 +168,7 @@ export function createCaptureDestinationWorkExecutor(input: {
       if (!destination.ok) {
         await state.terminal(identity, work.attempt, {
           status: 'blocked',
-          issue: issue(
-            'destination_security_rejected',
-            null,
-            destination.reason === 'invalid_resolver_method'
-              ? 'The provider returned an invalid destination resolver method.'
-              : 'The provider returned an unsafe destination URL.',
-          ),
+          issue: destinationSecurityIssue(identity, destination.reason),
         })
         await repository.fail({ id: work.id, token: work.token, deterministicReason: 'security_rejected' })
         return
@@ -205,7 +202,7 @@ export function createCaptureDestinationWorkExecutor(input: {
       })
       return
     }
-    const terminal = terminalIssue(outcome)
+    const terminal = terminalDestinationIssue(outcome, identity)
     await state.terminal(identity, work.attempt, terminal)
     await repository.fail({
       id: work.id,
@@ -244,27 +241,6 @@ async function retryOrExhaust(input: {
       },
     })
   }
-}
-
-function terminalIssue(outcome: Extract<ConnectorProviderUrlResolverResult, { status: 'terminal' }>) {
-  if (outcome.reason === 'authentication_required' || outcome.reason === 'authentication_failed') {
-    return { status: 'action_required' as const, issue: issue('provider_authentication_required', 'authenticate_provider', 'Provider authentication is required.') }
-  }
-  if (outcome.reason === 'provider_record_invalid') {
-    return { status: 'action_required' as const, issue: issue('provider_identity_invalid', 'correct_capture', 'The provider identity is not valid.') }
-  }
-  if (outcome.reason === 'provider_schema_changed') {
-    return { status: 'action_required' as const, issue: issue('destination_unsupported', 'correct_capture', 'The provider destination is not supported.') }
-  }
-  return { status: 'action_required' as const, issue: issue('destination_not_found', 'complete_job_information', 'A supported destination was not available.') }
-}
-
-function issue(
-  code: 'destination_security_rejected' | 'destination_not_found' | 'destination_unsupported' | 'provider_authentication_required' | 'provider_identity_invalid',
-  action: 'authenticate_provider' | 'complete_job_information' | 'correct_capture' | null,
-  message: string,
-): ProcessingIssue {
-  return { stage: 'destination', code, action, causedBy: null, message, details: {} } as ProcessingIssue
 }
 
 function retryCode(reason: TransientRetryReason): 'dependency_unavailable' | 'rate_limited' | 'request_timed_out' | 'transport_failed' {

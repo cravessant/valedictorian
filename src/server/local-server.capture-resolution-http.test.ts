@@ -342,6 +342,51 @@ describe.sequential('Capture resolution HTTP surface', () => {
     })
   })
 
+  it('serves exact bounded destination diagnostics without rejected provider data', async () => {
+    const { client, local } = await setup()
+    const database = getTestLocalValedictorianDatabase(local)
+    const created = await client.captures.create({
+      evidenceMode: 'reported',
+      adapter: { id: 'manual.capture', kind: 'manual', version: '1.0.0' },
+      observedAt: '2026-07-23T00:00:00.000Z',
+      providerRecordId: null,
+      providerSchema: null,
+      payload: { companyName: 'Diagnostic Labs', roleTitle: 'Diagnostic Engineer' },
+      evidence: [{ kind: 'title', label: 'Role title', value: 'Diagnostic Engineer' }],
+    })
+    if (created.status !== 'succeeded') throw new Error('expected Capture creation')
+    const detail = await client.captureResolutionV2.get(created.resource.id)
+    const issue = {
+      stage: 'destination',
+      code: 'destination_unsupported',
+      action: 'complete_job_information',
+      causedBy: null,
+      message: 'The provider destination points back to Jobright and was suppressed.',
+      details: {
+        resolverId: 'jobright.provider-url',
+        resolverVersion: 'jobright-provider-url@2',
+        providerReason: 'provider_internal_destination',
+        providerEvidenceKind: 'jobright_destination_provider_internal',
+        providerField: 'apply_link',
+      },
+    } as const
+    await database.update(captureResolutionStageResults).set({
+      status: 'action_required',
+      issueJson: JSON.stringify(issue),
+      resultJson: '{}',
+    }).where(and(
+      eq(captureResolutionStageResults.generationId, detail.expectedGenerationId!),
+      eq(captureResolutionStageResults.stage, 'destination'),
+    ))
+    await database.update(captureResolutionGenerations).set({
+      processingSummary: 'needs_action',
+    }).where(eq(captureResolutionGenerations.id, detail.expectedGenerationId!))
+
+    const projected = await client.captureResolutionV2.get(created.resource.id)
+    expect(projected.lastIssue).toEqual(issue)
+    expect(JSON.stringify(projected)).not.toContain('https://jobright.ai/jobs/secret')
+  })
+
   it('starts retry and replay over real HTTP, keeps receipts immutable, and redacts sensitive rationale audit data', async () => {
     const { client, local } = await setup()
     const database = getTestLocalValedictorianDatabase(local)
