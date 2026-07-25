@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CaptureListPresentation, Job, ValedictorianWorkspaceClient } from '@sparxie/sdk'
@@ -42,6 +42,14 @@ function capturePage(items: CaptureListPresentation[] = []) {
 }
 
 function makeClient() {
+  const removeCapture = vi.fn(async () => ({
+    status: 'removed' as const,
+    id: 'capture-remove',
+    choice: 'reject_if_dependents' as const,
+    removedAt: '2026-07-24T00:00:00Z',
+    affectedDependentIds: [],
+    audit: { actor: 'desktop' as const, timestamp: '2026-07-24T00:00:00Z' },
+  }))
   const lists = {
     captures: vi.fn(async (_input?: unknown) => capturePage()),
     jobs: vi.fn(async (_input?: unknown) => emptyPage()),
@@ -49,7 +57,10 @@ function makeClient() {
     applications: vi.fn(async (_input?: unknown) => emptyPage()),
   }
   const client = {
-    captures: { list: lists.captures },
+    captures: {
+      list: lists.captures,
+      remove: removeCapture,
+    },
     captureResolution: {
       list: lists.captures,
       get: vi.fn(),
@@ -89,7 +100,7 @@ function makeClient() {
     opportunities: { list: lists.opportunities },
     applications: { list: lists.applications },
   } as unknown as ValedictorianWorkspaceClient
-  return { client, lists }
+  return { client, lists, removeCapture }
 }
 
 describe('LifecycleWorkbench', () => {
@@ -306,19 +317,7 @@ describe('LifecycleWorkbench', () => {
   it('completes a Capture through the provenance modal, refreshes both rows, and wires View Job navigation', async () => {
     const user = userEvent.setup()
     const { client, lists } = makeClient()
-    const capture = {
-      captureId: 'capture-complete',
-      captureRevision: 1,
-      observedAt: '2026-07-23T00:00:00Z',
-      lead: { roleTitle: 'Platform Engineer', companyName: 'Acme', fallbackLabel: 'Acme lead' },
-      source: { displayName: 'Job board', provider: 'board' },
-      destination: { state: 'resolved', displayHost: 'jobs.example.com' },
-      readiness: 'ready',
-      processingSummary: 'awaiting_information',
-      activeProcessing: false,
-      linkedJob: null,
-      primaryIntent: { kind: 'complete_job_information' },
-    } as CaptureListPresentation
+    const capture = completionCapture('capture-complete')
     lists.captures.mockResolvedValue(capturePage([capture]))
     const get = vi.fn().mockResolvedValue({
       captureId: 'capture-complete', captureRevision: 1, expectedGenerationId: 'gen-1',
@@ -346,6 +345,133 @@ describe('LifecycleWorkbench', () => {
     const toastInput = toast.mock.calls[0]?.[0] as { action: { onClick: () => void } }
     toastInput.action.onClick()
     expect(openResource).toHaveBeenCalledWith('job-created', 'capture-job-link-capture-complete')
+  })
+
+  it('opens the shared removal flow from clean and dirty completion drafts after the live projection drops the row', async () => {
+    const user = userEvent.setup()
+    const { client, lists, removeCapture } = makeClient()
+    const capture = completionCapture('capture-remove')
+    let captureInProjection = true
+    lists.captures.mockImplementation(async () => capturePage(captureInProjection ? [capture] : []))
+    const get = vi.fn(async (captureId: string) => completionDetail(captureId))
+    const complete = vi.fn()
+    Object.assign(client.captureResolution, { get, complete })
+    const { rerender } = render(<LifecycleWorkbench client={client} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Complete Job information' }))
+    captureInProjection = false
+    rerender(
+      <LifecycleWorkbench
+        client={client}
+        workspaceEntry={{ location: { view: 'captures', filter: 'needs_attention' }, cursorChain: [] }}
+      />,
+    )
+    expect(await screen.findByText('No captures')).toBeInTheDocument()
+
+    await user.click(await screen.findByRole('button', { name: 'Remove Capture' }))
+    let removal = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    expect(removal).toHaveTextContent('capture-remove')
+    await user.click(within(removal).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Remove Capture' })).not.toBeInTheDocument())
+
+    const roleTitle = screen.getByLabelText('Role title')
+    await user.clear(roleTitle)
+    await user.type(roleTitle, 'Principal Engineer')
+    await user.click(screen.getByRole('button', { name: 'Remove Capture' }))
+    removal = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    await user.click(within(removal).getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Remove Capture' })).not.toBeInTheDocument())
+    expect(screen.getByLabelText('Role title')).toHaveValue('Principal Engineer')
+    expect(removeCapture).not.toHaveBeenCalled()
+    expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('preserves shared removal blocker and error context over a dirty completion draft', async () => {
+    const user = userEvent.setup()
+    const { client, lists, removeCapture } = makeClient()
+    const capture = completionCapture('capture-remove')
+    lists.captures.mockResolvedValue(capturePage([capture]))
+    removeCapture
+      .mockResolvedValueOnce({
+        status: 'blocked',
+        id: 'capture-remove',
+        blocker: { code: 'impossible_state', message: 'Linked Jobs require a choice.' },
+        dependentIds: ['job-1'],
+        supportedChoices: ['preserve_historical_lineage'],
+      })
+      .mockRejectedValueOnce(new Error('Capture removal is unavailable.'))
+    const complete = vi.fn()
+    Object.assign(client.captureResolution, {
+      get: vi.fn(async (captureId: string) => completionDetail(captureId)),
+      complete,
+    })
+    render(<LifecycleWorkbench client={client} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Complete Job information' }))
+    const roleTitle = await screen.findByLabelText('Role title')
+    await user.clear(roleTitle)
+    await user.type(roleTitle, 'Principal Engineer')
+    await user.click(screen.getByRole('button', { name: 'Remove Capture' }))
+    let removal = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    await user.type(within(removal).getByRole('textbox', { name: 'Rationale' }), 'Duplicate intake.')
+    await user.click(within(removal).getByRole('button', { name: 'Check and remove' }))
+
+    expect(await within(removal).findByRole('alert')).toHaveTextContent('job-1')
+    expect(within(removal).getByRole('combobox', { name: 'Removal option' })).toBeInTheDocument()
+    await user.click(within(removal).getByRole('button', { name: 'Discard changes' }))
+    const discard = await screen.findByRole('alertdialog', { name: 'Discard unsaved changes?' })
+    await user.click(within(discard).getByRole('button', { name: 'Discard changes' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Remove Capture' })).not.toBeInTheDocument())
+
+    expect(screen.getByLabelText('Role title')).toHaveValue('Principal Engineer')
+    await user.click(screen.getByRole('button', { name: 'Remove Capture' }))
+    removal = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    await user.type(within(removal).getByRole('textbox', { name: 'Rationale' }), 'No longer relevant.')
+    await user.click(within(removal).getByRole('button', { name: 'Check and remove' }))
+
+    expect(await screen.findByTestId('lifecycle-outcome-error')).toHaveTextContent('Capture removal is unavailable.')
+    expect(screen.getByRole('dialog', { name: 'Remove Capture' })).toBeInTheDocument()
+    expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('closes completion and refreshes the active Capture row after shared removal succeeds', async () => {
+    const user = userEvent.setup()
+    const { client, lists, removeCapture } = makeClient()
+    const capture = completionCapture('capture-remove')
+    let active = true
+    lists.captures.mockImplementation(async () => capturePage(active ? [capture] : []))
+    removeCapture.mockImplementation(async () => {
+      active = false
+      return {
+        status: 'removed' as const,
+        id: 'capture-remove',
+        choice: 'reject_if_dependents' as const,
+        removedAt: '2026-07-24T00:00:00Z',
+        affectedDependentIds: [],
+        audit: { actor: 'desktop' as const, timestamp: '2026-07-24T00:00:00Z' },
+      }
+    })
+    const complete = vi.fn()
+    Object.assign(client.captureResolution, {
+      get: vi.fn(async (captureId: string) => completionDetail(captureId)),
+      complete,
+    })
+    render(<LifecycleWorkbench client={client} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Complete Job information' }))
+    await user.click(await screen.findByRole('button', { name: 'Remove Capture' }))
+    const removal = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    await user.type(within(removal).getByRole('textbox', { name: 'Rationale' }), 'Duplicate intake.')
+    await user.click(within(removal).getByRole('button', { name: 'Check and remove' }))
+
+    await waitFor(() => expect(removeCapture).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.queryByRole('dialog', {
+      name: 'Complete Capture into a Job',
+    })).not.toBeInTheDocument())
+    expect(await screen.findByText('No captures')).toBeInTheDocument()
+    expect(await screen.findByTestId('lifecycle-outcome-removed')).toHaveTextContent('Removed.')
+    expect(complete).not.toHaveBeenCalled()
   })
 
   it('opens both duplicate and Company-assignment intents in the completion modal with fresh Capture details', async () => {
@@ -636,6 +762,22 @@ function captureIntent(
     primaryIntent: kind === 'resolve_duplicate_job'
       ? { kind, conflictingJobIds: ['job-conflict'], supportedActions: ['attach'] }
       : { kind, jobId: 'job-conflict', currentCompanyId: '01900000-0000-7000-8000-000000000099' },
+  }
+}
+
+function completionCapture(captureId: string): CaptureListPresentation {
+  return {
+    captureId,
+    captureRevision: 1,
+    observedAt: '2026-07-23T00:00:00Z',
+    lead: { roleTitle: 'Platform Engineer', companyName: 'Acme', fallbackLabel: 'Acme lead' },
+    source: { displayName: 'Job board', provider: 'board' },
+    destination: { state: 'resolved', displayHost: 'jobs.example.com' },
+    readiness: 'ready',
+    processingSummary: 'awaiting_information',
+    activeProcessing: false,
+    linkedJob: null,
+    primaryIntent: { kind: 'complete_job_information' },
   }
 }
 

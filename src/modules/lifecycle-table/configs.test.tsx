@@ -174,12 +174,12 @@ describe('lifecycle typed configs', () => {
       kind: 'resolve_duplicate_job',
       conflictingJobIds: ['job-duplicate'],
       supportedActions: ['attach'],
-    })
+    }, items[0])
     expect(onComplete).toHaveBeenNthCalledWith(2, 'capture-assignment', {
       kind: 'resolve_company_assignment',
       jobId: 'job-assignment',
       currentCompanyId: 'company-assignment',
-    })
+    }, items[1])
   })
 })
 

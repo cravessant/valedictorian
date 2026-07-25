@@ -127,7 +127,7 @@ export function LifecycleWorkbench({
   })
   const [captureTotalCount, setCaptureTotalCount] = useState(0)
   const [completion, setCompletion] = useState<{
-    readonly captureId: string
+    readonly row: CaptureListPresentation
     readonly intent: CaptureCompletionIntent
   } | null>(null)
   const [jobs, setJobs] = useState<PhaseState<Job>>(initial.jobs)
@@ -430,9 +430,13 @@ export function LifecycleWorkbench({
 
   useLifecycleInvalidation(refreshSelected, { enabled: Boolean(client), intervalMs: 60_000 })
 
+  const closeCompletionForRemovedCapture = useCallback((captureId: string) => {
+    setCompletion((current) => current?.row.captureId === captureId ? null : current)
+  }, [])
   const captureController = useCaptureController({
     client,
     refresh: refreshCaptures,
+    onRemoved: closeCompletionForRemovedCapture,
   })
   const jobController = useJobController({ client, refresh: refreshJobs, refreshDestination: refreshOpportunities, refreshAll })
   const jobCompanyAssignmentController = useJobCompanyAssignmentController({
@@ -447,13 +451,16 @@ export function LifecycleWorkbench({
   const captureTable = useMemo<LifecycleTableConfig<CaptureListPresentation>>(
     () => createCaptureConfig({
       onOpenJob: onOpenResource,
-      onComplete: (captureId, intent) => setCompletion({ captureId, intent }),
+      onComplete: (_captureId, intent, row) => setCompletion({ row, intent }),
       onRemove: captureController.openRemove,
       onRestore: captureController.openRestore,
       onViewHistory: captureController.openHistory,
     }).table,
     [captureController, onOpenResource],
   )
+  const openCompletionRemoval = useCallback(() => {
+    if (completion) captureController.openRemove(completion.row)
+  }, [captureController, completion])
   const jobTable = useMemo<LifecycleTableConfig<Job>>(
     () => ({
       ...jobConfig.table,
@@ -748,7 +755,7 @@ export function LifecycleWorkbench({
       ) : null}
       {captureController.modalLayer}
       <CaptureCompletionModal
-        captureId={completion?.captureId ?? null}
+        captureId={completion?.row.captureId ?? null}
         client={client}
         intent={completion?.intent ?? null}
         workspaceId={workspaceId}
@@ -757,7 +764,9 @@ export function LifecycleWorkbench({
           await Promise.all([refreshCaptures(), refreshJobs()])
         }}
         onAssignmentChanged={refreshJobs}
-        onViewJob={(jobId) => onOpenResource?.(jobId, `capture-job-link-${completion?.captureId ?? ''}`)}
+        onViewJob={(jobId) => onOpenResource?.(jobId, `capture-job-link-${completion?.row.captureId ?? ''}`)}
+        onRemoveCapture={openCompletionRemoval}
+        removalPending={captureController.removalPending}
       />
       {jobController.modalLayer}
       {jobCompanyAssignmentController.modalLayer}

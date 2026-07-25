@@ -127,6 +127,8 @@ function renderModal(
       onCreated={onCreated}
       onAssignmentChanged={overrides.onAssignmentChanged}
       onViewJob={onViewJob}
+      onRemoveCapture={overrides.onRemoveCapture}
+      removalPending={overrides.removalPending}
     />,
   )
   return { onClose, onCreated, onViewJob }
@@ -620,16 +622,18 @@ describe('CaptureCompletionModal', () => {
 
   it('blocks every dismissal path while completion is pending', async () => {
     const user = userEvent.setup()
+    const onRemoveCapture = vi.fn()
     let resolveCompletion: ((result: unknown) => void) | undefined
     const complete = vi.fn(() => new Promise((resolve) => {
       resolveCompletion = resolve
     }))
     const { client } = makeClient({ complete })
-    const { onClose } = renderModal(client)
+    const { onClose } = renderModal(client, { onRemoveCapture })
 
     await user.click(await screen.findByRole('button', { name: 'Create Job' }))
     expect(await screen.findByRole('button', { name: 'Completing…' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove Capture' })).toBeDisabled()
     expect(captureDialog().querySelector('[data-slot="dialog-close"]')).not.toBeInTheDocument()
 
     await user.keyboard('{Escape}')
@@ -637,12 +641,25 @@ describe('CaptureCompletionModal', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(onClose).not.toHaveBeenCalled()
+    expect(onRemoveCapture).not.toHaveBeenCalled()
 
     resolveCompletion?.({
       status: 'blocked',
       failure: { kind: 'lifecycle_failure', blocker: { code: 'invalid_input', message: 'Try again.' } },
     })
     expect(await screen.findByText('Try again.')).toBeInTheDocument()
+  })
+
+  it('blocks completion interaction while the shared Capture removal flow is pending', async () => {
+    const { client } = makeClient()
+    const onRemoveCapture = vi.fn()
+    renderModal(client, { onRemoveCapture, removalPending: true })
+
+    expect((await screen.findByLabelText('Job facts company'))).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove Capture' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Create Job' })).toBeDisabled()
+    expect(captureDialog().querySelector('[data-slot="dialog-close"]')).not.toBeInTheDocument()
   })
 
   it('waits for parent refresh before closing and exposes the View Job toast action', async () => {

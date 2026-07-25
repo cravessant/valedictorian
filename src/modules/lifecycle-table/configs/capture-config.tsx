@@ -25,7 +25,11 @@ export type CaptureCompletionIntent =
 
 export function createCaptureConfig(options: {
   readonly onOpenJob?: (jobId: string, focusAnchor: string) => void
-  readonly onComplete?: (captureId: string, intent: CaptureCompletionIntent) => void
+  readonly onComplete?: (
+    captureId: string,
+    intent: CaptureCompletionIntent,
+    row: CaptureListPresentation,
+  ) => void
   readonly onRemove?: (row: CaptureListPresentation) => void
   readonly onRestore?: (row: CaptureListPresentation) => void
   readonly onViewHistory?: (row: CaptureListPresentation) => void
@@ -102,7 +106,7 @@ export function createCaptureConfig(options: {
           return primaryIntentLabel(row)
         }
         return (
-          <Button type="button" variant="link" className="h-auto p-0" onClick={() => options.onComplete?.(row.captureId, intent)}>
+          <Button type="button" variant="link" className="h-auto p-0" onClick={() => options.onComplete?.(row.captureId, intent, row)}>
             {primaryIntentLabel(row)}
           </Button>
         )

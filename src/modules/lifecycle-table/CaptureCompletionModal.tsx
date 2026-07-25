@@ -84,6 +84,8 @@ interface Props {
   readonly onCreated: (jobId: string) => Promise<void> | void
   readonly onAssignmentChanged?: () => Promise<void> | void
   readonly onViewJob?: (jobId: string) => void
+  readonly onRemoveCapture?: () => void
+  readonly removalPending?: boolean
 }
 
 export function CaptureCompletionModal({
@@ -95,6 +97,8 @@ export function CaptureCompletionModal({
   onCreated,
   onAssignmentChanged,
   onViewJob,
+  onRemoveCapture,
+  removalPending = false,
 }: Props) {
   const [detail, setDetail] = useState<CaptureCompletionDetail | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -229,6 +233,7 @@ export function CaptureCompletionModal({
     && initialDraft !== null
     && !samePersistedCaptureCompletionDraft(draft, initialDraft)
   const dismissLabel = draftDirty ? 'Discard changes' : 'Cancel'
+  const interactionPending = pending || removalPending
 
   function closeModal() {
     setDiscardConfirmationOpen(false)
@@ -236,7 +241,7 @@ export function CaptureCompletionModal({
   }
 
   function requestClose() {
-    if (pending) return
+    if (interactionPending) return
     if (draftDirty) {
       setDiscardConfirmationOpen(true)
       return
@@ -408,7 +413,7 @@ export function CaptureCompletionModal({
     <>
       <Dialog open={open} onOpenChange={(next) => { if (!next) requestClose() }}>
       <DialogContent
-        showCloseButton={!pending}
+        showCloseButton={!interactionPending}
         data-probe="capture-completion-shell"
         className="flex h-[100dvh] w-full min-w-0 max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[90dvh] sm:max-w-[72rem] sm:rounded-md"
         onEscapeKeyDown={(event) => {
@@ -466,7 +471,7 @@ export function CaptureCompletionModal({
                   <input
                     autoFocus
                     className="w-full min-w-0 rounded-md border bg-background px-3 py-2"
-                    disabled={pending}
+                    disabled={interactionPending}
                     value={draft.companyName}
                     onChange={(event) => setDraft((current) => current ? {
                       ...current,
@@ -481,7 +486,7 @@ export function CaptureCompletionModal({
                   Role title
                   <input
                     className="w-full min-w-0 rounded-md border bg-background px-3 py-2"
-                    disabled={pending}
+                    disabled={interactionPending}
                     value={draft.roleTitle}
                     onChange={(event) => setDraft({ ...draft, roleTitle: event.target.value })}
                   />
@@ -490,7 +495,7 @@ export function CaptureCompletionModal({
                   Employer or ATS URL
                   <input
                     className="w-full min-w-0 rounded-md border bg-background px-3 py-2 font-mono text-xs"
-                    disabled={pending}
+                    disabled={interactionPending}
                     inputMode="url"
                     value={draft.destinationUrl}
                     onChange={(event) => setDraft({ ...draft, destinationUrl: event.target.value })}
@@ -502,7 +507,7 @@ export function CaptureCompletionModal({
                   <label className="flex min-w-0 items-start gap-2 text-sm">
                     <input
                       checked={draft.companyMode === 'create_local'}
-                      disabled={pending}
+                      disabled={interactionPending}
                       name="company-mode"
                       type="radio"
                       onChange={() => setDraft({ ...draft, companyMode: 'create_local', selectedCompany: null })}
@@ -514,7 +519,7 @@ export function CaptureCompletionModal({
                       Local Company display name
                       <input
                         className="w-full min-w-0 rounded-md border bg-background px-3 py-2"
-                        disabled={pending}
+                        disabled={interactionPending}
                         value={draft.companyDisplayName}
                         onChange={(event) => setDraft({
                           ...draft,
@@ -527,7 +532,7 @@ export function CaptureCompletionModal({
                   <label className="flex min-w-0 items-start gap-2 text-sm">
                     <input
                       checked={draft.companyMode === 'use_local'}
-                      disabled={pending}
+                      disabled={interactionPending}
                       name="company-mode"
                       type="radio"
                       onChange={() => setDraft({ ...draft, companyMode: 'use_local' })}
@@ -540,7 +545,7 @@ export function CaptureCompletionModal({
                         Search active local Companies
                         <input
                           className="w-full min-w-0 rounded-md border bg-background px-3 py-2"
-                          disabled={pending}
+                          disabled={interactionPending}
                           value={companyQuery}
                           onChange={(event) => setCompanyQuery(event.target.value)}
                         />
@@ -548,7 +553,7 @@ export function CaptureCompletionModal({
                       <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                         <input
                           checked={includeArchived}
-                          disabled={pending}
+                          disabled={interactionPending}
                           type="checkbox"
                           onChange={(event) => setIncludeArchived(event.target.checked)}
                         />
@@ -560,7 +565,7 @@ export function CaptureCompletionModal({
                           {companyMatches.map((company) => (
                             <li key={company.companyId} className="flex min-w-0 items-center justify-between gap-3 rounded border bg-background px-2 py-2 text-sm">
                               <span className="min-w-0 break-words">{company.displayName} <span className="text-xs text-muted-foreground">{company.status === 'archived' ? 'Archived — restore on completion' : 'Active'} · rev {company.revision}</span></span>
-                              <Button type="button" size="xs" variant="outline" disabled={pending} className="shrink-0" onClick={() => selectCompany(company)}>Use</Button>
+                              <Button type="button" size="xs" variant="outline" disabled={interactionPending} className="shrink-0" onClick={() => selectCompany(company)}>Use</Button>
                             </li>
                           ))}
                         </ul>
@@ -584,7 +589,7 @@ export function CaptureCompletionModal({
                               type="button"
                               size="xs"
                               variant="outline"
-                              disabled={pending}
+                              disabled={interactionPending}
                               className="shrink-0"
                               onClick={() => selectCompany({ ...company, status: 'active' })}
                             >
@@ -605,7 +610,7 @@ export function CaptureCompletionModal({
               {recovery ? (
                 <RecoveryPanel
                   recovery={recovery}
-                  pending={pending}
+                  pending={interactionPending}
                   recoveryRef={recoveryRef}
                   onDuplicateDecision={(decision) => {
                     if (draft) void complete(draft, { duplicateResolution: decision, freshIdempotencyKey: true })
@@ -620,10 +625,22 @@ export function CaptureCompletionModal({
           )}
         </div>
         <DialogFooter data-probe="capture-completion-footer" className="shrink-0 border-t px-5 py-4">
-          <Button type="button" variant="outline" onClick={requestClose} disabled={pending}>{dismissLabel}</Button>
+          {onRemoveCapture ? (
+            <div className="w-full border-t border-destructive/30 pt-3 sm:mr-auto sm:w-auto sm:border-0 sm:p-0">
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={interactionPending}
+                onClick={() => { if (!interactionPending) onRemoveCapture() }}
+              >
+                Remove Capture
+              </Button>
+            </div>
+          ) : null}
+          <Button type="button" variant="outline" onClick={requestClose} disabled={interactionPending}>{dismissLabel}</Button>
           <Button
             type="button"
-            disabled={pending || !detail || !draft || recovery !== null || recoveryLoading || recoveryFailure}
+            disabled={interactionPending || !detail || !draft || recovery !== null || recoveryLoading || recoveryFailure}
             onClick={() => { if (draft) void complete(draft) }}
           >
             {pending ? 'Completing…' : 'Create Job'}
@@ -658,10 +675,10 @@ export function CaptureCompletionModal({
           <AlertDialogFooter>
             <AlertDialogCancel>Keep editing</AlertDialogCancel>
             <AlertDialogAction
-              disabled={pending}
+              disabled={interactionPending}
               variant="destructive"
               onClick={() => {
-                if (!pending) closeModal()
+                if (!interactionPending) closeModal()
               }}
             >
               Discard changes

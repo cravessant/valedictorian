@@ -42,6 +42,7 @@ interface CaptureRemovalBlocker {
 
 export interface CaptureController {
   readonly modalLayer: ReactElement
+  readonly removalPending: boolean
   readonly openCreate: () => void
   readonly openHistory: (row: CaptureListPresentation) => void
   readonly openRemove: (row: CaptureListPresentation) => void
@@ -51,6 +52,7 @@ export interface CaptureController {
 export function useCaptureController(params: {
   client: Pick<ValedictorianWorkspaceClient, 'captures'> | null
   refresh: () => Promise<void> | void
+  onRemoved?: (captureId: string) => void
 }): CaptureController {
   const [createOpen, setCreateOpen] = useState(false)
   const [createDraft, setCreateDraft] = useState<CaptureDraft>(emptyDraft())
@@ -68,8 +70,10 @@ export function useCaptureController(params: {
   const historyRequest = useRef(0)
   const clientRef = useRef(params.client)
   const refreshRef = useRef(params.refresh)
+  const onRemovedRef = useRef(params.onRemoved)
   clientRef.current = params.client
   refreshRef.current = params.refresh
+  onRemovedRef.current = params.onRemoved
 
   function requireClient(): Pick<ValedictorianWorkspaceClient, 'captures'> {
     if (!clientRef.current) throw new Error('Workspace HTTP client is unavailable.')
@@ -83,6 +87,7 @@ export function useCaptureController(params: {
   }
 
   function openRemove(row: CaptureListPresentation) {
+    if (pending) return
     setRemoveDraft(emptyRemovalDraft())
     setRemoveBlocker(null)
     setOutcome(null)
@@ -210,6 +215,7 @@ export function useCaptureController(params: {
       }
       setRemoveBlocker(null)
       setRemoveTarget(null)
+      onRemovedRef.current?.(row.captureId)
       try {
         await refreshRef.current()
         setOutcome({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
@@ -292,6 +298,7 @@ export function useCaptureController(params: {
   ]
 
   return {
+    removalPending: removeTarget !== null && pending,
     openCreate,
     openHistory,
     openRemove,
