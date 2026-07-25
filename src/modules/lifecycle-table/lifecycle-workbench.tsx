@@ -448,8 +448,11 @@ export function LifecycleWorkbench({
     () => createCaptureConfig({
       onOpenJob: onOpenResource,
       onComplete: (captureId, intent) => setCompletion({ captureId, intent }),
+      onRemove: captureController.openRemove,
+      onRestore: captureController.openRestore,
+      onViewHistory: captureController.openHistory,
     }).table,
-    [onOpenResource],
+    [captureController, onOpenResource],
   )
   const jobTable = useMemo<LifecycleTableConfig<Job>>(
     () => ({

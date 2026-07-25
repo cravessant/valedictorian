@@ -26,6 +26,9 @@ export type CaptureCompletionIntent =
 export function createCaptureConfig(options: {
   readonly onOpenJob?: (jobId: string, focusAnchor: string) => void
   readonly onComplete?: (captureId: string, intent: CaptureCompletionIntent) => void
+  readonly onRemove?: (row: CaptureListPresentation) => void
+  readonly onRestore?: (row: CaptureListPresentation) => void
+  readonly onViewHistory?: (row: CaptureListPresentation) => void
 } = {}): CaptureConfig {
   const table: LifecycleTableConfig<CaptureListPresentation> = {
   caption: 'Captures',
@@ -106,7 +109,29 @@ export function createCaptureConfig(options: {
       },
     },
   ],
-  actions: [],
+  actions: [
+    ...(options.onRemove ? [{
+      key: 'remove-capture',
+      label: 'Remove Capture',
+      destructive: true,
+      modal: true,
+      visible: (row: CaptureListPresentation) => row.readiness !== 'removed',
+      onActivate: options.onRemove,
+    }] : []),
+    ...(options.onRestore ? [{
+      key: 'restore-capture',
+      label: 'Restore Capture',
+      modal: true,
+      visible: (row: CaptureListPresentation) => row.readiness === 'removed',
+      onActivate: options.onRestore,
+    }] : []),
+    ...(options.onViewHistory ? [{
+      key: 'capture-history',
+      label: 'View history',
+      modal: true,
+      onActivate: options.onViewHistory,
+    }] : []),
+  ],
 }
 
   return {

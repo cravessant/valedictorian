@@ -63,6 +63,7 @@ export interface LifecycleRowAction<Row> {
   readonly label: string
   readonly destructive?: boolean
   readonly confirm?: LifecycleRowActionConfirm
+  readonly visible?: (row: Row) => boolean
   readonly disabled?: (row: Row) => boolean
   readonly onActivate: (row: Row) => Promise<void> | void
   /**
@@ -331,7 +332,7 @@ function RowActions<Row>({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" aria-label={`Row actions for ${rowLabel}`}>
-        {actions.map((action) => {
+        {actions.filter((action) => action.visible?.(row) ?? true).map((action) => {
           const disabled = action.disabled?.(row) ?? false
           return (
             <DropdownMenuItem

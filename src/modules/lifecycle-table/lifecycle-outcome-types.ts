@@ -38,7 +38,8 @@ export type LifecycleOutcome =
   | { kind: 'duplicate'; blocker: LifecycleBlocker; choices: ReadonlyArray<DuplicateChoice>; message: string }
   | { kind: 'removal-blocked'; blocker: LifecycleBlocker; choice: DependentRemovalChoice; message: string }
   | { kind: 'removed'; affectedDependentIds: ReadonlyArray<string> }
-  | { kind: 'restored'; dependentLinks: ReadonlyArray<RestoreDependentSummary> }
+  | { kind: 'restored'; dependentLinks: ReadonlyArray<RestoreDependentSummary>; message?: string }
+  | { kind: 'partial-success'; action: 'removed' | 'restored'; refreshError: string }
   | { kind: 'succeeded' }
   | { kind: 'history'; entries: ReadonlyArray<HistoryEntrySummary> }
 

@@ -122,6 +122,7 @@ export function LifecycleOutcomeView({
         data-testid="lifecycle-outcome-restored"
       >
         <p className="font-medium">Restored.</p>
+        {outcome.message ? <p>{outcome.message}</p> : null}
         {outcome.dependentLinks.length > 0 ? (
           <ul className="space-y-0.5">
             {outcome.dependentLinks.map((link) => (
@@ -132,6 +133,21 @@ export function LifecycleOutcomeView({
             ))}
           </ul>
         ) : null}
+      </div>
+    )
+  }
+
+  if (outcome.kind === 'partial-success') {
+    const action = outcome.action === 'removed' ? 'removed' : 'restored'
+    return (
+      <div
+        role="alert"
+        className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive space-y-1"
+        data-testid="lifecycle-outcome-partial-success"
+      >
+        <p className="font-medium">Partial success · Capture {action}.</p>
+        <p>Capture was {action}, but the workbench could not refresh: {outcome.refreshError}</p>
+        <p>Refresh or reconcile the workbench before taking another action.</p>
       </div>
     )
   }

@@ -281,7 +281,7 @@ function makeClient(seed: {
 
 async function openRowMenu(user: ReturnType<typeof userEvent.setup>, rowLabel: string | RegExp) {
   const label = rowLabel instanceof RegExp ? rowLabel.source : rowLabel
-  const trigger = screen.getByRole('button', { name: new RegExp(`Actions for row ${label}`) })
+  const trigger = await screen.findByRole('button', { name: new RegExp(`Actions for row ${label}`) })
   await user.click(trigger)
   return await screen.findByRole('menu', { name: new RegExp(`Row actions for ${label}`) })
 }
@@ -289,12 +289,285 @@ async function openRowMenu(user: ReturnType<typeof userEvent.setup>, rowLabel: s
 describe('LifecycleWorkbench action matrices and modal flows', () => {
   beforeEach(() => { __resetLifecycleActorCounterForTests() })
 
-  it('does not expose the superseded Capture row-action menu', async () => {
-    const { client } = makeClient({ captures: [makeCapture('cap-1')] })
+  it('exposes Remove Capture for active rows and Restore Capture only in Removed', async () => {
+    const user = userEvent.setup()
+    const active = makeCapture('cap-1')
+    const removed = makeCapture('cap-1', { removedAt: '2025-02-01T00:00:00Z' })
+    const { client, captureResolution } = makeClient({ captures: [active] })
+    captureResolution.list.mockImplementation(async (input?: { filter?: string }) => {
+      const items = [makeCapturePresentation(input?.filter === 'removed' ? removed : active)]
+      return {
+        items,
+        pageInfo: { startCursor: 'start', endCursor: 'end', hasPreviousPage: false, hasNextPage: false },
+        totalCount: items.length,
+      }
+    })
     render(<LifecycleWorkbench client={client} />)
-    const table = await screen.findByRole('table', { name: 'Captures' })
-    expect(within(table).queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Promote to job')).not.toBeInTheDocument()
+
+    const activeMenu = await openRowMenu(user, 'jobright')
+    expect(within(activeMenu).getByRole('menuitem', { name: 'Remove Capture' })).toBeInTheDocument()
+    expect(within(activeMenu).queryByRole('menuitem', { name: 'Restore Capture' })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('radio', { name: 'Removed' }))
+    await waitFor(() => expect(captureResolution.list).toHaveBeenLastCalledWith({
+      filter: 'removed', sort: 'observed_desc', limit: 50,
+    }))
+    const removedMenu = await openRowMenu(user, 'jobright')
+    expect(within(removedMenu).getByRole('menuitem', { name: 'Restore Capture' })).toBeInTheDocument()
+    expect(within(removedMenu).queryByRole('menuitem', { name: 'Remove Capture' })).not.toBeInTheDocument()
+  })
+
+  it('cancels Capture removal, then makes one safest-first typed removal call', async () => {
+    const user = userEvent.setup()
+    const capture = makeCapture('cap-1')
+    let captureIsActive = true
+    const { client, captures, captureResolution } = makeClient({ captures: [capture] })
+    captureResolution.list.mockImplementation(async () => {
+      const items = captureIsActive ? [makeCapturePresentation(capture)] : []
+      return {
+        items,
+        pageInfo: {
+          startCursor: items.length > 0 ? 'start' : null,
+          endCursor: items.length > 0 ? 'end' : null,
+          hasPreviousPage: false,
+          hasNextPage: false,
+        },
+        totalCount: items.length,
+      }
+    })
+    captures.remove.mockImplementation(async () => {
+      captureIsActive = false
+      return {
+        status: 'removed' as const,
+        id: 'cap-1',
+        choice: 'reject_if_dependents' as const,
+        removedAt: '2025-02-01T00:00:00Z',
+        affectedDependentIds: [],
+        audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-01T00:00:00Z' },
+      }
+    })
+    render(<LifecycleWorkbench client={client} />)
+
+    let menu = await openRowMenu(user, 'jobright')
+    await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    expect(dialog).toHaveTextContent('First, check whether active Jobs depend on this Capture.')
+    expect(within(dialog).queryByRole('combobox', { name: 'Removal option' })).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(captures.remove).not.toHaveBeenCalled()
+
+    menu = await openRowMenu(user, 'jobright')
+    await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
+    const reopened = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    await user.click(within(reopened).getByRole('button', { name: 'Check and remove' }))
+    expect(await screen.findByText('Rationale is required.')).toBeInTheDocument()
+    expect(captures.remove).not.toHaveBeenCalled()
+
+    await user.type(within(reopened).getByRole('textbox', { name: 'Rationale' }), 'Duplicate intake.')
+    await user.dblClick(within(reopened).getByRole('button', { name: 'Check and remove' }))
+    await waitFor(() => expect(captures.remove).toHaveBeenCalledTimes(1))
+    expect(captures.remove).toHaveBeenCalledWith({
+      id: 'cap-1',
+      choice: 'reject_if_dependents',
+      actor: DESKTOP_USER_ACTOR,
+      rationale: 'Duplicate intake.',
+    })
+    await waitFor(() => expect(captureResolution.list).toHaveBeenLastCalledWith({
+      filter: 'all', sort: 'observed_desc', limit: 50,
+    }))
+    expect(await screen.findByText('No captures')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Remove Capture' })).not.toBeInTheDocument()
+    expect(await screen.findByTestId('lifecycle-outcome-removed')).toHaveTextContent('Removed.')
+  })
+
+  it('keeps Capture removal context on a dependency blocker and retries only supported choices', async () => {
+    const user = userEvent.setup()
+    const { client, captures } = makeClient({ captures: [makeCapture('cap-1')] })
+    captures.remove.mockResolvedValue({
+      status: 'blocked',
+      id: 'cap-1',
+      blocker: { code: 'impossible_state', message: 'Linked Jobs require a choice.' },
+      dependentIds: ['job-1', 'job-2'],
+      supportedChoices: [
+        'preserve_historical_lineage',
+        'unlink_dependents',
+        'cascade_tombstone',
+      ],
+    })
+    render(<LifecycleWorkbench client={client} />)
+
+    const menu = await openRowMenu(user, 'jobright')
+    await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    await user.type(within(dialog).getByRole('textbox', { name: 'Rationale' }), 'Remove duplicate lead.')
+    await user.click(within(dialog).getByRole('button', { name: 'Check and remove' }))
+
+    const blocker = await within(dialog).findByRole('alert')
+    expect(blocker).toHaveTextContent('job-1')
+    expect(blocker).toHaveTextContent('job-2')
+    expect(blocker).toHaveTextContent('active Jobs remain linked to this Capture')
+    expect(blocker).toHaveTextContent('permanently remove Capture→Job evidence references')
+    expect(blocker).toHaveTextContent('tombstone this Capture and every linked downstream Job, Opportunity, and Application resource')
+    const options = Array.from(within(dialog).getByRole<HTMLSelectElement>('combobox', {
+      name: 'Removal option',
+    }).options).map((option) => option.value)
+    expect(options).toEqual(['', 'preserve_historical_lineage', 'unlink_dependents', 'cascade_tombstone'])
+
+    for (const choice of options.slice(1)) {
+      await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Removal option' }), choice)
+      await user.click(within(dialog).getByRole('button', { name: 'Confirm removal' }))
+    }
+
+    await waitFor(() => expect(captures.remove).toHaveBeenCalledTimes(4))
+    expect(captures.remove.mock.calls.map(([input]) => input.choice)).toEqual([
+      'reject_if_dependents',
+      'preserve_historical_lineage',
+      'unlink_dependents',
+      'cascade_tombstone',
+    ])
+    expect(screen.getByRole('dialog', { name: 'Remove Capture' })).toBeInTheDocument()
+    expect(screen.queryByTestId('lifecycle-outcome-removed')).not.toBeInTheDocument()
+  })
+
+  it('retains Capture removal context and reports failures without a success claim', async () => {
+    const user = userEvent.setup()
+    const { client, captures } = makeClient({ captures: [makeCapture('cap-1')] })
+    captures.remove.mockRejectedValue(new Error('Capture removal is unavailable.'))
+    render(<LifecycleWorkbench client={client} />)
+
+    const menu = await openRowMenu(user, 'jobright')
+    await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    await user.type(within(dialog).getByRole('textbox', { name: 'Rationale' }), 'No longer relevant.')
+    await user.click(within(dialog).getByRole('button', { name: 'Check and remove' }))
+
+    expect(await screen.findByTestId('lifecycle-outcome-error')).toHaveTextContent('Capture removal is unavailable.')
+    expect(screen.getByRole('dialog', { name: 'Remove Capture' })).toBeInTheDocument()
+    expect(screen.queryByTestId('lifecycle-outcome-removed')).not.toBeInTheDocument()
+  })
+
+  it('closes a committed Capture removal and reports partial success when its refresh fails', async () => {
+    const user = userEvent.setup()
+    const { client, captures, captureResolution } = makeClient({ captures: [makeCapture('cap-1')] })
+    render(<LifecycleWorkbench client={client} />)
+
+    const menu = await openRowMenu(user, 'jobright')
+    captureResolution.list.mockRejectedValueOnce(new Error('remove refresh unavailable'))
+    await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Remove Capture' })
+    await user.type(within(dialog).getByRole('textbox', { name: 'Rationale' }), 'Remove duplicate lead.')
+    await user.dblClick(within(dialog).getByRole('button', { name: 'Check and remove' }))
+
+    await waitFor(() => expect(captures.remove).toHaveBeenCalledTimes(1))
+    const outcome = await screen.findByTestId('lifecycle-outcome-partial-success')
+    expect(outcome).toHaveTextContent('Capture was removed, but the workbench could not refresh: remove refresh unavailable')
+    expect(outcome).toHaveTextContent('Refresh or reconcile the workbench before taking another action.')
+    expect(screen.queryByRole('dialog', { name: 'Remove Capture' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lifecycle-outcome-removed')).not.toBeInTheDocument()
+    expect(captures.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('restores only the target from Removed, refreshes that projection, and explains where it went', async () => {
+    const user = userEvent.setup()
+    const removed = makeCapture('cap-removed', { removedAt: '2025-02-01T00:00:00Z' })
+    const { client, captures, captureResolution } = makeClient({ captures: [removed] })
+    let restored = false
+    captureResolution.list.mockImplementation(async (input?: { filter?: string }) => {
+      const items = input?.filter === 'removed' && !restored ? [makeCapturePresentation(removed)] : []
+      return {
+        items,
+        pageInfo: { startCursor: null, endCursor: null, hasPreviousPage: false, hasNextPage: false },
+        totalCount: items.length,
+      }
+    })
+    captures.restore.mockImplementation(async () => {
+      restored = true
+      return {
+        status: 'restored' as const,
+        id: 'cap-removed',
+        restoredAt: '2025-02-02T00:00:00Z',
+        dependentLinks: [{ dependentId: 'job-removed', state: 'remained_tombstoned' as const }],
+        audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-02T00:00:00Z' },
+      }
+    })
+    render(<LifecycleWorkbench client={client} />)
+
+    await user.click(await screen.findByRole('radio', { name: 'Removed' }))
+    const menu = await openRowMenu(user, 'jobright')
+    await user.click(within(menu).getByRole('menuitem', { name: 'Restore Capture' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Restore Capture' })
+    expect(dialog).toHaveTextContent('This restores only the Capture, not any downstream resources.')
+    await user.click(within(dialog).getByRole('button', { name: 'Restore Capture' }))
+    expect(await screen.findByText('Rationale is required.')).toBeInTheDocument()
+    expect(captures.restore).not.toHaveBeenCalled()
+
+    await user.type(within(dialog).getByRole('textbox', { name: 'Rationale' }), 'Review again.')
+    await user.dblClick(within(dialog).getByRole('button', { name: 'Restore Capture' }))
+    await waitFor(() => expect(captures.restore).toHaveBeenCalledTimes(1))
+    expect(captures.restore).toHaveBeenCalledWith({
+      id: 'cap-removed', actor: DESKTOP_USER_ACTOR, rationale: 'Review again.',
+    })
+    await waitFor(() => expect(captureResolution.list).toHaveBeenLastCalledWith({
+      filter: 'removed', sort: 'observed_desc', limit: 50,
+    }))
+    expect(await screen.findByText('No captures')).toBeInTheDocument()
+    const status = await screen.findByTestId('lifecycle-outcome-restored')
+    expect(status).toHaveTextContent('Only this Capture was restored.')
+    expect(status).toHaveTextContent('Downstream resources are not restored automatically.')
+    expect(status).toHaveTextContent('available in All and no longer appears in Removed')
+    expect(status).toHaveTextContent('job-removed')
+  })
+
+  it('closes a committed Capture restore and reports partial success when its refresh fails', async () => {
+    const user = userEvent.setup()
+    const removed = makeCapture('cap-removed', { removedAt: '2025-02-01T00:00:00Z' })
+    const { client, captures, captureResolution } = makeClient({ captures: [removed] })
+    captures.restore.mockResolvedValue({
+      status: 'restored',
+      id: 'cap-removed',
+      restoredAt: '2025-02-02T00:00:00Z',
+      dependentLinks: [],
+      audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-02T00:00:00Z' },
+    })
+    render(<LifecycleWorkbench client={client} />)
+
+    await user.click(await screen.findByRole('radio', { name: 'Removed' }))
+    const menu = await openRowMenu(user, 'jobright')
+    captureResolution.list.mockRejectedValueOnce(new Error('restore refresh unavailable'))
+    await user.click(within(menu).getByRole('menuitem', { name: 'Restore Capture' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Restore Capture' })
+    await user.type(within(dialog).getByRole('textbox', { name: 'Rationale' }), 'Review again.')
+    await user.dblClick(within(dialog).getByRole('button', { name: 'Restore Capture' }))
+
+    await waitFor(() => expect(captures.restore).toHaveBeenCalledTimes(1))
+    const outcome = await screen.findByTestId('lifecycle-outcome-partial-success')
+    expect(outcome).toHaveTextContent('Capture was restored, but the workbench could not refresh: restore refresh unavailable')
+    expect(outcome).toHaveTextContent('Refresh or reconcile the workbench before taking another action.')
+    expect(screen.queryByRole('dialog', { name: 'Restore Capture' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lifecycle-outcome-restored')).not.toBeInTheDocument()
+    expect(captures.restore).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps removed and restored revisions visible in Capture history without claiming rationale storage', async () => {
+    const user = userEvent.setup()
+    const { client, captures } = makeClient({ captures: [makeCapture('cap-1')] })
+    captures.history.mockResolvedValue({
+      items: [
+        { revision: 2, kind: 'removed', audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-01T00:00:00Z' } },
+        { revision: 3, kind: 'restored', audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-02T00:00:00Z' } },
+      ],
+      limit: 50,
+      nextCursor: null,
+    })
+    render(<LifecycleWorkbench client={client} />)
+
+    const menu = await openRowMenu(user, 'jobright')
+    await user.click(within(menu).getByRole('menuitem', { name: 'View history' }))
+    const dialog = await screen.findByRole('dialog', { name: 'History · cap-1' })
+    expect(await within(dialog).findByText(/r2 · removed/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/r3 · restored/)).toBeInTheDocument()
+    expect(dialog).not.toHaveTextContent(/rationale/i)
   })
 
   it('Add Capture opens a modal, submits with the typed CreateCaptureInput, and awaits refresh before success', async () => {
