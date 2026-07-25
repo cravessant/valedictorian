@@ -362,7 +362,7 @@ describe('LifecycleWorkbench', () => {
     await user.click(await screen.findByRole('button', { name: 'Resolve duplicate Job' }))
     expect(await screen.findByLabelText('Job facts company')).toHaveValue('Acme')
     expect(get).toHaveBeenLastCalledWith('capture-duplicate')
-    await user.click(screen.getByRole('button', { name: 'Discard' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
     await user.click(screen.getByRole('button', { name: 'Resolve company assignment' }))

@@ -9,6 +9,16 @@ import type {
   ManualCompanyResolution,
   ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,21 +33,25 @@ import { JobCompanyReassignmentModal } from '@/modules/workspace-resources/JobCo
 import type { CaptureCompletionIntent } from './configs/capture-config'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from './lifecycle-actor'
 
-interface SelectedCompany {
+export interface CaptureCompletionCompanySelection {
   readonly companyId: CompanySearchResult['companyId']
   readonly displayName: string
   readonly revision: number
   readonly status: 'active' | 'archived'
 }
 
-interface Draft {
+export interface CaptureCompletionPersistedDraft {
   readonly companyName: string
   readonly companyDisplayName: string
-  readonly companyDisplayNameEdited: boolean
   readonly companyMode: 'create_local' | 'use_local'
-  readonly selectedCompany: SelectedCompany | null
+  readonly selectedCompany: CaptureCompletionCompanySelection | null
   readonly roleTitle: string
   readonly destinationUrl: string
+}
+
+interface Draft extends CaptureCompletionPersistedDraft {
+  /** UI-only auto-sync state; it is not part of the persisted completion. */
+  readonly companyDisplayNameEdited: boolean
 }
 
 type DuplicateDecision = NonNullable<CompleteCaptureManuallyInput['duplicateResolution']>
@@ -54,7 +68,7 @@ type Recovery =
     readonly kind: 'assignment'
     readonly allowedRecovery: AssignmentBlocker['allowedRecovery']
     readonly assignment: JobCompanyAssignmentPresentation
-    readonly selectedCompany: SelectedCompany
+    readonly selectedCompany: CaptureCompletionCompanySelection
   }
   | { readonly kind: 'stale'; readonly result: Extract<CompleteCaptureManuallyResult, { status: 'blocked' }> }
 
@@ -85,6 +99,7 @@ export function CaptureCompletionModal({
   const [detail, setDetail] = useState<CaptureCompletionDetail | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [initialDraft, setInitialDraft] = useState<Draft | null>(null)
+  const [discardConfirmationOpen, setDiscardConfirmationOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [recovery, setRecovery] = useState<Recovery | null>(null)
@@ -92,6 +107,8 @@ export function CaptureCompletionModal({
   const [recoveryFailure, setRecoveryFailure] = useState(false)
   const [reassignment, setReassignment] = useState<JobCompanyAssignmentPresentation | null>(null)
   const [keepPersistedRecovery, setKeepPersistedRecovery] = useState(false)
+  // Lookup controls are transient UI state: neither the query nor this filter
+  // is persisted by completion or included in the canonical dirty projection.
   const [companyQuery, setCompanyQuery] = useState('')
   const [includeArchived, setIncludeArchived] = useState(false)
   const [companyMatches, setCompanyMatches] = useState<readonly CompanySearchResult[]>([])
@@ -109,12 +126,15 @@ export function CaptureCompletionModal({
     setDetail(null)
     setDraft(null)
     setInitialDraft(null)
+    setDiscardConfirmationOpen(false)
     setMessage(null)
     setRecovery(null)
     setRecoveryLoading(Boolean(persistedRecoveryIntent))
     setRecoveryFailure(false)
     setReassignment(null)
     setKeepPersistedRecovery(Boolean(persistedRecoveryIntent))
+    setCompanyQuery('')
+    setIncludeArchived(false)
     setCompanyMatches([])
     setCompanyPreviews([])
     setCompanyMessage(null)
@@ -197,7 +217,7 @@ export function CaptureCompletionModal({
     if (recovery) recoveryRef.current?.focus()
   }, [recovery])
 
-  const selectCompany = useCallback((company: SelectedCompany) => {
+  const selectCompany = useCallback((company: CaptureCompletionCompanySelection) => {
     setDraft((current) => current ? {
       ...current,
       companyMode: 'use_local',
@@ -205,11 +225,23 @@ export function CaptureCompletionModal({
     } : current)
   }, [])
 
+  const draftDirty = draft !== null
+    && initialDraft !== null
+    && !samePersistedCaptureCompletionDraft(draft, initialDraft)
+  const dismissLabel = draftDirty ? 'Discard changes' : 'Cancel'
+
+  function closeModal() {
+    setDiscardConfirmationOpen(false)
+    onClose()
+  }
+
   function requestClose() {
     if (pending) return
-    if (draft && initialDraft && !sameDraft(draft, initialDraft)
-      && !window.confirm('Discard the unsaved completion details?')) return
-    onClose()
+    if (draftDirty) {
+      setDiscardConfirmationOpen(true)
+      return
+    }
+    closeModal()
   }
 
   async function refreshGuards() {
@@ -373,11 +405,20 @@ export function CaptureCompletionModal({
   const selectedCompanyStatus = selectedCompany?.status === 'archived' ? 'archived' : 'active'
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) requestClose() }}>
+    <>
+      <Dialog open={open} onOpenChange={(next) => { if (!next) requestClose() }}>
       <DialogContent
         showCloseButton={!pending}
         data-probe="capture-completion-shell"
         className="flex h-[100dvh] w-full min-w-0 max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[90dvh] sm:max-w-[72rem] sm:rounded-md"
+        onEscapeKeyDown={(event) => {
+          event.preventDefault()
+          requestClose()
+        }}
+        onPointerDownOutside={(event) => {
+          event.preventDefault()
+          requestClose()
+        }}
       >
         <DialogHeader data-probe="capture-completion-header" className="shrink-0 border-b px-5 py-5 pr-14">
           <DialogTitle>Complete Capture into a Job</DialogTitle>
@@ -579,7 +620,7 @@ export function CaptureCompletionModal({
           )}
         </div>
         <DialogFooter data-probe="capture-completion-footer" className="shrink-0 border-t px-5 py-4">
-          <Button type="button" variant="outline" onClick={requestClose} disabled={pending}>Discard</Button>
+          <Button type="button" variant="outline" onClick={requestClose} disabled={pending}>{dismissLabel}</Button>
           <Button
             type="button"
             disabled={pending || !detail || !draft || recovery !== null || recoveryLoading || recoveryFailure}
@@ -599,7 +640,36 @@ export function CaptureCompletionModal({
           onClose={() => setReassignment(null)}
         />
       ) : null}
-    </Dialog>
+      </Dialog>
+
+      <AlertDialog
+        open={discardConfirmationOpen}
+        onOpenChange={(next) => {
+          if (!next) setDiscardConfirmationOpen(false)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Closing this Capture completion will discard the completion details you changed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              variant="destructive"
+              onClick={() => {
+                if (!pending) closeModal()
+              }}
+            >
+              Discard changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 
@@ -712,10 +782,19 @@ function draftFromDetail(detail: CaptureCompletionDetail): Draft {
   }
 }
 
-function jobFactsFromDraft(detail: CaptureCompletionDetail, draft: Draft) {
+function normalizedCompletionJobFacts(draft: CaptureCompletionPersistedDraft) {
   return {
     companyName: draft.companyName.trim(),
     roleTitle: draft.roleTitle.trim(),
+    destinationUrl: draft.destinationUrl,
+  }
+}
+
+function jobFactsFromDraft(detail: CaptureCompletionDetail, draft: Draft) {
+  const normalized = normalizedCompletionJobFacts(draft)
+  return {
+    companyName: normalized.companyName,
+    roleTitle: normalized.roleTitle,
     sourceName: detail.jobDefaults.sourceName ?? detail.sourceSummary.displayName,
     roleKind: detail.jobDefaults.roleKind ?? 'other',
     term: detail.jobDefaults.term ?? null,
@@ -729,21 +808,50 @@ function jobFactsFromDraft(detail: CaptureCompletionDetail, draft: Draft) {
     seniority: detail.jobDefaults.seniority ?? 'unknown',
     compensation: detail.jobDefaults.compensation ?? null,
     postedAt: detail.jobDefaults.postedAt ?? null,
-    destination: { class: 'employer_or_ats' as const, url: draft.destinationUrl },
+    destination: { class: 'employer_or_ats' as const, url: normalized.destinationUrl },
   }
 }
 
-function companyResolutionFromDraft(draft: Draft): ManualCompanyResolution | null {
+function normalizedCreateLocalCompanyDisplayName(draft: CaptureCompletionPersistedDraft): string {
+  return draft.companyDisplayName.trim()
+}
+
+function selectedCompanyResolution(
+  company: CaptureCompletionCompanySelection,
+) {
+  return {
+    companyId: company.companyId,
+    expectedCompanyRevision: company.revision,
+    restoreIfArchived: company.status === 'archived',
+  }
+}
+
+function companyResolutionFromDraft(
+  draft: CaptureCompletionPersistedDraft,
+): ManualCompanyResolution | null {
   if (draft.companyMode === 'create_local') {
-    const displayName = draft.companyDisplayName.trim()
+    const displayName = normalizedCreateLocalCompanyDisplayName(draft)
     return displayName ? { action: 'create_local', displayName } : null
   }
   if (!draft.selectedCompany) return null
   return {
     action: 'use_local',
-    companyId: draft.selectedCompany.companyId,
-    expectedCompanyRevision: draft.selectedCompany.revision,
-    restoreIfArchived: draft.selectedCompany.status === 'archived',
+    ...selectedCompanyResolution(draft.selectedCompany),
+  }
+}
+
+function persistedCompanyActionProjection(draft: CaptureCompletionPersistedDraft) {
+  if (draft.companyMode === 'create_local') {
+    return {
+      action: 'create_local' as const,
+      companyDisplayName: normalizedCreateLocalCompanyDisplayName(draft),
+    }
+  }
+  return {
+    action: 'use_local' as const,
+    selectedCompany: draft.selectedCompany
+      ? selectedCompanyResolution(draft.selectedCompany)
+      : null,
   }
 }
 
@@ -763,16 +871,29 @@ function validateDraft(draft: Draft): string | null {
   return null
 }
 
-function sameDraft(left: Draft, right: Draft): boolean {
-  return left.companyName === right.companyName
-    && left.companyDisplayName === right.companyDisplayName
-    && left.companyDisplayNameEdited === right.companyDisplayNameEdited
-    && left.companyMode === right.companyMode
-    && left.roleTitle === right.roleTitle
-    && left.destinationUrl === right.destinationUrl
-    && left.selectedCompany?.companyId === right.selectedCompany?.companyId
-    && left.selectedCompany?.revision === right.selectedCompany?.revision
-    && left.selectedCompany?.status === right.selectedCompany?.status
+/**
+ * The canonical completion payload state used for both submission and dirty
+ * comparison. Search UI and display-name edit history deliberately do not
+ * appear here. Text fields and selected Company guards use the same
+ * normalization as submission. An incomplete Company action stays explicit so
+ * changing modes is still a dirty edit before the action becomes submit-ready.
+ */
+export function persistedCaptureCompletionDraftProjection(
+  draft: CaptureCompletionPersistedDraft,
+) {
+  const jobFacts = normalizedCompletionJobFacts(draft)
+  return {
+    jobFacts,
+    companyAction: persistedCompanyActionProjection(draft),
+  }
+}
+
+export function samePersistedCaptureCompletionDraft(
+  left: CaptureCompletionPersistedDraft,
+  right: CaptureCompletionPersistedDraft,
+): boolean {
+  return JSON.stringify(persistedCaptureCompletionDraftProjection(left))
+    === JSON.stringify(persistedCaptureCompletionDraftProjection(right))
 }
 
 function staleGuardLabel(guard: Extract<Extract<CompleteCaptureManuallyResult, { status: 'blocked' }>['failure'], { kind: 'stale_guard' }>['recovery']['guards'][number]): string {
@@ -860,7 +981,7 @@ async function hydrateAssignmentRecovery(
 async function currentAssignmentCompany(
   client: CompletionClient,
   assignment: JobCompanyAssignmentPresentation,
-): Promise<SelectedCompany> {
+): Promise<CaptureCompletionCompanySelection> {
   const lookup = await client.companies.lookup(assignment.workspaceCompany.companyId)
   const company = lookup.requested
   if (company.id !== assignment.workspaceCompany.companyId || company.status === 'merged') {

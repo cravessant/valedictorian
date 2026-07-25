@@ -132,6 +132,54 @@ function renderModal(
   return { onClose, onCreated, onViewJob }
 }
 
+function captureDialog() {
+  return screen.getByRole('dialog', { name: 'Complete Capture into a Job' })
+}
+
+function captureCloseControl() {
+  const close = captureDialog().querySelector<HTMLElement>('[data-slot="dialog-close"]')
+  if (!close) throw new Error('Capture completion needs a top-right close control.')
+  return close
+}
+
+function dialogOverlay() {
+  const overlay = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')
+  if (!overlay) throw new Error('Capture completion needs a dialog overlay.')
+  return overlay
+}
+
+const captureDismissalActions: ReadonlyArray<
+  (user: ReturnType<typeof userEvent.setup>, footerLabel: 'Cancel' | 'Discard changes') => Promise<void>
+> = [
+  async (user) => user.click(captureCloseControl()),
+  async (user) => user.click(dialogOverlay()),
+  async (user) => user.keyboard('{Escape}'),
+  async (user, footerLabel) => user.click(screen.getByRole('button', { name: footerLabel })),
+]
+
+async function closeCleanCompletionDraft(
+  user: ReturnType<typeof userEvent.setup>,
+  onClose: ReturnType<typeof vi.fn>,
+) {
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  expect(onClose).toHaveBeenCalledOnce()
+}
+
+async function searchExistingCompanies(
+  user: ReturnType<typeof userEvent.setup>,
+  search: ReturnType<typeof vi.fn>,
+) {
+  await user.click(screen.getByLabelText('Use an existing local Company'))
+  await user.type(screen.getByLabelText('Search active local Companies'), 'Example')
+  await waitFor(() => expect(search).toHaveBeenLastCalledWith({
+    query: 'Example',
+    scope: 'active',
+    limit: 8,
+  }))
+}
+
 describe('CaptureCompletionModal', () => {
   it('keeps source and resolved destination visible while raw evidence remains collapsed', async () => {
     const { client } = makeClient()
@@ -156,14 +204,18 @@ describe('CaptureCompletionModal', () => {
     expect(document.querySelector('[data-probe="capture-completion-raw-evidence"]')).toHaveClass('max-w-full', 'overflow-x-auto')
   })
 
-  it('keeps the initial field focused and closes a clean dialog with Escape', async () => {
-    const user = userEvent.setup()
-    const { client } = makeClient()
-    const { onClose } = renderModal(client)
+  it('uses Cancel and closes a clean dialog from every dismissal affordance', async () => {
+    for (const exit of captureDismissalActions) {
+      cleanup()
+      const user = userEvent.setup()
+      const { client } = makeClient()
+      const { onClose } = renderModal(client)
 
-    expect(await screen.findByLabelText('Job facts company')).toHaveFocus()
-    await user.keyboard('{Escape}')
-    expect(onClose).toHaveBeenCalledOnce()
+      expect(await screen.findByLabelText('Job facts company')).toHaveFocus()
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+      await exit(user, 'Cancel')
+      expect(onClose).toHaveBeenCalledOnce()
+    }
   })
 
   it('submits explicit create-local, active local, and archived local Company choices', async () => {
@@ -465,18 +517,132 @@ describe('CaptureCompletionModal', () => {
     expect(complete.mock.calls[1]?.[0].idempotencyKey).not.toBe(complete.mock.calls[0]?.[0].idempotencyKey)
   })
 
-  it('warns before discarding dirty draft state', async () => {
+  it('uses the same in-app confirmation for every dirty dismissal affordance', async () => {
+    for (const exit of captureDismissalActions) {
+      cleanup()
+      const user = userEvent.setup()
+      const { client } = makeClient()
+      const { onClose } = renderModal(client)
+
+      await user.type(await screen.findByLabelText('Role title'), ' updated')
+      expect(screen.getByRole('button', { name: 'Discard changes' })).toBeInTheDocument()
+      await exit(user, 'Discard changes')
+
+      const confirmation = await screen.findByRole('alertdialog', {
+        name: 'Discard unsaved changes?',
+      })
+      expect(within(confirmation).getByRole('button', { name: 'Keep editing' })).toBeInTheDocument()
+      expect(onClose).not.toHaveBeenCalled()
+      await user.click(within(confirmation).getByRole('button', { name: 'Keep editing' }))
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+      expect(onClose).not.toHaveBeenCalled()
+    }
+  })
+
+  it('discards a confirmed dirty completion draft without using window confirmation', async () => {
     const user = userEvent.setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const confirm = vi.spyOn(window, 'confirm')
     const { client } = makeClient()
     const { onClose } = renderModal(client)
 
     await user.type(await screen.findByLabelText('Role title'), ' updated')
-    await user.click(screen.getByRole('button', { name: 'Discard' }))
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }))
+    const confirmation = await screen.findByRole('alertdialog', {
+      name: 'Discard unsaved changes?',
+    })
+    await user.click(within(confirmation).getByRole('button', { name: 'Discard changes' }))
 
-    expect(confirm).toHaveBeenCalledWith('Discard the unsaved completion details?')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('returns to Cancel after a direct display-name edit is visibly reverted', async () => {
+    const user = userEvent.setup()
+    const { client } = makeClient()
+    const { onClose } = renderModal(client)
+
+    const displayName = await screen.findByLabelText('Local Company display name')
+    await user.clear(displayName)
+    await user.type(displayName, 'Example Updated')
+    expect(screen.getByRole('button', { name: 'Discard changes' })).toBeInTheDocument()
+    await user.clear(displayName)
+    await user.type(displayName, 'Example')
+
+    await closeCleanCompletionDraft(user, onClose)
+  })
+
+  it('treats whitespace-equivalent completion text as clean after payload normalization', async () => {
+    const user = userEvent.setup()
+    const { client } = makeClient()
+    const { onClose } = renderModal(client)
+
+    const companyName = await screen.findByLabelText('Job facts company')
+    await user.clear(companyName)
+    await user.type(companyName, ' Example ')
+    const roleTitle = screen.getByLabelText('Role title')
+    await user.clear(roleTitle)
+    await user.type(roleTitle, ' Engineer ')
+
+    expect(screen.getByLabelText('Local Company display name')).toHaveValue(' Example ')
+    await closeCleanCompletionDraft(user, onClose)
+  })
+
+  it('treats Company search query and include-archived as transient UI state', async () => {
+    const user = userEvent.setup()
+    const { client, search } = makeClient()
+    const { onClose } = renderModal(client)
+
+    await screen.findByLabelText('Job facts company')
+    await searchExistingCompanies(user, search)
+    await user.click(screen.getByLabelText('Include archived Companies for explicit recovery'))
+    await waitFor(() => expect(search).toHaveBeenLastCalledWith({
+      query: 'Example',
+      scope: 'active_and_archived',
+      limit: 8,
+    }))
+    await user.click(screen.getByLabelText('Create a local Company inside this Job completion'))
+
+    await closeCleanCompletionDraft(user, onClose)
+  })
+
+  it('treats an explicit local Company selection as persisted completion state', async () => {
+    const user = userEvent.setup()
+    const { client, search } = makeClient()
+    renderModal(client)
+
+    await screen.findByLabelText('Job facts company')
+    await searchExistingCompanies(user, search)
+    const matches = await screen.findByRole('list', { name: 'Company search results' })
+    await user.click(within(matches).getAllByRole('button', { name: 'Use' })[0]!)
+
+    expect(screen.getByRole('button', { name: 'Discard changes' })).toBeInTheDocument()
+  })
+
+  it('blocks every dismissal path while completion is pending', async () => {
+    const user = userEvent.setup()
+    let resolveCompletion: ((result: unknown) => void) | undefined
+    const complete = vi.fn(() => new Promise((resolve) => {
+      resolveCompletion = resolve
+    }))
+    const { client } = makeClient({ complete })
+    const { onClose } = renderModal(client)
+
+    await user.click(await screen.findByRole('button', { name: 'Create Job' }))
+    expect(await screen.findByRole('button', { name: 'Completing…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(captureDialog().querySelector('[data-slot="dialog-close"]')).not.toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    await user.click(dialogOverlay())
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(onClose).not.toHaveBeenCalled()
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    resolveCompletion?.({
+      status: 'blocked',
+      failure: { kind: 'lifecycle_failure', blocker: { code: 'invalid_input', message: 'Try again.' } },
+    })
+    expect(await screen.findByText('Try again.')).toBeInTheDocument()
   })
 
   it('waits for parent refresh before closing and exposes the View Job toast action', async () => {
