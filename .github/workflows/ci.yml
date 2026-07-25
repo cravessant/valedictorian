@@ -138,6 +138,7 @@ jobs:
         env:
           NODE_OPTIONS: --disable-warning=DEP0176 --disable-warning=DEP0205
           NODE_COMPILE_CACHE: ${{ github.workspace }}/valedictorian-app/.node-compile-cache
+          VALEDICTORIAN_WINDOW_TESTS: "1"
 
   dev-proof:
     name: CLI/UI Development Proof

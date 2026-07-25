@@ -46,6 +46,7 @@ Common commands:
 | `pnpm dev` | Run against your selected workspace |
 | `pnpm run dev:isolated` | Run with a blank, disposable workspace |
 | `pnpm test` | Run the test suite |
+| `pnpm run test:window` | Run tests that open real app windows |
 | `pnpm typecheck` | Check TypeScript |
 | `pnpm lint` | Run repository checks |
 | `pnpm run validate:isolated` | Open a disposable workspace with validation fixtures |

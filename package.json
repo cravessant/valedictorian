@@ -31,6 +31,7 @@
     "smoke:pglite-package": "node scripts/run-packaged-pglite-smoke.mjs",
     "preview": "vite preview",
     "test": "NODE_OPTIONS=\"--disable-warning=DEP0176 --disable-warning=DEP0205\" vitest run",
+    "test:window": "VALEDICTORIAN_WINDOW_TESTS=1 pnpm test -- scripts/isolated-validation.command.test.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",

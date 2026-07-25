@@ -22,7 +22,10 @@ afterAll(() => {
   process.off('SIGTERM', recordSignal)
 })
 
-describe.skipIf(process.platform === 'win32')('isolated validation public command lifecycle', () => {
+const skipWindowTests = process.platform === 'win32'
+  || process.env.VALEDICTORIAN_WINDOW_TESTS !== '1'
+
+describe.skipIf(skipWindowTests)('isolated validation public command lifecycle', () => {
   it('runs the public-command matrix in a reaped detached proof session', async () => {
     const launch = isolatedValidationMatrixLaunch()
     const matrix = spawn(launch.command, launch.args, {
