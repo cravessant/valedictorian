@@ -7,6 +7,9 @@ import path from 'node:path'
 import { runPackagedManualWorkflowProof } from './packaged-manual-workflow-proof'
 import { runPackagedPgliteSmoke } from './pglite-packaged-smoke'
 import {
+  runIsolatedCaptureCompletionLayoutProof as runCaptureCompletionLayoutProof,
+} from './capture-completion-layout-proof'
+import {
   captureRendererConsole,
   createElectronNativeUiDriver,
   runElectronNativeUiProof,
@@ -325,6 +328,15 @@ function createMainWindow() {
             }
             if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_DEV_PROOF === '1') {
               void runIsolatedCliUiDevProof(
+                mainWindow,
+                validationManifest,
+                validationWorkspace,
+                reportValidationTerminalState,
+              )
+              return
+            }
+            if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_LAYOUT_PROOF === '1') {
+              void runIsolatedCaptureCompletionLayoutProof(
                 mainWindow,
                 validationManifest,
                 validationWorkspace,
@@ -850,6 +862,28 @@ async function runIsolatedElectronNativeUiProof(
     app.exit(1)
   } catch (error) {
     console.error('Electron native UI proof failed.', error)
+    reportTerminalState('child_failure')
+    app.exit(1)
+  }
+}
+
+async function runIsolatedCaptureCompletionLayoutProof(
+  window: BrowserWindow,
+  manifest: IsolatedValidationManifest | null,
+  workspace: WorkspaceSummary,
+  reportTerminalState: (outcome: 'child_failure' | 'completed') => void,
+) {
+  try {
+    const proof = await runCaptureCompletionLayoutProof({ manifest, window, workspace })
+    if (proof.outcome === 'completed') {
+      reportTerminalState('completed')
+      window.close()
+      return
+    }
+    reportTerminalState('child_failure')
+    app.exit(1)
+  } catch (error) {
+    console.error('Capture completion dialog layout proof failed.', error)
     reportTerminalState('child_failure')
     app.exit(1)
   }

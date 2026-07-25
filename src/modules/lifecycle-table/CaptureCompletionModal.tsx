@@ -376,23 +376,29 @@ export function CaptureCompletionModal({
     <Dialog open={open} onOpenChange={(next) => { if (!next) requestClose() }}>
       <DialogContent
         showCloseButton={!pending}
-        className="h-[100dvh] w-[100vw] max-w-none overflow-y-auto rounded-none p-5 sm:h-auto sm:max-h-[90dvh] sm:max-w-[72rem] sm:rounded-md"
+        data-probe="capture-completion-shell"
+        className="flex h-[100dvh] w-full min-w-0 max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[90dvh] sm:max-w-[72rem] sm:rounded-md"
       >
-        <DialogHeader>
+        <DialogHeader data-probe="capture-completion-header" className="shrink-0 border-b px-5 py-5 pr-14">
           <DialogTitle>Complete Capture into a Job</DialogTitle>
           <DialogDescription>Confirm the evidence and select the local Company that will group this Job.</DialogDescription>
         </DialogHeader>
-        {!detail || !draft ? <p className="text-sm text-muted-foreground">Loading Capture provenance…</p> : (
-          <div className="space-y-4">
-            <section aria-label="Provenance path" className="rounded-md border border-primary/35 bg-muted/45 px-4 py-3">
-              <p className="text-xs font-medium tracking-wide text-primary">CAPTURE PROVENANCE</p>
-              <div className="mt-2 flex flex-col gap-2 text-sm sm:flex-row sm:items-center">
-                <span><span className="font-medium">Source</span> {detail.sourceSummary.displayName}</span>
-                <span aria-hidden="true" className="hidden text-primary sm:inline">→</span>
-                <span><span className="font-medium">Resolved destination</span> <span className="font-mono text-xs">{detail.destination.url ?? 'No resolved destination'}</span></span>
-              </div>
-            </section>
-            <div className="grid gap-6 lg:grid-cols-[minmax(18rem,0.9fr)_minmax(24rem,1.2fr)]">
+        <div
+          data-probe="capture-completion-body"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-4"
+          style={{ scrollbarGutter: 'stable' }}
+        >
+          {!detail || !draft ? <p className="text-sm text-muted-foreground">Loading Capture provenance…</p> : (
+            <div className="space-y-4">
+              <section aria-label="Provenance path" className="rounded-md border border-primary/35 bg-muted/45 px-4 py-3">
+                <p className="text-xs font-medium tracking-wide text-primary">CAPTURE PROVENANCE</p>
+                <div className="mt-2 flex flex-col gap-2 text-sm sm:flex-row sm:items-center">
+                  <span><span className="font-medium">Source</span> {detail.sourceSummary.displayName}</span>
+                  <span aria-hidden="true" className="hidden text-primary sm:inline">→</span>
+                  <span><span className="font-medium">Resolved destination</span> <span className="font-mono text-xs">{detail.destination.url ?? 'No resolved destination'}</span></span>
+                </div>
+              </section>
+              <div className="grid gap-6 lg:grid-cols-[minmax(18rem,0.9fr)_minmax(24rem,1.2fr)]">
               <section aria-label="Capture source" className="space-y-3 rounded-md border bg-muted/30 p-4">
                 <h3 className="font-medium">Source evidence</h3>
                 <p className="text-sm">{detail.sourceSummary.displayName}</p>
@@ -546,27 +552,28 @@ export function CaptureCompletionModal({
                 </fieldset>
               </section>
             </div>
-            {recoveryLoading ? (
-              <p role="status" className="text-sm text-muted-foreground">Loading current completion recovery guards…</p>
-            ) : null}
-            {recovery ? (
-              <RecoveryPanel
-                recovery={recovery}
-                pending={pending}
-                recoveryRef={recoveryRef}
-                onDuplicateDecision={(decision) => {
-                  if (draft) void complete(draft, { duplicateResolution: decision, freshIdempotencyKey: true })
-                }}
-                canReassign={Boolean(workspaceId)}
-                onOpenReassignment={openReassignment}
-                onRefresh={() => { void refreshGuards() }}
-                onUseExisting={() => { void useExistingAssignment() }}
-              />
-            ) : null}
-          </div>
-        )}
-        {message ? <p role={recovery ? 'alert' : 'status'} aria-live="polite" className="text-sm text-muted-foreground">{message}</p> : null}
-        <DialogFooter>
+              {recoveryLoading ? (
+                <p role="status" className="text-sm text-muted-foreground">Loading current completion recovery guards…</p>
+              ) : null}
+              {recovery ? (
+                <RecoveryPanel
+                  recovery={recovery}
+                  pending={pending}
+                  recoveryRef={recoveryRef}
+                  onDuplicateDecision={(decision) => {
+                    if (draft) void complete(draft, { duplicateResolution: decision, freshIdempotencyKey: true })
+                  }}
+                  canReassign={Boolean(workspaceId)}
+                  onOpenReassignment={openReassignment}
+                  onRefresh={() => { void refreshGuards() }}
+                  onUseExisting={() => { void useExistingAssignment() }}
+                />
+              ) : null}
+            </div>
+          )}
+          {message ? <p role={recovery ? 'alert' : 'status'} aria-live="polite" className="mt-4 text-sm text-muted-foreground">{message}</p> : null}
+        </div>
+        <DialogFooter data-probe="capture-completion-footer" className="shrink-0 border-t px-5 py-4">
           <Button type="button" variant="outline" onClick={requestClose} disabled={pending}>Discard</Button>
           <Button
             type="button"

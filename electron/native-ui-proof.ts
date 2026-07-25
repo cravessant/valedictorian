@@ -29,6 +29,13 @@ export interface ElectronProofWebContents {
   executeJavaScript(script: string, userGesture?: boolean): Promise<unknown>
 }
 
+export function executeElectronRendererScript<Result>(
+  webContents: ElectronProofWebContents,
+  script: string,
+): Promise<Result> {
+  return webContents.executeJavaScript(script, true) as Promise<Result>
+}
+
 export interface ElectronNativeUiDriver {
   captureAppOnlyScreenshot(name: ProofScreenshot['name']): Promise<ProofScreenshot>
   click(target: SemanticTarget): Promise<void>
@@ -262,9 +269,6 @@ export async function runElectronNativeUiWorkflow(
   onScreenshot: (screenshot: ProofScreenshot) => Promise<void> | void,
   hooks: ElectronNativeUiWorkflowHooks = {},
 ) {
-  const captureTable: SemanticTarget = { name: 'Captures', role: 'table' }
-  const jobsTable: SemanticTarget = { name: 'Jobs', role: 'table' }
-  const companiesTable: SemanticTarget = { name: 'Companies', role: 'table' }
   await driver.waitFor({ name: 'Complete Job information', role: 'button' })
   await hooks.beforeCompletion?.()
   await driver.click({ name: 'Complete Job information', role: 'button' })
@@ -274,6 +278,21 @@ export async function runElectronNativeUiWorkflow(
   assertions.captureCompletionOpened = true
   await onScreenshot(await driver.captureAppOnlyScreenshot('before-completion'))
 
+  await completeElectronNativeUiCapture(driver, assertions, hooks)
+  await onScreenshot(await driver.captureAppOnlyScreenshot('after-completion'))
+}
+
+export async function completeElectronNativeUiCapture(
+  driver: ElectronNativeUiDriver,
+  assertions: Pick<
+    ElectronNativeUiProofAssertions,
+    'existingCompanySelected' | 'jobVisible' | 'workspaceCompanyVisible'
+  >,
+  hooks: ElectronNativeUiWorkflowHooks = {},
+) {
+  const captureTable: SemanticTarget = { name: 'Captures', role: 'table' }
+  const jobsTable: SemanticTarget = { name: 'Jobs', role: 'table' }
+  const companiesTable: SemanticTarget = { name: 'Companies', role: 'table' }
   await driver.click({
     name: 'Use an existing local Company',
     role: 'radio',
@@ -318,7 +337,6 @@ export async function runElectronNativeUiWorkflow(
     hooks.expectedCompanyName ?? 'Validation Company',
   )
   assertions.workspaceCompanyVisible = true
-  await onScreenshot(await driver.captureAppOnlyScreenshot('after-completion'))
 }
 
 function writeScreenshot(evidenceDirectory: string, screenshot: ProofScreenshot) {
@@ -339,10 +357,10 @@ async function rendererOperation<Result>(
   webContents: ElectronProofWebContents,
   operation: RendererOperation,
 ): Promise<Result> {
-  const result = await webContents.executeJavaScript(rendererOperationScript(operation), true) as {
+  const result = await executeElectronRendererScript<{
     error?: string
     value?: Result
-  }
+  }>(webContents, rendererOperationScript(operation))
   if (result?.error) throw new Error(result.error)
   return result?.value as Result
 }

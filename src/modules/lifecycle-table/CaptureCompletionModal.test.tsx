@@ -144,7 +144,22 @@ describe('CaptureCompletionModal', () => {
     expect(screen.getByRole('region', { name: 'Job destination' })).toHaveTextContent('Employer or ATS URL')
     expect(screen.getByText('Raw evidence (1)')).toBeInTheDocument()
     expect(document.querySelector('details')?.open).toBe(false)
-    expect(screen.getByRole('dialog')).toHaveClass('h-[100dvh]', 'w-[100vw]', 'sm:max-w-[72rem]')
+    const shell = screen.getByRole('dialog')
+    expect(shell).toHaveAttribute('data-probe', 'capture-completion-shell')
+    expect(shell).toHaveClass('flex', 'flex-col', 'h-[100dvh]', 'w-full', 'min-w-0', 'overflow-hidden', 'sm:max-w-[72rem]')
+    expect(document.querySelector('[data-probe="capture-completion-body"]')).toHaveClass('min-h-0', 'min-w-0', 'flex-1', 'overflow-y-auto')
+    expect(document.querySelector('[data-probe="capture-completion-header"]')).toHaveClass('shrink-0')
+    expect(document.querySelector('[data-probe="capture-completion-footer"]')).toHaveClass('shrink-0')
+  })
+
+  it('keeps the initial field focused and closes a clean dialog with Escape', async () => {
+    const user = userEvent.setup()
+    const { client } = makeClient()
+    const { onClose } = renderModal(client)
+
+    expect(await screen.findByLabelText('Job facts company')).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('submits explicit create-local, active local, and archived local Company choices', async () => {

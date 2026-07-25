@@ -36,4 +36,22 @@ describe('Electron native UI proof launch', () => {
       command: 'C:\\runtime\\node.exe',
     })
   })
+
+  it('launches the Capture completion layout proof through the same isolated lifecycle', () => {
+    expect(electronNativeUiProofLaunch({
+      nodeExecutable: '/runtime/node',
+      platform: 'darwin',
+      proof: 'capture-completion-layout',
+    })).toEqual({
+      args: [
+        '--import',
+        'tsx',
+        'scripts/run-isolated-validation.ts',
+        '--proof-electron-layout',
+        '--timeout-ms',
+        '120000',
+      ],
+      command: '/runtime/node',
+    })
+  })
 })

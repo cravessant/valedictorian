@@ -183,6 +183,7 @@ async function prepareEnvironment(options: ValidationOptions) {
     ...(options.closeAfterReady ? { VALEDICTORIAN_ISOLATED_VALIDATION_CLOSE_AFTER_READY: '1' } : {}),
     ...(options.devProof ? { VALEDICTORIAN_ISOLATED_VALIDATION_DEV_PROOF: '1' } : {}),
     ...(options.electronNativeProof ? { VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_PROOF: '1' } : {}),
+    ...(options.electronLayoutProof ? { VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_LAYOUT_PROOF: '1' } : {}),
     ...(options.failure === 'electron' ? { VALEDICTORIAN_ISOLATED_VALIDATION_FAIL_ELECTRON: '1' } : {}),
     ...(options.readinessDelayMs === 0
       ? {}
@@ -261,6 +262,7 @@ function readOptions(args: readonly string[]): ValidationOptions {
   let closeAfterReady = false
   let devProof = false
   let electronNativeProof = false
+  let electronLayoutProof = false
   let failure: ValidationOptions['failure']
   let readinessDelayMs = 0
   for (let index = 0; index < args.length; index += 1) {
@@ -273,6 +275,8 @@ function readOptions(args: readonly string[]): ValidationOptions {
       closeAfterReady = true
     } else if (argument === '--proof-electron') {
       electronNativeProof = true
+    } else if (argument === '--proof-electron-layout') {
+      electronLayoutProof = true
     } else if (argument === '--proof-dev') {
       devProof = true
     } else if (argument === '--test-failure') {
@@ -294,8 +298,9 @@ function readOptions(args: readonly string[]): ValidationOptions {
     }
   }
   if (
-    (closeAfterReady && (devProof || electronNativeProof))
-    || (devProof && electronNativeProof)
+    (closeAfterReady && (devProof || electronNativeProof || electronLayoutProof))
+    || (devProof && (electronNativeProof || electronLayoutProof))
+    || (electronNativeProof && electronLayoutProof)
   ) {
     throw new ValidationFailure(
       'invalid_arguments',
@@ -303,7 +308,7 @@ function readOptions(args: readonly string[]): ValidationOptions {
       'The isolated validation proof modes are mutually exclusive and cannot close early.',
     )
   }
-  return { closeAfterReady, devProof, electronNativeProof, failure, readinessDelayMs, timeoutMs }
+  return { closeAfterReady, devProof, electronLayoutProof, electronNativeProof, failure, readinessDelayMs, timeoutMs }
 }
 
 function readBoundedInteger(value: string | undefined, name: string, minimum: number, maximum: number) {
@@ -364,6 +369,7 @@ function sanitizeFailureText(value: string) {
 interface ValidationOptions {
   readonly closeAfterReady: boolean
   readonly devProof: boolean
+  readonly electronLayoutProof: boolean
   readonly electronNativeProof: boolean
   readonly failure?: 'anchor' | 'electron' | 'fixture' | 'premature_completion' | 'setup'
   readonly readinessDelayMs: number

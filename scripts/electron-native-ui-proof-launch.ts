@@ -1,18 +1,22 @@
+export type ElectronNativeUiProofMode = 'capture-completion-layout' | 'workflow'
+
 export function electronNativeUiProofLaunch({
   display = process.env.DISPLAY,
   nodeExecutable = process.execPath,
   platform = process.platform,
+  proof = 'workflow',
 }: {
   readonly display?: string
   readonly nodeExecutable?: string
   readonly platform?: NodeJS.Platform
+  readonly proof?: ElectronNativeUiProofMode
 } = {}) {
   const command = [
     nodeExecutable,
     '--import',
     'tsx',
     'scripts/run-isolated-validation.ts',
-    '--proof-electron',
+    proof === 'capture-completion-layout' ? '--proof-electron-layout' : '--proof-electron',
     '--timeout-ms',
     '120000',
   ]

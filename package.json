@@ -26,6 +26,7 @@
     "inspect:pglite-runtime": "node scripts/inspect-pglite-runtime-assets.mjs",
     "inspect:lifecycle-cutover": "node scripts/lifecycle-cutover-selectors.mjs",
     "smoke:connector-modal-scroll": "node scripts/run-connector-modal-scroll-probe.mjs",
+    "smoke:capture-completion-dialog-layout": "tsx scripts/run-electron-native-ui-proof.ts --capture-completion-layout",
     "smoke:manual-workflow-package": "node scripts/run-packaged-manual-workflow-proof.mjs",
     "smoke:pglite-package": "node scripts/run-packaged-pglite-smoke.mjs",
     "preview": "vite preview",
