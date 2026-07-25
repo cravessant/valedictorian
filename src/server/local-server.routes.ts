@@ -165,7 +165,7 @@ export async function handleRequest({
       return
     }
 
-    const workspaceMatch = requestUrl.pathname.match(/^\/v1\/workspaces\/([^/]+)(\/.*)$/)
+    const workspaceMatch = requestUrl.pathname.match(/^\/v([12])\/workspaces\/([^/]+)(\/.*)$/)
 
     if (workspaceMatch) {
       const workspaceClientResolver =
@@ -173,7 +173,7 @@ export async function handleRequest({
 
       let workspaceClient: LocalValedictorianClient
       try {
-        workspaceClient = await workspaceClientResolver(decodeURIComponent(workspaceMatch[1]))
+        workspaceClient = await workspaceClientResolver(decodeURIComponent(workspaceMatch[2]))
       } catch (error) {
         if (isLocalSecretResolvePath(requestUrl.pathname)) {
           writeNoStoreJson(response, 404, { message: 'Not found' })
@@ -182,7 +182,7 @@ export async function handleRequest({
         throw error
       }
       const originalUrl = request.url
-      request.url = `/v1${workspaceMatch[2]}${requestUrl.search}`
+      request.url = `/v${workspaceMatch[1]}${workspaceMatch[3]}${requestUrl.search}`
 
       try {
         await handleRequest({
@@ -457,9 +457,10 @@ export async function handleRequest({
 }
 
 function isDomainRoute(pathname: string) {
-  return /^\/v1\/(applications|captures|capture-resolution|companies|jobs|opportunities|action-queue|connector-descriptors|connectors|policy|profile|runs|scores|secrets)(?:\/|$)/.test(
+  const isV1DomainRoute = /^\/v1\/(applications|captures|capture-resolution|companies|jobs|opportunities|action-queue|connector-descriptors|connectors|policy|profile|runs|scores|secrets)(?:\/|$)/.test(
     pathname,
   )
+  return isV1DomainRoute || /^\/v2\/capture-resolution(?:\/|$)/.test(pathname)
 }
 
 export function isLocalSecretResolvePath(pathname: string) {

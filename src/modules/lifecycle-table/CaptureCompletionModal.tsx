@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
-  CaptureCompletionDetail,
+  CaptureCompletionDetailV2,
   CompanyMatchPreview,
   CompanySearchResult,
-  CompleteCaptureManuallyInput,
-  CompleteCaptureManuallyResult,
+  CompleteCaptureManuallyV2Input,
+  CompleteCaptureManuallyV2Result,
   JobCompanyAssignmentPresentation,
   ManualCompanyResolution,
-  ValedictorianWorkspaceClient,
+  ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
 import {
   AlertDialog,
@@ -32,6 +32,7 @@ import { toast } from '@/components/ui/use-toast'
 import { JobCompanyReassignmentModal } from '@/modules/workspace-resources/JobCompanyReassignmentModal'
 import type { CaptureCompletionIntent } from './configs/capture-config'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from './lifecycle-actor'
+import { validateDestinationUrl } from '../capture/destination-url-safety'
 
 export interface CaptureCompletionCompanySelection {
   readonly companyId: CompanySearchResult['companyId']
@@ -54,9 +55,12 @@ interface Draft extends CaptureCompletionPersistedDraft {
   readonly companyDisplayNameEdited: boolean
 }
 
-type DuplicateDecision = NonNullable<CompleteCaptureManuallyInput['duplicateResolution']>
-type DuplicateBlocker = Extract<CompleteCaptureManuallyResult, { status: 'duplicate_blocked' }>
-type AssignmentBlocker = Extract<CompleteCaptureManuallyResult, { status: 'company_assignment_blocked' }>
+type DuplicateDecision = NonNullable<
+  CompleteCaptureManuallyV2Input['duplicateResolution']
+>
+type DuplicateBlocker = Extract<CompleteCaptureManuallyV2Result, { status: 'duplicate_blocked' }>
+type AssignmentBlocker = Extract<CompleteCaptureManuallyV2Result, { status: 'company_assignment_blocked' }>
+type StaleCompletionResult = Extract<CompleteCaptureManuallyV2Result, { status: 'blocked' }>
 
 type Recovery =
   | {
@@ -70,13 +74,13 @@ type Recovery =
     readonly assignment: JobCompanyAssignmentPresentation
     readonly selectedCompany: CaptureCompletionCompanySelection
   }
-  | { readonly kind: 'stale'; readonly result: Extract<CompleteCaptureManuallyResult, { status: 'blocked' }> }
+  | { readonly kind: 'stale'; readonly result: StaleCompletionResult }
 
 interface Props {
   readonly captureId: string | null
   readonly client: Pick<
-    ValedictorianWorkspaceClient,
-    'captureResolution' | 'companies' | 'jobs' | 'companyAssignments'
+    ValedictorianWorkspaceClientV2,
+    'captureResolutionV2' | 'companies' | 'jobs' | 'companyAssignments'
   > | null
   readonly intent: CaptureCompletionIntent | null
   readonly workspaceId: string | null
@@ -100,7 +104,7 @@ export function CaptureCompletionModal({
   onRemoveCapture,
   removalPending = false,
 }: Props) {
-  const [detail, setDetail] = useState<CaptureCompletionDetail | null>(null)
+  const [detail, setDetail] = useState<CaptureCompletionDetailV2 | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [initialDraft, setInitialDraft] = useState<Draft | null>(null)
   const [discardConfirmationOpen, setDiscardConfirmationOpen] = useState(false)
@@ -144,7 +148,7 @@ export function CaptureCompletionModal({
     setCompanyMessage(null)
     idempotencyKeyRef.current = newIdempotencyKey(`capture-completion-${captureId}`)
     needsFreshIdempotencyKeyRef.current = false
-    void client.captureResolution.get(captureId).then((next) => {
+    void client.captureResolutionV2.get(captureId).then((next) => {
       if (!active) return
       const nextDraft = draftFromDetail(next)
       setDetail(next)
@@ -256,7 +260,7 @@ export function CaptureCompletionModal({
     try {
       const persistedRecoveryIntent = keepPersistedRecovery ? recoveryIntent(intent) : null
       const [next, nextRecovery] = await Promise.all([
-        client.captureResolution.get(captureId),
+        client.captureResolutionV2.get(captureId),
         persistedRecoveryIntent ? hydrateRecovery(client, persistedRecoveryIntent) : Promise.resolve(null),
       ])
       setDetail(next)
@@ -302,14 +306,14 @@ export function CaptureCompletionModal({
     setRecovery(null)
     setRecoveryFailure(false)
     try {
-      const result = await client.captureResolution.complete({
+      const result = await client.captureResolutionV2.complete({
         captureId: detail.captureId,
         expectedCaptureRevision: detail.captureRevision,
         expectedGenerationId: detail.expectedGenerationId,
         idempotencyKey: idempotencyKeyRef.current,
         actor: DESKTOP_USER_ACTOR,
         jobFacts: jobFactsFromDraft(detail, value),
-        destination: { class: 'employer_or_ats', url: value.destinationUrl },
+        destination: { url: value.destinationUrl },
         externalIdentities: [],
         evidenceReferences: detail.exactEvidenceReferences,
         companyResolution,
@@ -408,6 +412,7 @@ export function CaptureCompletionModal({
 
   const selectedCompany = draft?.selectedCompany
   const selectedCompanyStatus = selectedCompany?.status === 'archived' ? 'archived' : 'active'
+  const destinationValidation = draft ? validateDestinationUrl(draft.destinationUrl) : null
 
   return (
     <>
@@ -492,7 +497,7 @@ export function CaptureCompletionModal({
                   />
                 </label>
                 <label data-probe="capture-completion-url-field" className="grid min-w-0 gap-1 text-sm">
-                  Employer or ATS URL
+                  Destination URL
                   <input
                     className="w-full min-w-0 rounded-md border bg-background px-3 py-2 font-mono text-xs"
                     disabled={interactionPending}
@@ -501,6 +506,11 @@ export function CaptureCompletionModal({
                     onChange={(event) => setDraft({ ...draft, destinationUrl: event.target.value })}
                   />
                 </label>
+                {destinationValidation && !destinationValidation.ok ? (
+                  <p role="alert" className="break-words text-xs text-destructive">
+                    {destinationValidation.message}
+                  </p>
+                ) : null}
                 <fieldset data-probe="capture-completion-company-choice" className="min-w-0 space-y-3 rounded-md border bg-muted/20 p-3" aria-label="Local Company choice">
                   <legend className="px-1 text-sm font-medium">Local Company</legend>
                   <p className="break-words text-xs text-muted-foreground">This is a single atomic completion; no Company is created before the Job succeeds.</p>
@@ -786,7 +796,7 @@ function RecoveryPanel({
   )
 }
 
-function draftFromDetail(detail: CaptureCompletionDetail): Draft {
+function draftFromDetail(detail: CaptureCompletionDetailV2): Draft {
   const companyName = detail.jobDefaults.companyName ?? ''
   return {
     companyName,
@@ -807,7 +817,7 @@ function normalizedCompletionJobFacts(draft: CaptureCompletionPersistedDraft) {
   }
 }
 
-function jobFactsFromDraft(detail: CaptureCompletionDetail, draft: Draft) {
+function jobFactsFromDraft(detail: CaptureCompletionDetailV2, draft: Draft) {
   const normalized = normalizedCompletionJobFacts(draft)
   return {
     companyName: normalized.companyName,
@@ -825,7 +835,7 @@ function jobFactsFromDraft(detail: CaptureCompletionDetail, draft: Draft) {
     seniority: detail.jobDefaults.seniority ?? 'unknown',
     compensation: detail.jobDefaults.compensation ?? null,
     postedAt: detail.jobDefaults.postedAt ?? null,
-    destination: { class: 'employer_or_ats' as const, url: normalized.destinationUrl },
+    destination: { url: normalized.destinationUrl },
   }
 }
 
@@ -874,18 +884,10 @@ function persistedCompanyActionProjection(draft: CaptureCompletionPersistedDraft
 
 function validateDraft(draft: Draft): string | null {
   if (!draft.companyName.trim() || !draft.roleTitle.trim() || !draft.destinationUrl) {
-    return 'Company, role, and employer or ATS destination are required.'
+    return 'Company, role, and destination URL are required.'
   }
-  try {
-    const destination = new URL(draft.destinationUrl)
-    if (destination.protocol !== 'https:' || !destination.hostname
-      || destination.username || destination.password || destination.search || destination.hash) {
-      return 'Use an https employer or ATS URL without credentials, query parameters, or a fragment. The URL will be submitted exactly as entered.'
-    }
-  } catch {
-    return 'Enter a complete employer or ATS URL. The URL will be submitted exactly as entered.'
-  }
-  return null
+  const destination = validateDestinationUrl(draft.destinationUrl)
+  return destination.ok ? null : destination.message
 }
 
 /**
@@ -913,7 +915,12 @@ export function samePersistedCaptureCompletionDraft(
     === JSON.stringify(persistedCaptureCompletionDraftProjection(right))
 }
 
-function staleGuardLabel(guard: Extract<Extract<CompleteCaptureManuallyResult, { status: 'blocked' }>['failure'], { kind: 'stale_guard' }>['recovery']['guards'][number]): string {
+type StaleGuard = Extract<
+  StaleCompletionResult['failure'],
+  { kind: 'stale_guard' }
+>['recovery']['guards'][number]
+
+function staleGuardLabel(guard: StaleGuard): string {
   if (guard.kind === 'generation') return 'The active processing generation changed.'
   if (guard.kind === 'capture_revision') return `Capture revision changed from ${guard.expectedRevision} to ${guard.currentRevision}.`
   if (guard.kind === 'company_revision') return `Company ${guard.companyId} changed from revision ${guard.expectedRevision} to ${guard.currentRevision}.`

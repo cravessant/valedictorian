@@ -6,7 +6,7 @@ import type {
   Job,
   JobCompanyAssignmentPresentation,
   Opportunity,
-  ValedictorianWorkspaceClient,
+  ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
 
 import { Button } from '@/components/ui/button'
@@ -76,7 +76,7 @@ interface WorkbenchState {
 }
 
 interface WorkbenchProps {
-  readonly client?: ValedictorianWorkspaceClient | null
+  readonly client?: ValedictorianWorkspaceClientV2 | null
   readonly workspaceId?: string | null
   readonly onSelectedPhaseChange?: (phase: LifecyclePhase) => void
   readonly selectedPhase?: LifecyclePhase
@@ -108,7 +108,7 @@ export function LifecycleWorkbench({
   workspaceEntry,
   onWorkspaceNavigate,
 }: WorkbenchProps): ReactElement {
-  const [client, setClient] = useState<ValedictorianWorkspaceClient | null>(() =>
+  const [client, setClient] = useState<ValedictorianWorkspaceClientV2 | null>(() =>
     suppliedClient === undefined ? getRendererHttpWorkspaceClient() : suppliedClient)
   const [uncontrolledSelected, setUncontrolledSelected] = useState<LifecyclePhase>('captures')
   const selected = selectedPhase ?? uncontrolledSelected
@@ -248,7 +248,7 @@ export function LifecycleWorkbench({
     }
     setCaptures((previous) => ({ data: previous.data, load: { status: 'loading' } }))
     try {
-      const page = await client.captureResolution.list({
+      const page = await client.captureResolutionV2.list({
         filter: captureFilter,
         sort: 'observed_desc',
         limit: 50,

@@ -68,7 +68,7 @@ describe('isolated validation fixture', () => {
       })
       expect(detail.provenance).toContainEqual({
         kind: 'destination',
-        label: 'validation.example',
+        label: 'validation-fixture.acme.com',
         url: captureCompletionLongContentFixture.destinationUrl,
       })
     } finally {

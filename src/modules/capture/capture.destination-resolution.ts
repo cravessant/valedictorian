@@ -91,7 +91,11 @@ export interface CaptureDestinationResolutionService {
   reconcile(): Promise<void>
   reconcileDurableWork(work: readonly DestinationWorkReconciliation[]): Promise<void>
   start(identity: DestinationWorkIdentity, attempt: number): Promise<DestinationExecution | null>
-  resolved(identity: DestinationWorkIdentity, attempt: number, result: { url: string; method: string }): Promise<void>
+  resolved(
+    identity: DestinationWorkIdentity,
+    attempt: number,
+    result: { url: string; method: string; providerStatus?: 'closed' | 'hidden' },
+  ): Promise<void>
   retryWait(identity: DestinationWorkIdentity, attempt: number, input: { code: 'dependency_unavailable' | 'rate_limited' | 'request_timed_out' | 'transport_failed'; nextAttemptAt: string }): Promise<void>
   terminal(identity: DestinationWorkIdentity, attempt: number, input: { status: 'action_required' | 'blocked' | 'exhausted'; issue: ProcessingIssue }): Promise<void>
   retry(input: RetryCaptureProcessingInput): Promise<CaptureProcessingStartResult>
@@ -273,7 +277,11 @@ export function createCaptureDestinationResolutionService(input: {
     })
   }
 
-  async function resolved(identity: DestinationWorkIdentity, attempt: number, result: { url: string; method: string }) {
+  async function resolved(
+    identity: DestinationWorkIdentity,
+    attempt: number,
+    result: { url: string; method: string; providerStatus?: 'closed' | 'hidden' },
+  ) {
     await updateActiveDestination(identity, {
       attemptCount: attempt,
       issueJson: null,

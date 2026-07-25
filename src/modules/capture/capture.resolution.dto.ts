@@ -1,18 +1,24 @@
 import {
   captureCompletionDetailSchema,
+  captureCompletionDetailV2Schema,
   captureListPresentationSchema,
   captureResolutionGenerationProjectionSchema,
+  captureResolutionGenerationProjectionV2Schema,
   completeCaptureManuallyResultSchema,
   createCaptureInputSchema,
   jobFactsSchema,
+  jobFactsV2Schema,
   jobIdSchema,
   processingIssueSchema,
   type CaptureCompletionDetail,
+  type CaptureCompletionDetailV2,
   type CaptureListPresentation,
   type CapturePrimaryIntent,
   type CaptureResolutionGenerationProjection,
+  type CaptureResolutionGenerationProjectionV2,
   type ProcessingIssue,
 } from '@sparxie/sdk'
+import { validateDestinationUrl } from './destination-url-safety'
 
 export interface ResolutionHeadRow {
   readonly captureId: string
@@ -222,6 +228,42 @@ export function toCaptureCompletionDetail(
   })
 }
 
+export function toCaptureResolutionProjectionV2(
+  row: ResolutionHeadRow,
+  stages: readonly ResolutionStageRow[],
+) {
+  const projection = toCaptureResolutionProjection(row, stages)
+  if (projection.readiness !== 'ready') return projection
+  return {
+    ...projection,
+    generation: toGenerationV2(row, stages),
+  }
+}
+
+export function toCaptureCompletionDetailV2(
+  row: ResolutionHeadRow,
+  stages: readonly ResolutionStageRow[],
+  linkedJob: ResolutionLinkedJob | null,
+): CaptureCompletionDetailV2 {
+  const detail = toCaptureCompletionDetail(row, stages, linkedJob)
+  const destination = stages.find((stage) => stage.stage === 'destination')
+  const providerStatus = providerStatusFromResult(destination?.resultJson ?? null)
+  const jobDestination = detail.jobDefaults.destination
+  return captureCompletionDetailV2Schema.parse({
+    ...detail,
+    destination: {
+      ...detail.destination,
+      ...(detail.destination.status === 'resolved' && providerStatus
+        ? { providerStatus }
+        : {}),
+    },
+    jobDefaults: {
+      ...detail.jobDefaults,
+      ...(jobDestination ? { destination: { url: jobDestination.url } } : {}),
+    },
+  })
+}
+
 function toGeneration(
   row: ResolutionHeadRow,
   stages: readonly ResolutionStageRow[],
@@ -267,6 +309,24 @@ function toGeneration(
     },
     createdAt: row.generationCreatedAt,
     updatedAt: row.generationUpdatedAt,
+  })
+}
+
+function toGenerationV2(
+  row: ResolutionHeadRow,
+  stages: readonly ResolutionStageRow[],
+): CaptureResolutionGenerationProjectionV2 {
+  const generation = toGeneration(row, stages)
+  const destination = requireStage(stages, 'destination')
+  const providerStatus = providerStatusFromResult(destination.resultJson)
+  return captureResolutionGenerationProjectionV2Schema.parse({
+    ...generation,
+    destinationResolution: {
+      ...generation.destinationResolution,
+      ...(generation.destinationResolution.status === 'resolved' && providerStatus
+        ? { providerStatus }
+        : {}),
+    },
   })
 }
 
@@ -382,7 +442,8 @@ function listDestinationState(
 
 function linkedJobPresentation(job: ResolutionLinkedJob) {
   try {
-    const facts = jobFactsSchema.parse(JSON.parse(job.factsJson))
+    const value = JSON.parse(job.factsJson)
+    const facts = jobFactsV2Schema.safeParse(value).data ?? jobFactsSchema.parse(value)
     return {
       jobId: jobIdSchema.parse(job.id),
       roleTitle: facts.roleTitle,
@@ -509,12 +570,23 @@ function destinationUrlFromResult(value: string | null) {
   try {
     const parsed = JSON.parse(value)
     if (!isRecord(parsed) || typeof parsed.url !== 'string') return null
-    const url = new URL(parsed.url)
-    // Parsing validates the stored result; the public detail keeps the exact
-    // resolver-emitted URL instead of silently canonicalizing its evidence.
-    return url.protocol === 'https:' ? parsed.url : null
+    // Parsing validates structure only. Return the exact stored evidence; the
+    // shared policy deliberately never upgrades, canonicalizes, or strips bytes.
+    return validateDestinationUrl(parsed.url).ok ? parsed.url : null
   } catch {
     return null
+  }
+}
+
+function providerStatusFromResult(value: string | null) {
+  if (value === null) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return isRecord(parsed) && (parsed.providerStatus === 'closed' || parsed.providerStatus === 'hidden')
+      ? parsed.providerStatus
+      : undefined
+  } catch {
+    return undefined
   }
 }
 

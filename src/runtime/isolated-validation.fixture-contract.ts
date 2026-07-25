@@ -9,7 +9,7 @@ const longSegment = 'unbrokenfixturevalue'.repeat(18)
 
 export const captureCompletionLongContentFixture = {
   companyDisplayName: `Validation Company ${longSegment}`,
-  destinationUrl: `https://validation.example/${longSegment.repeat(2)}`,
+  destinationUrl: `https://validation-fixture.acme.com/${longSegment.repeat(2)}`,
   formValue: `Form value ${longSegment}`,
   identifier: `provider-record-${longSegment}`,
   jsonEvidence: {
@@ -17,6 +17,6 @@ export const captureCompletionLongContentFixture = {
     nested: { machineValue: longSegment.repeat(2) },
   },
   sourceAdapterId: `source-${longSegment.slice(0, 180)}`,
-  validationUrl: `https://validation.example/${longSegment}?${longSegment}`,
-  validationMessage: 'Use an https employer or ATS URL without credentials, query parameters, or a fragment. The URL will be submitted exactly as entered.',
+  validationUrl: `https://validation-fixture.acme.com/${longSegment}?${longSegment}`,
+  validationMessage: 'Use a public https destination URL without credentials, sensitive query parameters, or a fragment. The URL will be submitted exactly as entered.',
 } as const

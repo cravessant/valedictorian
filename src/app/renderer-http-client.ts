@@ -1,7 +1,7 @@
 import {
   createHttpValedictorianClient,
-  type ValedictorianClient,
-  type ValedictorianWorkspaceClient,
+  type ValedictorianClientV2,
+  type ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
 
 interface RendererHttpConfig {
@@ -19,7 +19,7 @@ function getRendererHttpConfig(): RendererHttpConfig | null {
   return (window as Window & { valedictorianHttp?: RendererHttpConfig }).valedictorianHttp ?? null
 }
 
-export function getRendererHttpRootClient(): ValedictorianClient | null {
+export function getRendererHttpRootClient(): ValedictorianClientV2 | null {
   const config = getRendererHttpConfig()
 
   if (!config) {
@@ -49,7 +49,7 @@ export function backendUnavailableError() {
   return new Error('Workspace backend unavailable.')
 }
 
-export function getRendererHttpWorkspaceClient(): ValedictorianWorkspaceClient | null {
+export function getRendererHttpWorkspaceClient(): ValedictorianWorkspaceClientV2 | null {
   const config = getRendererHttpConfig()
   const rootClient = getRendererHttpRootClient()
 
@@ -66,7 +66,7 @@ export function onRendererBackendStateChanged(
   return getRendererHttpConfig()?.onBackendStateChanged?.(listener) ?? (() => {})
 }
 
-export function requireRendererHttpWorkspaceClient(): ValedictorianWorkspaceClient {
+export function requireRendererHttpWorkspaceClient(): ValedictorianWorkspaceClientV2 {
   const workspaceClient = getRendererHttpWorkspaceClient()
 
   if (!workspaceClient) {

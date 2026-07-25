@@ -205,7 +205,7 @@ class FakeNativeUiDriver implements ElectronNativeUiDriver {
   }
 
   async fill(target: SemanticTarget, value: string) {
-    if (target.name === 'Employer or ATS URL' && value !== 'https://validation.example/careers') {
+    if (target.name === 'Destination URL' && value !== 'https://validation.example.com/careers') {
       throw new Error('The proof supplied an unexpected destination.')
     }
   }

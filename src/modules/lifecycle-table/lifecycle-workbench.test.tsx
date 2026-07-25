@@ -1,7 +1,7 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CaptureListPresentation, Job, ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { CaptureListPresentation, Job, ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
 import { useWorkspaceLocation } from '@/app/use-workspace-location'
@@ -61,7 +61,7 @@ function makeClient() {
       list: lists.captures,
       remove: removeCapture,
     },
-    captureResolution: {
+    captureResolutionV2: {
       list: lists.captures,
       get: vi.fn(),
       complete: vi.fn(),
@@ -99,7 +99,7 @@ function makeClient() {
     },
     opportunities: { list: lists.opportunities },
     applications: { list: lists.applications },
-  } as unknown as ValedictorianWorkspaceClient
+  } as unknown as ValedictorianWorkspaceClientV2
   return { client, lists, removeCapture }
 }
 
@@ -331,7 +331,7 @@ describe('LifecycleWorkbench', () => {
       status: 'created', jobId: 'job-created', companyId: 'company-created', createdJob: true,
       existingJobComparison: 'not_compared',
     })
-    Object.assign(client.captureResolution, { get, complete })
+    Object.assign(client.captureResolutionV2, { get, complete })
     const openResource = vi.fn()
     render(<LifecycleWorkbench client={client} onOpenResource={openResource} />)
 
@@ -355,7 +355,7 @@ describe('LifecycleWorkbench', () => {
     lists.captures.mockImplementation(async () => capturePage(captureInProjection ? [capture] : []))
     const get = vi.fn(async (captureId: string) => completionDetail(captureId))
     const complete = vi.fn()
-    Object.assign(client.captureResolution, { get, complete })
+    Object.assign(client.captureResolutionV2, { get, complete })
     const { rerender } = render(<LifecycleWorkbench client={client} />)
 
     await user.click(await screen.findByRole('button', { name: 'Complete Job information' }))
@@ -402,7 +402,7 @@ describe('LifecycleWorkbench', () => {
       })
       .mockRejectedValueOnce(new Error('Capture removal is unavailable.'))
     const complete = vi.fn()
-    Object.assign(client.captureResolution, {
+    Object.assign(client.captureResolutionV2, {
       get: vi.fn(async (captureId: string) => completionDetail(captureId)),
       complete,
     })
@@ -453,7 +453,7 @@ describe('LifecycleWorkbench', () => {
       }
     })
     const complete = vi.fn()
-    Object.assign(client.captureResolution, {
+    Object.assign(client.captureResolutionV2, {
       get: vi.fn(async (captureId: string) => completionDetail(captureId)),
       complete,
     })
@@ -482,7 +482,7 @@ describe('LifecycleWorkbench', () => {
       captureIntent('capture-assignment', 'resolve_company_assignment'),
     ]))
     const get = vi.fn(async (captureId: string) => completionDetail(captureId))
-    Object.assign(client.captureResolution, { get })
+    Object.assign(client.captureResolutionV2, { get })
     render(<LifecycleWorkbench client={client} />)
 
     await user.click(await screen.findByRole('button', { name: 'Resolve duplicate Job' }))

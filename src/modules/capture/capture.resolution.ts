@@ -14,8 +14,12 @@ import {
 import {
   captureResolutionListInputSchema,
   captureResolutionListResultSchema,
+  captureResolutionListResultV2Schema,
+  completeCaptureManuallyV2InputSchema,
+  completeCaptureManuallyV2ResultSchema,
   type CaptureResolutionListInput,
   type CaptureResolutionListResult,
+  type CaptureResolutionV2WorkspaceClient,
   type ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
@@ -37,6 +41,7 @@ import type { CaptureDestinationResolutionService } from './capture.destination-
 import type { ManualCaptureCompletionService } from './capture.manual-completion'
 import {
   toCaptureCompletionDetail,
+  toCaptureCompletionDetailV2,
   toCaptureListPresentation,
   type ResolutionHeadRow,
   type ResolutionLinkedJob,
@@ -62,14 +67,16 @@ interface CursorValue {
   readonly sort: 'observed_desc'
 }
 
+export interface CaptureResolutionServiceOptions {
+  readonly workspaceId: string
+  readonly materialization: CaptureMaterializationService
+  readonly destination?: CaptureDestinationResolutionService
+  readonly manualCompletion?: ManualCaptureCompletionService
+}
+
 export function createCaptureResolutionService(
   database: PgliteDatabase,
-  input: {
-    readonly workspaceId: string
-    readonly materialization: CaptureMaterializationService
-    readonly destination?: CaptureDestinationResolutionService
-    readonly manualCompletion?: ManualCaptureCompletionService
-  },
+  input: CaptureResolutionServiceOptions,
 ): CaptureResolutionClient {
   const { destination, manualCompletion, materialization, workspaceId } = input
 
@@ -155,6 +162,46 @@ export function createCaptureResolutionService(
       }
       : unavailable,
   } satisfies CaptureResolutionClient
+}
+
+export function createCaptureResolutionV2Service(
+  database: PgliteDatabase,
+  input: CaptureResolutionServiceOptions,
+): CaptureResolutionV2WorkspaceClient {
+  const v1 = createCaptureResolutionService(database, input)
+  const { manualCompletion, materialization, workspaceId } = input
+
+  async function get(captureId: string) {
+    await materialization.ensureCapture(workspaceId, captureId)
+    const [row] = await selectHeads(
+      database,
+      workspaceId,
+      and(eq(captures.id, captureId)),
+      { ascending: false, limit: 1 },
+    )
+    if (!row) throw new LifecycleHttpError(404, NOT_FOUND)
+    const stages = await stagesByGeneration(database, [row])
+    const linkedJobs = await linkedJobsByCapture(database, [row])
+    return toCaptureCompletionDetailV2(
+      row,
+      stages.get(row.generationId ?? '') ?? [],
+      linkedJobs.get(row.captureId) ?? null,
+    )
+  }
+
+  return {
+    list: async (request) => captureResolutionListResultV2Schema.parse(await v1.list(request)),
+    get,
+    complete: async (rawInput) => {
+      const request = completeCaptureManuallyV2InputSchema.parse(rawInput)
+      if (!manualCompletion) throw Object.assign(new Error('Capture resolution command is not available.'), {
+        statusCode: 404,
+      })
+      await materialization.ensureCapture(workspaceId, request.captureId)
+      const result = await manualCompletion.completeV2(request)
+      return completeCaptureManuallyV2ResultSchema.parse(result)
+    },
+  } satisfies CaptureResolutionV2WorkspaceClient
 }
 
 function captureWhere(filter: CaptureFilter, pageCondition?: ReturnType<typeof or>) {

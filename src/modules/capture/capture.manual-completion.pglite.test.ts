@@ -142,7 +142,7 @@ async function acceptCapture(
 function completionInput(
   capture: { id: string; revision: number },
   key: string,
-  destination = 'https://jobs.manual-completion.example/roles/engineer',
+  destination = 'https://jobs.manual-completion.acme.com/roles/engineer',
   overrides: Partial<CompleteCaptureManuallyInput> = {},
 ): CompleteCaptureManuallyInput {
   const base = {
@@ -188,8 +188,8 @@ async function establishStrongIdentity(
     actor: ACTOR,
     identity: {
       kind: 'canonical_destination',
-      provider: 'jobs.manual-completion.example',
-      account: 'jobs.manual-completion.example',
+      provider: 'jobs.manual-completion.acme.com',
+      account: 'jobs.manual-completion.acme.com',
       value,
       strength: 'strong',
       provenanceKind: 'test',
@@ -213,14 +213,14 @@ async function createExactOwners(
   }> = []
   for (let index = 0; index < ownerCount; index += 1) {
     const job = await createExistingJob(jobService, `Bounded Owner ${index + 1}`)
-    const value = `https://jobs.manual-completion.example/roles/bounded-owner-${index + 1}`
+    const value = `https://jobs.manual-completion.acme.com/roles/bounded-owner-${index + 1}`
     await establishStrongIdentity(identityService, job.id, value)
     owners.push({
       jobId: job.id,
       identity: {
         kind: 'canonical_destination',
-        provider: 'jobs.manual-completion.example',
-        account: 'jobs.manual-completion.example',
+        provider: 'jobs.manual-completion.acme.com',
+        account: 'jobs.manual-completion.acme.com',
         value,
         strength: 'strong',
       },
@@ -282,7 +282,7 @@ describe.sequential('manual Capture completion', () => {
     const unsafeRequest = completionInput(
       unsafeCapture,
       'manual-receipt-blocked',
-      'https://jobs.manual-completion.example/roles/engineer?token=forbidden',
+      'https://jobs.manual-completion.acme.com/roles/engineer?token=forbidden',
     )
     const blocked = await completion.complete(unsafeRequest)
     expect(blocked).toMatchObject({
@@ -292,6 +292,63 @@ describe.sequential('manual Capture completion', () => {
     expect(await completion.complete(unsafeRequest)).toEqual(blocked)
     expect(await database.select({ value: count() }).from(captureResolutionCommandReceipts))
       .toEqual([{ value: 2 }])
+  })
+
+  it('enforces destination safety on both manual destination fields', async () => {
+    const { captures, completion } = await setup()
+    const capture = await acceptCapture(captures, 'manual-job-facts-destination')
+    const request = completionInput(capture, 'manual-job-facts-destination', undefined, {
+      jobFacts: jobFacts(
+        'Manual Completion Labs',
+        'Completion Engineer',
+        'https://careers.acme.com/jobs/123?access_token=destination-secret',
+      ),
+    })
+
+    await expect(completion.complete(request)).resolves.toMatchObject({
+      status: 'blocked',
+      failure: { kind: 'lifecycle_failure', blocker: { code: 'security_violation' } },
+    })
+  })
+
+  it.each([
+    'https://careers.acme.com/jobs/123#',
+    'https://@careers.acme.com/jobs/123',
+    'https:\\\\@careers.acme.com/path',
+    'https://careers.acme.com\\\\jobs/email@acme.com',
+  ])('rejects manual destination delimiters that URL parsing normalizes away: %s', async (destination) => {
+    const { captures, completion } = await setup()
+    const capture = await acceptCapture(captures, `manual-delimiter-${destination.length}`)
+
+    await expect(completion.complete(completionInput(
+      capture,
+      `manual-delimiter-${destination.length}`,
+      destination,
+    ))).resolves.toMatchObject({
+      status: 'blocked',
+      failure: { kind: 'lifecycle_failure', blocker: { code: 'security_violation' } },
+    })
+  })
+
+  it('accepts ordinary at signs in manual destination paths and queries', async () => {
+    const { captures, completion, database } = await setup()
+    const capture = await acceptCapture(captures, 'manual-ordinary-at-sign')
+    const destination = 'https://careers.acme.com/jobs/email@acme.com?ref=jobs@board%23weekly'
+
+    const result = await completion.complete(completionInput(
+      capture,
+      'manual-ordinary-at-sign',
+      destination,
+    ))
+
+    expect(result).toMatchObject({ status: 'created', createdJob: true })
+    if (result.status !== 'created') throw new Error('expected created result')
+    const [job] = await database.select({ factsJson: jobs.factsJson }).from(jobs)
+      .where(eq(jobs.id, result.jobId))
+    expect(JSON.parse(job!.factsJson).destination).toEqual({
+      class: 'employer_or_ats',
+      url: destination,
+    })
   })
 
   it('scopes the same idempotency key independently for retry and completion commands', async () => {
@@ -382,11 +439,17 @@ describe.sequential('manual Capture completion', () => {
     expect(result).toMatchObject({ status: 'created', createdJob: true })
     if (result.status !== 'created') return
 
+    const [job] = await database.select({ factsJson: jobs.factsJson })
+      .from(jobs).where(eq(jobs.id, result.jobId))
+    expect(JSON.parse(job!.factsJson).destination).toEqual({
+      class: 'employer_or_ats',
+      url: 'https://jobs.manual-completion.acme.com/roles/engineer',
+    })
     const identities = await database.select({ value: jobExternalIdentities.value })
       .from(jobExternalIdentities)
       .where(eq(jobExternalIdentities.jobId, result.jobId))
     expect(identities).toEqual([{
-      value: 'https://jobs.manual-completion.example/roles/engineer',
+      value: 'https://jobs.manual-completion.acme.com/roles/engineer',
     }])
     const stages = await database.select({
       stage: captureResolutionStageResults.stage,
@@ -553,7 +616,7 @@ describe.sequential('manual Capture completion', () => {
 
   it('automatically attaches one exact owner and blocks an incompatible Company choice without an orphan', async () => {
     const { captures, completion, database, jobIdentityService, jobService } = await setup()
-    const destination = 'https://jobs.manual-completion.example/roles/exact-owner'
+    const destination = 'https://jobs.manual-completion.acme.com/roles/exact-owner'
     const existing = await createExistingJob(jobService, 'Existing Owner')
     await establishStrongIdentity(jobIdentityService, existing.id, destination)
 
@@ -604,23 +667,23 @@ describe.sequential('manual Capture completion', () => {
     const { captures, completion, database, jobIdentityService, jobService } = await setup()
     const first = await createExistingJob(jobService, 'First Conflict')
     const second = await createExistingJob(jobService, 'Second Conflict')
-    const firstIdentity = 'https://jobs.manual-completion.example/roles/first-conflict'
-    const secondIdentity = 'https://jobs.manual-completion.example/roles/second-conflict'
+    const firstIdentity = 'https://jobs.manual-completion.acme.com/roles/first-conflict'
+    const secondIdentity = 'https://jobs.manual-completion.acme.com/roles/second-conflict'
     await establishStrongIdentity(jobIdentityService, first.id, firstIdentity)
     await establishStrongIdentity(jobIdentityService, second.id, secondIdentity)
     const capture = await acceptCapture(captures, 'multi-owner')
     const owners = [
       {
         kind: 'canonical_destination',
-        provider: 'jobs.manual-completion.example',
-        account: 'jobs.manual-completion.example',
+        provider: 'jobs.manual-completion.acme.com',
+        account: 'jobs.manual-completion.acme.com',
         value: firstIdentity,
         strength: 'strong',
       },
       {
         kind: 'canonical_destination',
-        provider: 'jobs.manual-completion.example',
-        account: 'jobs.manual-completion.example',
+        provider: 'jobs.manual-completion.acme.com',
+        account: 'jobs.manual-completion.acme.com',
         value: secondIdentity,
         strength: 'strong',
       },
@@ -800,8 +863,8 @@ describe.sequential('manual Capture completion', () => {
     const { captures, completion, database, jobIdentityService, jobService } = await setup()
     const winner = await createExistingJob(jobService, 'Canonical Winner')
     const loser = await createExistingJob(jobService, 'Merged Loser')
-    const winnerIdentity = 'https://jobs.manual-completion.example/roles/canonical-winner'
-    const loserIdentity = 'https://jobs.manual-completion.example/roles/merged-loser'
+    const winnerIdentity = 'https://jobs.manual-completion.acme.com/roles/canonical-winner'
+    const loserIdentity = 'https://jobs.manual-completion.acme.com/roles/merged-loser'
     await establishStrongIdentity(jobIdentityService, winner.id, winnerIdentity)
     await establishStrongIdentity(jobIdentityService, loser.id, loserIdentity)
     const capture = await acceptCapture(captures, 'real-merge')
@@ -811,15 +874,15 @@ describe.sequential('manual Capture completion', () => {
       externalIdentities: [
         {
           kind: 'canonical_destination',
-          provider: 'jobs.manual-completion.example',
-          account: 'jobs.manual-completion.example',
+          provider: 'jobs.manual-completion.acme.com',
+          account: 'jobs.manual-completion.acme.com',
           value: winnerIdentity,
           strength: 'strong',
         },
         {
           kind: 'canonical_destination',
-          provider: 'jobs.manual-completion.example',
-          account: 'jobs.manual-completion.example',
+          provider: 'jobs.manual-completion.acme.com',
+          account: 'jobs.manual-completion.acme.com',
           value: loserIdentity,
           strength: 'strong',
         },
@@ -862,8 +925,8 @@ describe.sequential('manual Capture completion', () => {
     const { captures, database, jobIdentityService, jobService, now, promotion } = await setup()
     const first = await createExistingJob(jobService, 'Failed Merge First')
     const second = await createExistingJob(jobService, 'Failed Merge Second')
-    const firstIdentity = 'https://jobs.manual-completion.example/roles/failed-merge-first'
-    const secondIdentity = 'https://jobs.manual-completion.example/roles/failed-merge-second'
+    const firstIdentity = 'https://jobs.manual-completion.acme.com/roles/failed-merge-first'
+    const secondIdentity = 'https://jobs.manual-completion.acme.com/roles/failed-merge-second'
     await establishStrongIdentity(jobIdentityService, first.id, firstIdentity)
     await establishStrongIdentity(jobIdentityService, second.id, secondIdentity)
     const failure: JobFailure = {
@@ -889,15 +952,15 @@ describe.sequential('manual Capture completion', () => {
       externalIdentities: [
         {
           kind: 'canonical_destination',
-          provider: 'jobs.manual-completion.example',
-          account: 'jobs.manual-completion.example',
+          provider: 'jobs.manual-completion.acme.com',
+          account: 'jobs.manual-completion.acme.com',
           value: firstIdentity,
           strength: 'strong',
         },
         {
           kind: 'canonical_destination',
-          provider: 'jobs.manual-completion.example',
-          account: 'jobs.manual-completion.example',
+          provider: 'jobs.manual-completion.acme.com',
+          account: 'jobs.manual-completion.acme.com',
           value: secondIdentity,
           strength: 'strong',
         },

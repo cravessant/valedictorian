@@ -11,7 +11,10 @@ import { createLocalLifecycleMethods } from './local-lifecycle-methods'
 import { createPgliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
 import { createPgliteCaptureService } from '../modules/capture/capture.service'
 import { createCaptureMaterializationService } from '../modules/capture/capture.materialization'
-import { createCaptureResolutionService } from '../modules/capture/capture.resolution'
+import {
+  createCaptureResolutionService,
+  createCaptureResolutionV2Service,
+} from '../modules/capture/capture.resolution'
 import { createManualCaptureCompletionService } from '../modules/capture/capture.manual-completion'
 import { createCaptureDestinationResolutionService } from '../modules/capture/capture.destination-resolution'
 import { createCaptureFieldOutcomeStore } from '../modules/capture/capture.field-outcomes'
@@ -354,16 +357,18 @@ export async function createLocalValedictorianClient({
     jobIdentityService: manualCompletionJobIdentityService,
     now,
   })
+  const captureResolutionOptions = {
+    workspaceId,
+    materialization: captureMaterialization,
+    destination: captureDestination,
+    manualCompletion: manualCaptureCompletion,
+  }
   const client: LocalValedictorianClient = {
     workspaceId,
     connectorScheduling,
     ...lifecycle,
-    captureResolution: createCaptureResolutionService(database, {
-      workspaceId,
-      materialization: captureMaterialization,
-      destination: captureDestination,
-      manualCompletion: manualCaptureCompletion,
-    }),
+    captureResolution: createCaptureResolutionService(database, captureResolutionOptions),
+    captureResolutionV2: createCaptureResolutionV2Service(database, captureResolutionOptions),
     companies: createPgliteCompanyService(database, {
       workspaceId,
       coverage: companyCoverage,

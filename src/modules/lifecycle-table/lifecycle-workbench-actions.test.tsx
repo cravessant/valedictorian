@@ -8,7 +8,7 @@ import type {
   CaptureListPresentation,
   Job,
   Opportunity,
-  ValedictorianWorkspaceClient,
+  ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
@@ -163,7 +163,7 @@ function makeApplication(id: string, overrides: Partial<Application> = {}): Appl
 }
 
 interface MockClient {
-  client: ValedictorianWorkspaceClient
+  client: ValedictorianWorkspaceClientV2
   captures: Record<string, ReturnType<typeof vi.fn>>
   captureResolution: Record<string, ReturnType<typeof vi.fn>>
   jobs: Record<string, ReturnType<typeof vi.fn>>
@@ -262,12 +262,12 @@ function makeClient(seed: {
   }
   const client = {
     captures,
-    captureResolution,
+    captureResolutionV2: captureResolution,
     jobs,
     companyAssignments,
     opportunities,
     applications,
-  } as unknown as ValedictorianWorkspaceClient
+  } as unknown as ValedictorianWorkspaceClientV2
   return {
     client,
     captures,

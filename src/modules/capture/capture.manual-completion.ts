@@ -11,9 +11,13 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import {
   completeCaptureManuallyInputSchema,
   completeCaptureManuallyResultSchema,
+  completeCaptureManuallyV2InputSchema,
+  completeCaptureManuallyV2ResultSchema,
   processingIssueSchema,
   type CompleteCaptureManuallyInput,
   type CompleteCaptureManuallyResult,
+  type CompleteCaptureManuallyV2Input,
+  type CompleteCaptureManuallyV2Result,
 } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import { createUuidV7Generator, type Clock, type UuidV7Generator } from '../../db/uuidv7'
@@ -46,9 +50,12 @@ import {
 import type { JobIdentityService } from '../job/job.identity'
 import type { JobService } from '../job/job.service'
 import type { JobPromotionService } from '../lifecycle/capture-to-job.promotion'
+import { validateDestinationUrl } from './destination-url-safety'
 
 type Tx = CompanyTx
 type Request = ReturnType<typeof completeCaptureManuallyInputSchema.parse>
+type RequestV2 = ReturnType<typeof completeCaptureManuallyV2InputSchema.parse>
+type CompletionRequest = Request | RequestV2
 
 interface ExistingJob {
   readonly jobId: string
@@ -62,6 +69,7 @@ interface ExistingJob {
 
 export interface ManualCaptureCompletionService {
   complete(input: CompleteCaptureManuallyInput): Promise<CompleteCaptureManuallyResult>
+  completeV2(input: CompleteCaptureManuallyV2Input): Promise<CompleteCaptureManuallyV2Result>
 }
 
 export interface ManualCaptureCompletionOptions {
@@ -89,7 +97,20 @@ export function createManualCaptureCompletionService(
   const nowIso = () => now().toISOString()
 
   async function complete(rawInput: CompleteCaptureManuallyInput): Promise<CompleteCaptureManuallyResult> {
+    const unsafe = unsafeUnparsedDestinationFailure(rawInput)
+    if (unsafe) return unsafe
     const request = completeCaptureManuallyInputSchema.parse(rawInput)
+    return completeParsed(request)
+  }
+
+  async function completeV2(rawInput: CompleteCaptureManuallyV2Input): Promise<CompleteCaptureManuallyV2Result> {
+    const unsafe = unsafeUnparsedDestinationFailure(rawInput)
+    if (unsafe) return completeCaptureManuallyV2ResultSchema.parse(unsafe)
+    const request = completeCaptureManuallyV2InputSchema.parse(rawInput)
+    return completeCaptureManuallyV2ResultSchema.parse(await completeParsed(request))
+  }
+
+  async function completeParsed(request: CompletionRequest): Promise<CompleteCaptureManuallyResult> {
     const requestFingerprint = fingerprint({ operation: 'complete', request })
     return database.transaction(async (tx) => {
       // The workspace lock is intentionally first: Company identity operations
@@ -137,7 +158,7 @@ export function createManualCaptureCompletionService(
     )
   }
 
-  async function completeOn(tx: Tx, request: Request): Promise<CompleteCaptureManuallyResult> {
+  async function completeOn(tx: Tx, request: CompletionRequest): Promise<CompleteCaptureManuallyResult> {
     const [capture] = await tx.select({
       id: captures.id,
       revision: captures.revision,
@@ -274,7 +295,7 @@ export function createManualCaptureCompletionService(
 
   async function selectedExistingCompany(
     tx: Tx,
-    request: Request,
+    request: CompletionRequest,
   ): Promise<{ row: typeof workspaceCompanies.$inferSelect | null } | { result: CompleteCaptureManuallyResult }> {
     if (request.companyResolution.action === 'create_local') return { row: null }
     const [row] = await tx.select().from(workspaceCompanies).where(and(
@@ -298,7 +319,7 @@ export function createManualCaptureCompletionService(
 
   async function resolveCompanyForCreation(
     tx: Tx,
-    request: Request,
+    request: CompletionRequest,
   ): Promise<{ row: typeof workspaceCompanies.$inferSelect } | { result: CompleteCaptureManuallyResult }> {
     if (request.companyResolution.action === 'create_local') {
       return {
@@ -332,7 +353,7 @@ export function createManualCaptureCompletionService(
     return { row: selected.row }
   }
 
-  async function validateEvidenceReferences(tx: Tx, request: Request) {
+  async function validateEvidenceReferences(tx: Tx, request: CompletionRequest) {
     if (request.evidenceReferences.length === 0) {
       return lifecycleBlocked('missing_lineage', 'Manual completion requires at least one evidence reference.')
     }
@@ -387,7 +408,7 @@ export function createManualCaptureCompletionService(
     return row ?? null
   }
 
-  async function strongIdentityOwners(tx: Tx, request: Request): Promise<ExistingJob[]> {
+  async function strongIdentityOwners(tx: Tx, request: CompletionRequest): Promise<ExistingJob[]> {
     const owners = new Map<string, ExistingJob>()
     for (const identity of effectiveIdentities(request)) {
       if (identity.strength !== 'strong') continue
@@ -411,7 +432,7 @@ export function createManualCaptureCompletionService(
 
   async function resolveExistingOwner(
     tx: Tx,
-    request: Request,
+    request: CompletionRequest,
     owners: readonly ExistingJob[],
     blockerCode: 'deterministic_duplicate' | 'strong_identity_conflict',
   ): Promise<{ job: ExistingJob } | { result: CompleteCaptureManuallyResult }> {
@@ -467,7 +488,7 @@ export function createManualCaptureCompletionService(
 
   async function companyForExistingJob(
     tx: Tx,
-    request: Request,
+    request: CompletionRequest,
     job: ExistingJob,
   ): Promise<CompleteCaptureManuallyResult | null> {
     const selected = await selectedExistingCompany(tx, request)
@@ -500,10 +521,10 @@ export function createManualCaptureCompletionService(
 
   async function identitiesForExistingTarget(
     tx: Tx,
-    request: Request,
+    request: CompletionRequest,
     targetJobId: string,
-  ): Promise<Array<Request['externalIdentities'][number]>> {
-    const identities: Array<Request['externalIdentities'][number]> = []
+  ): Promise<Array<CompletionRequest['externalIdentities'][number]>> {
+    const identities: Array<CompletionRequest['externalIdentities'][number]> = []
     for (const identity of effectiveIdentities(request)) {
       if (identity.strength !== 'strong') {
         identities.push(identity)
@@ -524,7 +545,7 @@ export function createManualCaptureCompletionService(
     return identities
   }
 
-  async function promoteGeneration(tx: Tx, request: Request, generationId: string | null, jobId: string) {
+  async function promoteGeneration(tx: Tx, request: CompletionRequest, generationId: string | null, jobId: string) {
     let targetGenerationId = generationId
     if (generationId) {
       const [destination] = await tx.select({ status: captureResolutionStageResults.status, issueJson: captureResolutionStageResults.issueJson })
@@ -556,7 +577,7 @@ export function createManualCaptureCompletionService(
    */
   async function persistCompletionBlocker(
     tx: Tx,
-    request: Request,
+    request: CompletionRequest,
     generationId: string | null,
     result: CompleteCaptureManuallyResult,
     duplicateOwnerCount?: number,
@@ -611,7 +632,7 @@ export function createManualCaptureCompletionService(
       .where(eq(captureResolutionStageResults.generationId, generationId))
   }
 
-  async function createManualGeneration(tx: Tx, request: Request): Promise<string> {
+  async function createManualGeneration(tx: Tx, request: CompletionRequest): Promise<string> {
     const [ordinal] = await tx.select({ ordinal: captureResolutionGenerations.ordinal }).from(captureResolutionGenerations)
       .where(eq(captureResolutionGenerations.captureId, request.captureId)).orderBy(desc(captureResolutionGenerations.ordinal)).limit(1)
     const id = newId()
@@ -632,7 +653,7 @@ export function createManualCaptureCompletionService(
     return id
   }
 
-  return { complete }
+  return { complete, completeV2 }
 }
 
 function exactOwners(
@@ -682,24 +703,41 @@ function lifecycleBlocked(code: 'invalid_input' | 'impossible_state' | 'missing_
   })
 }
 
-function unsafeDestinationFailure(request: Request): CompleteCaptureManuallyResult | null {
-  if (!request.destination) return null
-  let url: URL
-  try {
-    url = new URL(request.destination.url)
-  } catch {
-    return lifecycleBlocked('security_violation', 'Destination URL parsing failed.')
-  }
-  if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.search || url.hash) {
-    return lifecycleBlocked('security_violation', 'Destination URLs must not contain credentials, query parameters, or fragments.')
+function unsafeDestinationFailure(request: CompletionRequest): CompleteCaptureManuallyResult | null {
+  for (const destination of [request.destination, request.jobFacts.destination]) {
+    if (!destination) continue
+    const result = validateDestinationUrl(destination.url)
+    if (!result.ok) return lifecycleBlocked('security_violation', result.message)
   }
   return null
+}
+
+/**
+ * URL schemas can reject malformed inputs before the completion command reaches
+ * its normal policy gate. Check literal backslashes first so WHATWG URL parsing
+ * never has a chance to reinterpret ambiguous authority or path syntax.
+ */
+function unsafeUnparsedDestinationFailure(input: unknown): CompleteCaptureManuallyResult | null {
+  if (!isRecord(input)) return null
+  const destinations = [input.destination, isRecord(input.jobFacts) ? input.jobFacts.destination : null]
+  for (const destination of destinations) {
+    if (!isRecord(destination) || typeof destination.url !== 'string' || !destination.url.includes('\\')) {
+      continue
+    }
+    const result = validateDestinationUrl(destination.url)
+    if (!result.ok) return lifecycleBlocked('security_violation', result.message)
+  }
+  return null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 async function writeReceipt(
   tx: Tx,
   workspaceId: string,
-  request: Request,
+  request: CompletionRequest,
   requestFingerprint: string,
   result: CompleteCaptureManuallyResult,
   createdAt: string,
@@ -728,9 +766,9 @@ function parseResult(value: string): CompleteCaptureManuallyResult {
   return completeCaptureManuallyResultSchema.parse(JSON.parse(value))
 }
 
-function effectiveIdentities(request: Request): Array<Request['externalIdentities'][number]> {
+function effectiveIdentities(request: CompletionRequest): Array<CompletionRequest['externalIdentities'][number]> {
   const identities = [...request.externalIdentities]
-  if (request.destination?.class !== 'employer_or_ats') return identities
+  if (!isV1EmployerOrAtsDestination(request.destination)) return identities
   const destination = new URL(request.destination.url)
   const canonical = destination.toString()
   const hasCanonical = identities.some((identity) =>
@@ -744,9 +782,21 @@ function effectiveIdentities(request: Request): Array<Request['externalIdentitie
   return identities
 }
 
+function isV1EmployerOrAtsDestination(
+  destination: CompletionRequest['destination'],
+): destination is NonNullable<Request['destination']> {
+  return isV1Destination(destination) && destination.class === 'employer_or_ats'
+}
+
+function isV1Destination(
+  destination: CompletionRequest['destination'],
+): destination is NonNullable<Request['destination']> {
+  return destination !== null && 'class' in destination
+}
+
 function promotionInput(
   workspaceId: string,
-  request: Request,
+  request: CompletionRequest,
   jobId: string,
   externalIdentities = effectiveIdentities(request),
 ) {
@@ -760,7 +810,7 @@ function promotionInput(
   }
 }
 
-function receiptSnapshot(request: Request, requestFingerprint: string): string {
+function receiptSnapshot(request: CompletionRequest, requestFingerprint: string): string {
   const companyResolution = request.companyResolution.action === 'create_local'
     ? {
       action: 'create_local',
@@ -777,9 +827,14 @@ function receiptSnapshot(request: Request, requestFingerprint: string): string {
     expectedCaptureRevision: request.expectedCaptureRevision,
     expectedGenerationId: request.expectedGenerationId,
     companyResolution,
-    destination: request.destination ? {
-      class: request.destination.class, url: redactUrl(request.destination.url),
-    } : null,
+    destination: request.destination
+      ? {
+        ...(isV1Destination(request.destination)
+          ? { class: request.destination.class }
+          : {}),
+        url: redactUrl(request.destination.url),
+      }
+      : null,
     requestFingerprint,
   })
 }

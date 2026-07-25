@@ -104,6 +104,20 @@ describe('toJobResource', () => {
     expect(dto.externalIdentities.map((identity) => identity.value)).toEqual(['earlier', 'later'])
     expect(dto.captureEvidenceReferences.map((reference) => reference.captureId)).toEqual(['cap-1', 'cap-2'])
   })
+
+  it('omits a URL-only V2 destination from the V1 resource without changing its stored facts', () => {
+    const v2Facts = {
+      ...facts,
+      destination: { url: 'https://careers.acme.com/jobs/url-only-v2' },
+    }
+    const v2Head = { ...head, factsJson: JSON.stringify(v2Facts) }
+
+    const dto = toJobResource(v2Head, [], [evidenceRow()])
+
+    expect(() => jobSchema.parse(dto)).not.toThrow()
+    expect(dto.facts.destination).toBeNull()
+    expect(JSON.parse(v2Head.factsJson).destination).toEqual(v2Facts.destination)
+  })
 })
 
 describe('reconstructJobHistory', () => {
@@ -155,6 +169,29 @@ describe('reconstructJobHistory', () => {
     const next = reconstructJobHistory(head, history, [], [], { limit: 5, afterSequence: 1 })
     expect(next.items.map((item) => item.sequence)).toEqual([2, 3])
     expect(next.nextCursor).toBeNull()
+  })
+
+  it('projects URL-only V2 facts in every reconstructed V1 history snapshot', () => {
+    const v2Facts = {
+      ...facts,
+      destination: { url: 'https://careers.acme.com/jobs/url-only-history' },
+    }
+    const result = reconstructJobHistory(
+      { ...head, factsJson: JSON.stringify(v2Facts) },
+      [{
+        sequence: 1,
+        kind: 'created',
+        snapshotJson: JSON.stringify(v2Facts),
+        auditJson: '{"actor":{"type":"system"}}',
+        createdAt: head.createdAt,
+      }],
+      [],
+      [evidenceRow({ createdAt: head.createdAt })],
+      { limit: 50 },
+    )
+
+    expect(() => jobHistoryResultSchema.parse(result)).not.toThrow()
+    expect(result.items[0]?.snapshot.facts.destination).toBeNull()
   })
 })
 

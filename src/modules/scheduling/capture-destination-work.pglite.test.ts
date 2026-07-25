@@ -4,7 +4,10 @@ import { workspaces } from '../../db/workspaces.schema'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { createCaptureMaterializationService } from '../capture/capture.materialization'
 import { createCaptureDestinationResolutionService } from '../capture/capture.destination-resolution'
-import { createCaptureResolutionService } from '../capture/capture.resolution'
+import {
+  createCaptureResolutionService,
+  createCaptureResolutionV2Service,
+} from '../capture/capture.resolution'
 import { createPgliteCaptureService } from '../capture/capture.service'
 import {
   captureResolutionGenerations,
@@ -211,7 +214,12 @@ describe.sequential('Capture destination resolution durable work (#362)', () => 
       state: destination,
       execute: async () => {
         executions += 1
-        return { status: 'resolved', url: 'https://careers.example.com/jobs/123', method: 'employer_direct' }
+        return {
+          status: 'resolved',
+          url: 'https://careers.example.com/jobs/123',
+          method: 'employer_direct',
+          evidence: [{ kind: 'jobright_api_detail', value: { providerStatus: 'hidden' } }],
+        }
       },
     })
     await executor(await claim(repository, clock.now()))
@@ -219,7 +227,11 @@ describe.sequential('Capture destination resolution durable work (#362)', () => 
     expect(executions).toBe(1)
     expect(await destinationStage(database, generation.id)).toMatchObject({
       status: 'resolved',
-      resultJson: JSON.stringify({ url: 'https://careers.example.com/jobs/123', method: 'employer_direct' }),
+      resultJson: JSON.stringify({
+        url: 'https://careers.example.com/jobs/123',
+        method: 'employer_direct',
+        providerStatus: 'hidden',
+      }),
     })
     const resolution = createCaptureResolutionService(database, {
       workspaceId: WORKSPACE,
@@ -229,11 +241,23 @@ describe.sequential('Capture destination resolution durable work (#362)', () => 
     await expect(resolution.get(captureId)).resolves.toMatchObject({
       destination: { status: 'resolved', url: 'https://careers.example.com/jobs/123' },
     })
+    const v2 = createCaptureResolutionV2Service(database, {
+      workspaceId: WORKSPACE,
+      materialization,
+      destination,
+    })
+    await expect(v2.get(captureId)).resolves.toMatchObject({
+      destination: {
+        status: 'resolved',
+        url: 'https://careers.example.com/jobs/123',
+        providerStatus: 'hidden',
+      },
+    })
   })
 
   it('validates with URL parsing but persists the exact resolver-emitted destination string', async () => {
     const { captureId, clock, database, destination, generation, materialization, repository } = await setup()
-    const emittedUrl = 'https://CAREERS.Example.com:443'
+    const emittedUrl = 'https://CAREERS.Example.com:443/jobs/email@acme.com?utm_source=job-board&ref=jobs@board%23weekly'
     const executor = createCaptureDestinationWorkExecutor({
       repository,
       state: destination,
@@ -283,6 +307,10 @@ describe.sequential('Capture destination resolution durable work (#362)', () => 
     ['IPv6 literal', 'https://[::1]/jobs/123'],
     ['special-use suffix', 'https://careers.example.test/jobs/123'],
     ['sensitive query', 'https://careers.example.com/jobs/123?X-Amz-Signature=destination-secret-canary'],
+    ['empty fragment delimiter', 'https://careers.example.com/jobs/123#'],
+    ['empty authority userinfo delimiter', 'https://@careers.example.com/jobs/123'],
+    ['backslash authority syntax', 'https:\\\\@careers.example.com/path'],
+    ['backslash path syntax', 'https://careers.example.com\\\\jobs/email@acme.com'],
   ])('blocks %s provider output without persisting it', async (_label, url) => {
     const { clock, database, destination, generation, repository } = await setup()
     const canary = 'destination-secret-canary'
@@ -303,6 +331,32 @@ describe.sequential('Capture destination resolution durable work (#362)', () => 
     expect(stage).toMatchObject({ status: 'blocked', resultJson: '{}' })
     expect(stage.issueJson).toContain('destination_security_rejected')
     expect(JSON.stringify({ work, stage })).not.toContain(canary)
+  })
+
+  it('blocks an automated resolver result with an invalid method', async () => {
+    const { clock, database, destination, generation, repository } = await setup()
+    const executor = createCaptureDestinationWorkExecutor({
+      repository,
+      state: destination,
+      execute: async () => ({
+        status: 'resolved',
+        url: 'https://careers.acme.com/jobs/123',
+        method: 'manual entry',
+      }),
+    })
+    await executor(await claim(repository, clock.now()))
+
+    expect(await destinationStage(database, generation.id)).toMatchObject({
+      status: 'blocked',
+      resultJson: '{}',
+      issueJson: expect.stringContaining('destination_security_rejected'),
+    })
+    expect((await destinationStage(database, generation.id)).issueJson).toContain(
+      'invalid destination resolver method',
+    )
+    expect((await destinationStage(database, generation.id)).issueJson).not.toContain(
+      'unsafe destination URL',
+    )
   })
 
   it('creates successor generations only from a current terminal destination command', async () => {

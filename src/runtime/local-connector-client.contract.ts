@@ -8,6 +8,7 @@ import type {
   TriggerConnectorRunInput,
   UpdateConnectorInstanceInput,
   ValedictorianWorkspaceClient,
+  ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
 import type { AppConnectorAuthGrant, AppConnectorAuthValidationResult } from '../modules/connectors/connector.runner'
 import type { ConnectorAuthMode } from '../modules/connectors/connector.repository'
@@ -166,7 +167,7 @@ export interface LocalConnectorClient {
   }
 }
 
-export type LocalValedictorianClient = ValedictorianWorkspaceClient & {
+export type LocalValedictorianClient = ValedictorianWorkspaceClientV2 & {
   /** Bound workspace identity used only by the local HTTP adapter. */
   workspaceId: string
   connectors: LocalConnectorClient

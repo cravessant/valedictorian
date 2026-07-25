@@ -4,7 +4,7 @@ import path from 'node:path'
 
 const proofSchemaVersion = 'valedictorian-electron-native-ui-proof@1'
 const screenshotTarget = 'main-window-web-contents'
-const proofDestination = 'https://validation.example/careers'
+const proofDestination = 'https://validation.example.com/careers'
 const proofTimeoutMs = 20_000
 const rendererDiagnosticLimit = 24
 const rendererDiagnosticLength = 320
@@ -323,7 +323,7 @@ export async function completeElectronNativeUiCapture(
   assertions.existingCompanySelected = true
 
   await driver.fill({
-    name: 'Employer or ATS URL',
+    name: 'Destination URL',
     role: 'textbox',
     within: completionDialog,
   }, proofDestination)

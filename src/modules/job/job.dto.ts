@@ -27,6 +27,7 @@ import type {
   JobHistoryResult,
   JobListResult,
 } from '@sparxie/sdk'
+import { jobFactsSchema, jobFactsV2Schema } from '@sparxie/sdk'
 import { toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
 
 /** The subset of `jobs` the read-model selects for a resource. */
@@ -83,6 +84,25 @@ function parseJson(text: string): unknown {
   }
 }
 
+/**
+ * The public Job resource remains on the V1 contract while V2 completion stores
+ * its URL-only destination shape. A V1 destination cannot truthfully represent
+ * that URL without manufacturing a class, so omit it in this response-only
+ * projection. The persisted facts JSON remains the authoritative V2 value.
+ */
+function toV1JobFacts(value: unknown): Job['facts'] {
+  const v1 = jobFactsSchema.safeParse(value)
+  if (v1.success) return v1.data
+
+  const v2 = jobFactsV2Schema.safeParse(value)
+  if (v2.success) {
+    const { destination: _destination, ...facts } = v2.data
+    return jobFactsSchema.parse({ ...facts, destination: null })
+  }
+
+  return jobFactsSchema.parse(value)
+}
+
 function orderByCreated<T extends { readonly createdAt: string; readonly id: string }>(rows: readonly T[]): T[] {
   return [...rows].sort((left, right) =>
     left.createdAt === right.createdAt ? left.id.localeCompare(right.id) : left.createdAt.localeCompare(right.createdAt),
@@ -121,7 +141,7 @@ export function toJobResource(
     id: head.id as JobId,
     workspaceId: head.workspaceId,
     factsRevision: head.factsRevision,
-    facts: parseJson(head.factsJson) as Job['facts'],
+    facts: toV1JobFacts(parseJson(head.factsJson)),
     availabilityRevision: head.availabilityRevision,
     availability: {
       state: head.availabilityState as Job['availability']['state'],
@@ -194,9 +214,16 @@ export function reconstructJobHistory(
       (identity) => identity.createdAt <= asOf && (identity.removedAt === null || identity.removedAt > asOf),
     )
     const activeEvidenceRefs = evidenceRefs.filter((reference) => reference.createdAt <= asOf)
+    // A Job's founding lineage is written in the same transaction as its
+    // creation history, but its physical timestamp can be a later clock tick.
+    // Keep that required lineage on the reconstructed creation snapshot so it
+    // remains a valid V1 Job resource.
+    if (activeEvidenceRefs.length === 0 && evidenceRefs.length > 0) {
+      activeEvidenceRefs.push(orderByCreated(evidenceRefs)[0]!)
+    }
     const snapshot: Job = {
       ...toJobResource(head, activeIdentities, activeEvidenceRefs),
-      facts: facts as Job['facts'],
+      facts: toV1JobFacts(facts),
       factsRevision,
       availabilityRevision,
       availability: {

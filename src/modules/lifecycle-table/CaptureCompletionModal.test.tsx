@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CaptureCompletionDetail, Job, ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { CaptureCompletionDetailV2, Job, ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
 
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
 vi.mock('@/components/ui/use-toast', () => ({ toast }))
@@ -15,7 +15,7 @@ const detail = {
   rawEvidence: [{ captureRevision: 1, evidenceIndex: 0, label: 'Title', displayValue: 'Engineer' }],
   exactEvidenceReferences: [{ captureId: 'cap-1', captureRevision: 1, evidenceIndexes: [0] }],
   jobDefaults: { companyName: 'Example', roleTitle: 'Engineer' }, lastIssue: null,
-} as CaptureCompletionDetail
+} as CaptureCompletionDetailV2
 
 const activeCompany = {
   companyId: 'company-active', revision: 3, displayName: 'Example Incorporated',
@@ -89,7 +89,7 @@ function makeClient(options: {
     },
   }))
   const client = {
-    captureResolution: {
+    captureResolutionV2: {
       get: options.get ?? vi.fn().mockResolvedValue(detail),
       complete,
     },
@@ -101,16 +101,16 @@ function makeClient(options: {
     jobs: { get: jobsGet },
     companyAssignments: { get: assignmentGet, reassign },
   } as unknown as Pick<
-    ValedictorianWorkspaceClient,
-    'captureResolution' | 'companies' | 'jobs' | 'companyAssignments'
+    ValedictorianWorkspaceClientV2,
+    'captureResolutionV2' | 'companies' | 'jobs' | 'companyAssignments'
   >
   return { client, complete, search, jobsGet, assignmentGet, reassign, lookup }
 }
 
 function renderModal(
   client: Pick<
-    ValedictorianWorkspaceClient,
-    'captureResolution' | 'companies' | 'jobs' | 'companyAssignments'
+    ValedictorianWorkspaceClientV2,
+    'captureResolutionV2' | 'companies' | 'jobs' | 'companyAssignments'
   >,
   overrides: Partial<React.ComponentProps<typeof CaptureCompletionModal>> = {},
 ) {
@@ -191,7 +191,7 @@ describe('CaptureCompletionModal', () => {
     expect(screen.getByRole('region', { name: 'Provenance path' })).toHaveTextContent('Job board')
     expect(screen.getByRole('region', { name: 'Provenance path' })).toHaveTextContent('https://jobs.example.com/role')
     expect(screen.getByRole('region', { name: 'Capture source' })).toHaveTextContent('Job board')
-    expect(screen.getByRole('region', { name: 'Job destination' })).toHaveTextContent('Employer or ATS URL')
+    expect(screen.getByRole('region', { name: 'Job destination' })).toHaveTextContent('Destination URL')
     expect(screen.getByText('Raw evidence (1)')).toBeInTheDocument()
     expect(document.querySelector('details')?.open).toBe(false)
     const shell = screen.getByRole('dialog')
@@ -270,19 +270,37 @@ describe('CaptureCompletionModal', () => {
     })
   })
 
-  it('rejects unsafe destination URLs without silently rewriting them', async () => {
+  it('rejects sensitive destination query parameters without silently rewriting them', async () => {
     const user = userEvent.setup()
     const { client, complete } = makeClient()
     renderModal(client)
 
-    const destination = await screen.findByLabelText('Employer or ATS URL')
+    const destination = await screen.findByLabelText('Destination URL')
     await user.clear(destination)
-    await user.type(destination, 'https://jobs.example.com/role?utm_source=board')
+    await user.type(destination, 'https://jobs.example.com/role?token=destination-secret')
     await user.click(screen.getByRole('button', { name: 'Create Job' }))
 
     expect(complete).not.toHaveBeenCalled()
-    expect(screen.getByText(/without credentials, query parameters, or a fragment/)).toBeInTheDocument()
-    expect(destination).toHaveValue('https://jobs.example.com/role?utm_source=board')
+    expect(screen.getByRole('alert')).toHaveTextContent('cannot include sensitive query parameters')
+    expect(destination).toHaveValue('https://jobs.example.com/role?token=destination-secret')
+  })
+
+  it('submits benign query bytes exactly as entered', async () => {
+    const user = userEvent.setup()
+    const { client, complete } = makeClient()
+    renderModal(client)
+
+    const destination = await screen.findByLabelText('Destination URL')
+    const exactUrl = 'https://jobs.example.com/role?utm_source=board&ref=Capture%20List'
+    await user.clear(destination)
+    await user.type(destination, exactUrl)
+    await user.click(screen.getByRole('button', { name: 'Create Job' }))
+
+    await waitFor(() => expect(complete).toHaveBeenCalledOnce())
+    expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+      destination: { url: exactUrl },
+      jobFacts: expect.objectContaining({ destination: { url: exactUrl } }),
+    }))
   })
 
   it('offers only allowed duplicate decisions and uses a fresh key for the exact target revision', async () => {

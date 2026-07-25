@@ -2,7 +2,7 @@ import type {
   CaptureListPresentation,
   CaptureResolutionListInput,
   CaptureResolutionListResult,
-  ValedictorianWorkspaceClient,
+  ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
 import { Button } from '@/components/ui/button'
 import type { LifecycleTableConfig } from '../lifecycle-table'
@@ -10,7 +10,7 @@ import type { LifecycleTableConfig } from '../lifecycle-table'
 export interface CaptureConfig {
   readonly table: LifecycleTableConfig<CaptureListPresentation>
   readonly list: (
-    client: Pick<ValedictorianWorkspaceClient, 'captureResolution'>,
+    client: Pick<ValedictorianWorkspaceClientV2, 'captureResolutionV2'>,
     input?: CaptureResolutionListInput,
   ) => Promise<CaptureResolutionListResult>
 }
@@ -140,7 +140,7 @@ export function createCaptureConfig(options: {
 
   return {
     table,
-    list: (client, input) => client.captureResolution.list(input ?? {
+    list: (client, input) => client.captureResolutionV2.list(input ?? {
       filter: 'all',
       sort: 'observed_desc',
       limit: 50,

@@ -26,7 +26,7 @@ import { createLocalValedictorianClient } from '../src/runtime/local-valedictori
 const BUILD_IDENTITY = process.env.VALEDICTORIAN_PACKAGE_MANUAL_WORKFLOW_BUILD_IDENTITY
   ?? 'unspecified-build'
 const FIXTURE_ADAPTER_ID = 'jobright.resolver'
-const FIXTURE_ADAPTER_VERSION = '0.18.1'
+const FIXTURE_ADAPTER_VERSION = '0.18.2'
 const FRESH_WORKSPACE_ID = 'package-proof-fresh-workspace'
 const MIGRATED_WORKSPACE_ID = 'package-proof-migrated-workspace'
 const FIXTURE_DESTINATION = 'https://jobs.lever.co/packageproof/fixture-engineer'
@@ -202,7 +202,7 @@ async function writeProof(
     ))
     .limit(1)
   assert(destinationStage && JSON.parse(destinationStage.resultJson).method
-    === 'jobright_api_detail_apply_link_employer_or_ats',
+    === 'jobright_api_detail_apply_link',
   'The shipped Jobright resolver did not classify the recorded intermediary/detail response.')
   const completed = await fresh.captureResolution.complete({
     actor: ACTOR,

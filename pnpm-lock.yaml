@@ -60,11 +60,11 @@ importers:
         specifier: ^1.2.12
         version: 1.2.12(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@sparxie/sdk':
-        specifier: 0.29.1
-        version: 0.29.1
+        specifier: 0.30.0
+        version: 0.30.0
       '@sparxie/valedictorian-connectors-jobright':
-        specifier: 0.18.1
-        version: 0.18.1
+        specifier: 0.18.2
+        version: 0.18.2
       '@tailwindcss/vite':
         specifier: ^4.3.0
         version: 4.3.0(vite@5.4.21(@types/node@26.1.1)(lightningcss@1.32.0))
@@ -142,11 +142,11 @@ importers:
         specifier: file:vendor/valedictorian-cli
         version: file:vendor/valedictorian-cli(typescript@7.0.2)
       '@sparxie/valedictorian-connectors-core':
-        specifier: 0.18.1
-        version: 0.18.1
+        specifier: 0.18.2
+        version: 0.18.2
       '@sparxie/valedictorian-connectors-test-harness':
-        specifier: 0.18.1
-        version: 0.18.1
+        specifier: 0.18.2
+        version: 0.18.2
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1
@@ -1842,19 +1842,23 @@ packages:
     resolution: {integrity: sha512-LfoX7FA0pJOQj7qkKOR2Epihk9zgRHbbhmXWtvGY0SXRzB/rEhaZhi2aQ63JAAvoYBKlMsOdEP2J4X+jl9n+6w==}
     engines: {node: '>=22.12.0'}
 
+  '@sparxie/sdk@0.30.0':
+    resolution: {integrity: sha512-J/kQmrav8XAyQVEC6rOoSNtICzXXa0v8mco2W+ziqFQf6yeD6mCyMSABzpQrrrNZFSOGVyXz0co1qy/sHm5Xpw==}
+    engines: {node: '>=22.12.0'}
+
   '@sparxie/valedictorian-cli@file:vendor/valedictorian-cli':
     resolution: {directory: vendor/valedictorian-cli, type: directory}
     engines: {node: '>=22.12.0'}
     hasBin: true
 
-  '@sparxie/valedictorian-connectors-core@0.18.1':
-    resolution: {integrity: sha512-dwcfot9YO3h+dQi3K+ezqVFmydUONAL1V+Fg7s+9SZTrDbgsgWjmjGvx18W92YOSAeRDRUbPJWNqmHOF5asMWA==}
+  '@sparxie/valedictorian-connectors-core@0.18.2':
+    resolution: {integrity: sha512-J1Zi6fMGhdK9WKf1robR9ywWeuIzVSvMBYHRARz4AZ6WsffiUR9SDfGMEz+wQdqUTRqj+KUia0joX71OVBCC6Q==}
 
-  '@sparxie/valedictorian-connectors-jobright@0.18.1':
-    resolution: {integrity: sha512-O5VXkLuQbr/IOSe55q2k4ZgAMaJIVD44Yv4ktxvhkfuSGnHUvJHBVdMfAalY2SOqKN1zFi0fSoZ0wiFEDTAtRA==}
+  '@sparxie/valedictorian-connectors-jobright@0.18.2':
+    resolution: {integrity: sha512-SQ4dp9ynqTOvr9HP9t5Qd5kJpMMlM9edbxt3JkqV2ppNUtSOjtlvM5KTyU5/cF41J4ZEOfiET4jEyLeCTzF+dg==}
 
-  '@sparxie/valedictorian-connectors-test-harness@0.18.1':
-    resolution: {integrity: sha512-3l68O5KsscE5v5j3GowZRKEb2Lx1WI6jVshQ/BAOmSwZHrPz8Hwt74/29VdaFvnQOzUTbPcmLJp2PlGphKtFsQ==}
+  '@sparxie/valedictorian-connectors-test-harness@0.18.2':
+    resolution: {integrity: sha512-P+egJ2D5o/0pgSVpHRACHQogt3dkJA0aFNz0XLADZ1Oj/HZKhz9FmI59vCB5xnnygN94GEQ2rgQtPzNGzjvSGg==}
 
   '@stricli/core@1.2.7':
     resolution: {integrity: sha512-a0HxA/cSWjqHj/9GM+cfc/zGNmBdxVTQQpHIEvY1AbDEgo4ZU84cTCbtywYEQOHw2wIc6Vu+PKv+ZQoqZwkHnQ==}
@@ -5243,6 +5247,10 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
+  '@sparxie/sdk@0.30.0':
+    dependencies:
+      zod: 4.4.3
+
   '@sparxie/valedictorian-cli@file:vendor/valedictorian-cli(typescript@7.0.2)':
     dependencies:
       '@sparxie/sdk': 0.29.1
@@ -5251,18 +5259,18 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
-  '@sparxie/valedictorian-connectors-core@0.18.1':
+  '@sparxie/valedictorian-connectors-core@0.18.2':
     dependencies:
       '@sparxie/sdk': 0.29.0
 
-  '@sparxie/valedictorian-connectors-jobright@0.18.1':
+  '@sparxie/valedictorian-connectors-jobright@0.18.2':
     dependencies:
-      '@sparxie/valedictorian-connectors-core': 0.18.1
+      '@sparxie/valedictorian-connectors-core': 0.18.2
 
-  '@sparxie/valedictorian-connectors-test-harness@0.18.1':
+  '@sparxie/valedictorian-connectors-test-harness@0.18.2':
     dependencies:
       '@sparxie/sdk': 0.29.0
-      '@sparxie/valedictorian-connectors-core': 0.18.1
+      '@sparxie/valedictorian-connectors-core': 0.18.2
 
   '@stricli/core@1.2.7': {}
 

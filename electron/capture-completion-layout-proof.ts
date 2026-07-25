@@ -345,7 +345,7 @@ async function prepareLongContentFixtures(
     `Using ${captureCompletionLongContentFixture.companyDisplayName}`,
   )
   await driver.fill({ name: 'Job facts company', role: 'textbox', within: completionDialog }, captureCompletionLongContentFixture.formValue)
-  await driver.fill({ name: 'Employer or ATS URL', role: 'textbox', within: completionDialog }, captureCompletionLongContentFixture.validationUrl)
+  await driver.fill({ name: 'Destination URL', role: 'textbox', within: completionDialog }, captureCompletionLongContentFixture.validationUrl)
   await driver.click({ name: 'Create Job', role: 'button', within: completionDialog })
   await driver.waitForText(completionDialog, captureCompletionLongContentFixture.validationMessage)
   const result = await executeElectronRendererScript<{ error?: string }>(webContents, `(() => {

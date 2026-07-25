@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import { isIP } from 'node:net'
 import { eq } from 'drizzle-orm'
 import type {
   ConnectorProviderUrlResolverResult,
@@ -13,7 +12,10 @@ import type {
   DestinationWorkIdentity,
 } from '../capture/capture.destination-resolution'
 import type { PgliteDatabase } from '../../db/pglite'
-import { SENSITIVE_KEY_SUBSTRINGS } from '../../db/sensitive-keys'
+import {
+  validateDestinationUrl,
+  validateResolverMethod,
+} from '../capture/destination-url-safety'
 import {
   captureDestinationResolutionOperation,
   createScheduledWorkRepository,
@@ -159,17 +161,26 @@ export function createCaptureDestinationWorkExecutor(input: {
       return
     }
     if (outcome.status === 'resolved') {
-      // A resolved connector outcome is the narrow trust assertion that this URL
-      // is an employer/ATS destination; everything else is treated as untrusted.
-      const destination = sanitizeTrustedEmployerOrAtsDestination(outcome.url, outcome.method)
-      if (!destination) {
+      const destination = safeResolvedDestination(outcome)
+      if (!destination.ok) {
         await state.terminal(identity, work.attempt, {
-          status: 'blocked', issue: issue('destination_security_rejected', null, 'The provider returned an unsafe destination URL.'),
+          status: 'blocked',
+          issue: issue(
+            'destination_security_rejected',
+            null,
+            destination.reason === 'invalid_resolver_method'
+              ? 'The provider returned an invalid destination resolver method.'
+              : 'The provider returned an unsafe destination URL.',
+          ),
         })
         await repository.fail({ id: work.id, token: work.token, deterministicReason: 'security_rejected' })
         return
       }
-      await state.resolved(identity, work.attempt, destination)
+      await state.resolved(identity, work.attempt, {
+        url: destination.url,
+        method: destination.method,
+        ...(destination.providerStatus ? { providerStatus: destination.providerStatus } : {}),
+      })
       await repository.complete({ id: work.id, token: work.token })
       return
     }
@@ -263,41 +274,31 @@ function retryCode(reason: TransientRetryReason): 'dependency_unavailable' | 'ra
   return 'dependency_unavailable'
 }
 
-function sanitizeTrustedEmployerOrAtsDestination(url: string, method: string) {
-  if (url.length === 0 || url.length > 2_048 || url.trim() !== url) return null
-  try {
-    const parsed = new URL(url)
-    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) return null
-    if (!parsed.hostname || parsed.hostname.length > 253 || isUnsafeHost(parsed.hostname)) return null
-    for (const key of parsed.searchParams.keys()) {
-      if (isSensitiveQueryKey(key)) return null
-    }
-    if (!/^[a-z][a-z0-9_.-]{0,99}$/i.test(method)) return null
-    // URL parsing validates structure only. Preserve the resolver-approved value
-    // byte-for-byte so the outcome remains auditable against source evidence.
-    return { url, method }
-  } catch {
-    return null
+function safeResolvedDestination(outcome: Extract<ConnectorProviderUrlResolverResult, { status: 'resolved' }>) {
+  const destination = validateDestinationUrl(outcome.url)
+  const method = validateResolverMethod(outcome.method)
+  if (!destination.ok) return { ok: false as const, reason: destination.code }
+  if (!method.ok) return { ok: false as const, reason: method.code }
+  const providerStatus = providerStatusFromEvidence(outcome.evidence)
+  return {
+    ok: true as const,
+    url: destination.url,
+    method: outcome.method,
+    ...(providerStatus ? { providerStatus } : {}),
   }
 }
 
-function isUnsafeHost(hostname: string) {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/gu, '').replace(/\.+$/u, '')
-  return isIP(host) !== 0
-    || host === 'localhost'
-    || host.endsWith('.localhost')
-    || host.endsWith('.local')
-    || host.endsWith('.internal')
-    || host.endsWith('.test')
-    || host.endsWith('.example')
-    || host.endsWith('.invalid')
-    || host === 'jobright.ai'
-    || host.endsWith('.jobright.ai')
+function providerStatusFromEvidence(
+  evidence: Extract<ConnectorProviderUrlResolverResult, { status: 'resolved' }>['evidence'],
+): 'closed' | 'hidden' | undefined {
+  for (const item of evidence ?? []) {
+    if (item.kind !== 'jobright_api_detail' || !isRecord(item.value)) continue
+    const providerStatus = item.value.providerStatus
+    if (providerStatus === 'hidden' || providerStatus === 'closed') return providerStatus
+  }
+  return undefined
 }
 
-function isSensitiveQueryKey(key: string) {
-  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '')
-  return SENSITIVE_KEY_SUBSTRINGS.split('|').some((term) =>
-    normalized.includes(term.replace(/[^a-z0-9]/g, '')))
-    || /(?:sig(?:nature)?|jwt|session|csrf|xsrf|nonce|credential|bearer|oauth|xamz)/i.test(normalized)
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

@@ -3,6 +3,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import {
   companyCapabilitySchema,
   jobFactsSchema,
+  jobFactsV2Schema,
   type CompanyCapability,
 } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
@@ -470,8 +471,10 @@ function parseFacts(factsJson: string): JsonValue {
 }
 
 function companyNameFromFacts(facts: JsonValue): string {
-  const parsed = jobFactsSchema.safeParse(facts)
-  return parsed.success ? parsed.data.companyName : UNKNOWN_COMPANY
+  const v2 = jobFactsV2Schema.safeParse(facts)
+  if (v2.success) return v2.data.companyName
+  const v1 = jobFactsSchema.safeParse(facts)
+  return v1.success ? v1.data.companyName : UNKNOWN_COMPANY
 }
 
 function normalizeCompanyName(value: string): string {

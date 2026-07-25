@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
 
 import { LifecycleTable } from './lifecycle-table'
 import { captureConfig, createCaptureConfig } from './configs/capture-config'
@@ -13,16 +13,16 @@ afterEach(cleanup)
 
 interface WorkspaceClientLike {
   captures: { list: (input?: unknown) => Promise<unknown> }
-  captureResolution: { list: (input?: unknown) => Promise<unknown> }
+  captureResolutionV2: { list: (input?: unknown) => Promise<unknown> }
   jobs: { list: (input?: unknown) => Promise<unknown> }
   opportunities: { list: (input?: unknown) => Promise<unknown> }
   applications: { list: (input?: unknown) => Promise<unknown> }
 }
 
-function makeClient(): WorkspaceClientLike & Pick<ValedictorianWorkspaceClient, 'captures' | 'jobs' | 'opportunities' | 'applications'> {
+function makeClient(): WorkspaceClientLike & Pick<ValedictorianWorkspaceClientV2, 'captures' | 'jobs' | 'opportunities' | 'applications'> {
   return {
     captures: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
-    captureResolution: {
+    captureResolutionV2: {
       list: vi.fn(async () => ({
         items: [],
         pageInfo: {
@@ -37,14 +37,14 @@ function makeClient(): WorkspaceClientLike & Pick<ValedictorianWorkspaceClient, 
     jobs: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
     opportunities: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
     applications: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
-  } as unknown as WorkspaceClientLike & Pick<ValedictorianWorkspaceClient, 'captures' | 'jobs' | 'opportunities' | 'applications'>
+  } as unknown as WorkspaceClientLike & Pick<ValedictorianWorkspaceClientV2, 'captures' | 'jobs' | 'opportunities' | 'applications'>
 }
 
 describe('lifecycle typed configs', () => {
-  it('captureConfig exposes the canonical presentation and calls captureResolution.list', async () => {
+  it('captureConfig exposes the canonical presentation and calls captureResolutionV2.list', async () => {
     const client = makeClient()
     await captureConfig.list(client)
-    expect(client.captureResolution.list).toHaveBeenCalledWith({
+    expect(client.captureResolutionV2.list).toHaveBeenCalledWith({
       filter: 'all',
       sort: 'observed_desc',
       limit: 50,
