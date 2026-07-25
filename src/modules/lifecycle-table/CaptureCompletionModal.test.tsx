@@ -150,6 +150,10 @@ describe('CaptureCompletionModal', () => {
     expect(document.querySelector('[data-probe="capture-completion-body"]')).toHaveClass('min-h-0', 'min-w-0', 'flex-1', 'overflow-y-auto')
     expect(document.querySelector('[data-probe="capture-completion-header"]')).toHaveClass('shrink-0')
     expect(document.querySelector('[data-probe="capture-completion-footer"]')).toHaveClass('shrink-0')
+    expect(screen.getByRole('region', { name: 'Provenance path' })).toHaveClass('min-w-0')
+    expect(screen.getByRole('region', { name: 'Capture source' })).toHaveClass('min-w-0')
+    expect(screen.getByRole('region', { name: 'Job destination' })).toHaveClass('min-w-0')
+    expect(document.querySelector('[data-probe="capture-completion-raw-evidence"]')).toHaveClass('max-w-full', 'overflow-x-auto')
   })
 
   it('keeps the initial field focused and closes a clean dialog with Escape', async () => {

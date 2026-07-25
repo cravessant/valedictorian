@@ -39,6 +39,7 @@ export function executeElectronRendererScript<Result>(
 export interface ElectronNativeUiDriver {
   captureAppOnlyScreenshot(name: ProofScreenshot['name']): Promise<ProofScreenshot>
   click(target: SemanticTarget): Promise<void>
+  exists(target: SemanticTarget): Promise<boolean>
   expectText(target: SemanticTarget, expectedText: string): Promise<void>
   fill(target: SemanticTarget, value: string): Promise<void>
   waitFor(target: SemanticTarget, timeoutMs?: number): Promise<void>
@@ -113,7 +114,9 @@ export interface RunElectronNativeUiProofOptions {
 export interface ElectronNativeUiWorkflowHooks {
   readonly afterJobVisible?: () => Promise<void>
   readonly beforeCompletion?: () => Promise<void>
+  readonly completionCompanyName?: string
   readonly expectedCompanyName?: string
+  readonly jobCompanyName?: string
 }
 
 export interface RendererConsoleCapture {
@@ -127,8 +130,8 @@ interface RendererOperation {
   readonly value?: string
 }
 
-const applicationViews: SemanticTarget = { name: 'Application views', role: 'navigation' }
 const completionDialog: SemanticTarget = { name: 'Complete Capture into a Job', role: 'dialog' }
+const applicationViews: SemanticTarget = { name: 'Application views', role: 'navigation' }
 
 export function createElectronNativeUiDriver(
   webContents: ElectronProofWebContents,
@@ -141,6 +144,9 @@ export function createElectronNativeUiDriver(
     },
     async click(target) {
       await rendererOperation(webContents, { kind: 'click', target })
+    },
+    async exists(target) {
+      return rendererOperation<boolean>(webContents, { kind: 'exists', target })
     },
     async expectText(target, expectedText) {
       const text = await rendererOperation<string>(webContents, { kind: 'text', target })
@@ -293,6 +299,9 @@ export async function completeElectronNativeUiCapture(
   const captureTable: SemanticTarget = { name: 'Captures', role: 'table' }
   const jobsTable: SemanticTarget = { name: 'Jobs', role: 'table' }
   const companiesTable: SemanticTarget = { name: 'Companies', role: 'table' }
+  const completionCompanyName = hooks.completionCompanyName ?? 'Validation Company'
+  const expectedCompanyName = hooks.expectedCompanyName ?? completionCompanyName
+  const jobCompanyName = hooks.jobCompanyName ?? 'Validation Company'
   await driver.click({
     name: 'Use an existing local Company',
     role: 'radio',
@@ -302,7 +311,7 @@ export async function completeElectronNativeUiCapture(
     name: 'Search active local Companies',
     role: 'textbox',
     within: completionDialog,
-  }, 'Validation Company')
+  }, completionCompanyName)
   const companyResults: SemanticTarget = {
     name: 'Company search results',
     role: 'list',
@@ -310,7 +319,7 @@ export async function completeElectronNativeUiCapture(
   }
   await driver.waitFor({ name: 'Use', role: 'button', within: companyResults })
   await driver.click({ name: 'Use', role: 'button', within: companyResults })
-  await driver.waitForText(completionDialog, 'Using Validation Company')
+  await driver.waitForText(completionDialog, `Using ${completionCompanyName}`)
   assertions.existingCompanySelected = true
 
   await driver.fill({
@@ -321,22 +330,34 @@ export async function completeElectronNativeUiCapture(
   await driver.click({ name: 'Create Job', role: 'button', within: completionDialog })
   await driver.waitFor(captureTable)
   await driver.waitForText(captureTable, 'Job created')
-  await driver.waitForText(captureTable, 'Validation Engineer · Validation Company')
+  await driver.waitForText(captureTable, `Validation Engineer · ${jobCompanyName}`)
 
-  await driver.click({ name: 'Jobs', role: 'button', within: applicationViews })
+  await revealApplicationNavigation(driver)
+  const jobsNavigation: SemanticTarget = { name: 'Jobs', role: 'button', within: applicationViews }
+  await driver.waitFor(jobsNavigation)
+  await driver.click(jobsNavigation)
   await driver.waitFor(jobsTable)
   await driver.waitForText(jobsTable, 'Validation Engineer')
-  await driver.waitForText(jobsTable, 'Validation Company')
+  await driver.waitForText(jobsTable, jobCompanyName)
   assertions.jobVisible = true
   await hooks.afterJobVisible?.()
 
-  await driver.click({ name: 'Companies', role: 'button', within: applicationViews })
+  await revealApplicationNavigation(driver)
+  const companiesNavigation: SemanticTarget = { name: 'Companies', role: 'button', within: applicationViews }
+  await driver.waitFor(companiesNavigation)
+  await driver.click(companiesNavigation)
   await driver.waitFor(companiesTable)
   await driver.waitForText(
     companiesTable,
-    hooks.expectedCompanyName ?? 'Validation Company',
+    expectedCompanyName,
   )
   assertions.workspaceCompanyVisible = true
+}
+
+async function revealApplicationNavigation(driver: ElectronNativeUiDriver) {
+  const expandSidebar = { name: 'Expand sidebar', role: 'button' } as const
+  if (await driver.exists(expandSidebar)) await driver.click(expandSidebar)
+  await driver.waitFor(applicationViews)
 }
 
 function writeScreenshot(evidenceDirectory: string, screenshot: ProofScreenshot) {

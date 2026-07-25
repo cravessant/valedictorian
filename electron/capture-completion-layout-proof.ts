@@ -10,6 +10,7 @@ import {
   type ElectronProofWebContents,
 } from './native-ui-proof'
 import {
+  captureCompletionLongContentFixture,
   isolatedValidationFixture,
 } from '../src/runtime/isolated-validation.fixture-contract'
 import {
@@ -18,7 +19,7 @@ import {
 } from '../src/runtime/isolated-validation'
 import type { WorkspaceSummary } from '../src/workspace/workspace.initializer'
 
-const schemaVersion = 'valedictorian-capture-completion-dialog-layout-proof@1'
+const schemaVersion = 'valedictorian-capture-completion-dialog-layout-proof@3'
 const viewportHeight = 540
 const viewportWidths = [320, 768, 1440] as const
 const tolerance = 2
@@ -40,25 +41,42 @@ interface SurfaceMeasurement {
   readonly scrollWidth: number
 }
 
-interface ShellMeasurement extends SurfaceMeasurement {
+interface BoundedSurfaceMeasurement extends SurfaceMeasurement {
   readonly rectangle: Rectangle
 }
 
+interface EvidenceMeasurement extends BoundedSurfaceMeasurement {
+  readonly overflowX: string
+}
+
+type OwnedRegion = 'destination' | 'footer' | 'header' | 'provenance' | 'source'
+
+interface OwnedRectangle {
+  readonly name: string
+  readonly owner: OwnedRegion
+  readonly rectangle: Rectangle
+}
+
+interface LongContentMeasurement {
+  readonly owned: readonly OwnedRectangle[]
+  readonly destination: BoundedSurfaceMeasurement
+  readonly provenance: BoundedSurfaceMeasurement
+  readonly rawEvidence: EvidenceMeasurement
+  readonly source: BoundedSurfaceMeasurement
+}
+
+interface LayoutSnapshot {
+  readonly body: BoundedSurfaceMeasurement
+  readonly close: Rectangle
+  readonly content: LongContentMeasurement
+  readonly footer: Rectangle
+  readonly header: Rectangle
+  readonly shell: BoundedSurfaceMeasurement
+}
+
 export interface CaptureCompletionLayoutMeasurement {
-  readonly after: {
-    readonly body: SurfaceMeasurement
-    readonly close: Rectangle
-    readonly footer: Rectangle
-    readonly header: Rectangle
-    readonly shell: ShellMeasurement
-  }
-  readonly before: {
-    readonly body: SurfaceMeasurement
-    readonly close: Rectangle
-    readonly footer: Rectangle
-    readonly header: Rectangle
-    readonly shell: ShellMeasurement
-  }
+  readonly after: LayoutSnapshot
+  readonly before: LayoutSnapshot
   readonly devicePixelRatio: number
   readonly requestedViewport: { readonly height: number; readonly width: number }
   readonly viewport: { readonly height: number; readonly width: number }
@@ -169,13 +187,52 @@ export function layoutMeasurementFailures(measurement: CaptureCompletionLayoutMe
     failures.push(`Body is not vertically scrollable (${before.body.scrollHeight} <= ${before.body.clientHeight}).`)
   }
   if (after.body.scrollTop <= tolerance) failures.push('Body did not advance after scrolling.')
+  for (const [moment, snapshot] of [['before', before], ['after', after]] as const) {
+    const { content } = snapshot
+    for (const [name, region] of [
+      ['provenance', content.provenance],
+      ['source evidence', content.source],
+      ['destination form', content.destination],
+    ] as const) {
+      if (!rectangleHorizontallyInside(region.rectangle, snapshot.body.rectangle)) {
+        failures.push(`${name} escapes the body horizontally ${moment} scrolling.`)
+      }
+      if (region.scrollWidth > region.clientWidth + tolerance) {
+        failures.push(`${name} horizontally overflows ${moment} scrolling (${region.scrollWidth} > ${region.clientWidth}).`)
+      }
+    }
+    if (!rectangleInside(content.rawEvidence.rectangle, content.source)) {
+      failures.push(`Raw evidence escapes its source panel ${moment} scrolling.`)
+    }
+    if (content.rawEvidence.scrollWidth <= content.rawEvidence.clientWidth + tolerance) {
+      failures.push(`Raw evidence did not retain bounded local machine-text scrolling ${moment} scrolling.`)
+    }
+    if (!['auto', 'scroll'].includes(content.rawEvidence.overflowX)) {
+      failures.push(`Raw evidence does not expose intentional local horizontal scrolling ${moment} scrolling.`)
+    }
+    const ownerRegions: Record<OwnedRegion, Rectangle> = {
+      destination: content.destination.rectangle,
+      footer: snapshot.footer,
+      header: snapshot.header,
+      provenance: content.provenance.rectangle,
+      source: content.source.rectangle,
+    }
+    for (const element of content.owned) {
+      if (!rectangleInsideRectangle(element.rectangle, ownerRegions[element.owner])) {
+        failures.push(`${element.name} escapes its ${element.owner} region ${moment} scrolling.`)
+      }
+    }
+    if (rectanglesOverlap(content.source.rectangle, content.destination.rectangle)) {
+      failures.push(`Source evidence overlaps the destination form ${moment} scrolling.`)
+    }
+  }
   for (const [name, beforeRect, afterRect] of [
     ['header', before.header, after.header],
     ['close control', before.close, after.close],
     ['footer actions', before.footer, after.footer],
   ] as const) {
     if (!rectanglesMatch(beforeRect, afterRect)) failures.push(`${name} moved while the body scrolled.`)
-    if (!rectangleInsideShell(afterRect, after.shell)) failures.push(`${name} is not reachable inside the shell after scrolling.`)
+    if (!rectangleInside(afterRect, after.shell)) failures.push(`${name} is not reachable inside the shell after scrolling.`)
   }
   return failures
 }
@@ -200,14 +257,17 @@ async function measureCaptureCompletionDialog({
   let failure: unknown
   const [minimumWidth = 0, minimumHeight = 0] = window.getMinimumSize()
   try {
-    window.setMinimumSize(0, 0)
+    window.setMinimumSize(1, 1)
     window.webContents.setZoomFactor(1)
     const driver = createElectronNativeUiDriver(window.webContents)
     await driver.waitFor({ name: 'Complete Job information', role: 'button' })
     await driver.click({ name: 'Complete Job information', role: 'button' })
     await driver.waitFor({ name: 'Complete Capture into a Job', role: 'dialog' })
-    await driver.waitForText({ name: 'Complete Capture into a Job', role: 'dialog' }, 'Raw evidence (1)')
+    const completionDialog = { name: 'Complete Capture into a Job', role: 'dialog' } as const
+    await driver.waitForText(completionDialog, 'Raw evidence (3)')
+    await driver.waitForText(completionDialog, captureCompletionLongContentFixture.destinationUrl)
     assertions.captureCompletionOpened = true
+    await prepareLongContentFixtures(driver, window.webContents)
     for (const width of viewportWidths) {
       window.setContentSize(width, viewportHeight)
       await waitForLayout(window.webContents)
@@ -218,7 +278,10 @@ async function measureCaptureCompletionDialog({
       if (failures.length > 0) throw new Error(`Viewport ${width}px: ${failures.join(' ')}`)
     }
     await resetDialogBodyScroll(window.webContents)
-    await completeElectronNativeUiCapture(driver, assertions)
+    await driver.fill({ name: 'Job facts company', role: 'textbox' }, 'Validation Company')
+    await completeElectronNativeUiCapture(driver, assertions, {
+      completionCompanyName: captureCompletionLongContentFixture.companyDisplayName,
+    })
   } catch (error) {
     failure = error
   } finally {
@@ -259,6 +322,42 @@ async function waitForLayout(webContents: ElectronProofWebContents) {
   )
 }
 
+async function prepareLongContentFixtures(
+  driver: ReturnType<typeof createElectronNativeUiDriver>,
+  webContents: ElectronProofWebContents,
+) {
+  const completionDialog = { name: 'Complete Capture into a Job', role: 'dialog' } as const
+  await driver.click({
+    name: 'Use an existing local Company',
+    role: 'radio',
+    within: completionDialog,
+  })
+  await driver.fill({
+    name: 'Search active local Companies',
+    role: 'textbox',
+    within: completionDialog,
+  }, captureCompletionLongContentFixture.companyDisplayName)
+  const companyResults = { name: 'Company search results', role: 'list', within: completionDialog } as const
+  await driver.waitFor({ name: 'Use', role: 'button', within: companyResults })
+  await driver.click({ name: 'Use', role: 'button', within: companyResults })
+  await driver.waitForText(
+    completionDialog,
+    `Using ${captureCompletionLongContentFixture.companyDisplayName}`,
+  )
+  await driver.fill({ name: 'Job facts company', role: 'textbox', within: completionDialog }, captureCompletionLongContentFixture.formValue)
+  await driver.fill({ name: 'Employer or ATS URL', role: 'textbox', within: completionDialog }, captureCompletionLongContentFixture.validationUrl)
+  await driver.click({ name: 'Create Job', role: 'button', within: completionDialog })
+  await driver.waitForText(completionDialog, captureCompletionLongContentFixture.validationMessage)
+  const result = await executeElectronRendererScript<{ error?: string }>(webContents, `(() => {
+    const details = document.querySelector('[data-probe="capture-completion-source"] details');
+    if (!details) return { error: 'Missing raw evidence details for the long-content layout fixture.' };
+    details.open = true;
+    return {};
+  })()`)
+  if (result.error) throw new Error(result.error)
+  await waitForLayout(webContents)
+}
+
 async function resetDialogBodyScroll(webContents: ElectronProofWebContents) {
   const result = await executeElectronRendererScript<{ error?: string }>(webContents, `(() => {
     const body = document.querySelector('[data-probe="capture-completion-body"]');
@@ -280,8 +379,16 @@ async function measureDialog(
     const header = document.querySelector('[data-probe="capture-completion-header"]');
     const close = shell?.querySelector('[data-slot="dialog-close"]');
     const footer = document.querySelector('[data-probe="capture-completion-footer"]');
-    if (!shell || !body || !header || !close || !footer) {
-      return { error: 'Missing Capture completion shell, body, header, close control, or footer.' };
+    const provenance = document.querySelector('[data-probe="capture-completion-provenance"]');
+    const source = document.querySelector('[data-probe="capture-completion-source"]');
+    const rawEvidenceControl = source?.querySelector('summary');
+    const rawEvidence = document.querySelector('[data-probe="capture-completion-raw-evidence"]');
+    const destination = document.querySelector('[data-probe="capture-completion-destination"]');
+    const provenanceUrl = document.querySelector('[data-probe="capture-completion-provenance-url"]');
+    const selectedCompany = document.querySelector('[data-probe="capture-completion-selected-company"]');
+    const validationMessage = document.querySelector('[data-probe="capture-completion-message"]');
+    if (!shell || !body || !header || !close || !footer || !provenance || !provenanceUrl || !source || !rawEvidenceControl || !rawEvidence || !destination || !selectedCompany || !validationMessage) {
+      return { error: 'Missing Capture completion long-content shell, panel, control, validation, or status fixture.' };
     }
     const round = (value) => Math.round(value * 100) / 100;
     const rectangle = (element) => {
@@ -295,12 +402,31 @@ async function measureDialog(
       scrollTop: element.scrollTop,
       scrollWidth: element.scrollWidth,
     });
+    const bounded = (element) => ({ ...surface(element), rectangle: rectangle(element) });
+    const ownedRectangle = (name, owner, element) => ({ name, owner, rectangle: rectangle(element) });
+    const owned = () => [
+      ownedRectangle('close control', 'header', close),
+      ownedRectangle('resolved destination value', 'provenance', provenanceUrl),
+      ownedRectangle('raw evidence control', 'source', rawEvidenceControl),
+      ownedRectangle('raw evidence', 'source', rawEvidence),
+      ...Array.from(destination.querySelectorAll('button, input, label')).map((element, index) => ownedRectangle('destination control ' + (index + 1), 'destination', element)),
+      ownedRectangle('selected Company status', 'destination', selectedCompany),
+      ownedRectangle('validation status', 'destination', validationMessage),
+      ...Array.from(footer.querySelectorAll('button')).map((element, index) => ownedRectangle('footer action ' + (index + 1), 'footer', element)),
+    ];
     const snapshot = () => ({
-      body: surface(body),
+      body: bounded(body),
       close: rectangle(close),
+      content: {
+        owned: owned(),
+        destination: bounded(destination),
+        provenance: bounded(provenance),
+        rawEvidence: { ...bounded(rawEvidence), overflowX: getComputedStyle(rawEvidence).overflowX },
+        source: bounded(source),
+      },
       footer: rectangle(footer),
       header: rectangle(header),
-      shell: { ...surface(shell), rectangle: rectangle(shell) },
+      shell: bounded(shell),
     });
     body.scrollTop = 0;
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -318,13 +444,30 @@ async function measureDialog(
   return { ...result, requestedViewport }
 }
 
-function rectangleInsideShell(rectangle: Rectangle, shell: ShellMeasurement) {
+function rectangleInside(rectangle: Rectangle, container: BoundedSurfaceMeasurement) {
+  return rectangleInsideRectangle(rectangle, container.rectangle)
+}
+
+function rectangleInsideRectangle(rectangle: Rectangle, container: Rectangle) {
   return rectangle.height > 0
     && rectangle.width > 0
-    && rectangle.bottom <= shell.rectangle.bottom + tolerance
-    && rectangle.left >= shell.rectangle.left - tolerance
-    && rectangle.right <= shell.rectangle.right + tolerance
-    && rectangle.top >= shell.rectangle.top - tolerance
+    && rectangle.bottom <= container.bottom + tolerance
+    && rectangle.left >= container.left - tolerance
+    && rectangle.right <= container.right + tolerance
+    && rectangle.top >= container.top - tolerance
+}
+
+function rectangleHorizontallyInside(rectangle: Rectangle, container: Rectangle) {
+  return rectangle.width > 0
+    && rectangle.left >= container.left - tolerance
+    && rectangle.right <= container.right + tolerance
+}
+
+function rectanglesOverlap(left: Rectangle, right: Rectangle) {
+  return left.left < right.right - tolerance
+    && left.right > right.left + tolerance
+    && left.top < right.bottom - tolerance
+    && left.bottom > right.top + tolerance
 }
 
 function rectanglesMatch(left: Rectangle, right: Rectangle) {

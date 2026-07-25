@@ -153,6 +153,10 @@ class ProofDriver implements ElectronNativeUiDriver {
     if (target.name === 'Companies') this.phase = 'companies'
   }
 
+  async exists(target: SemanticTarget) {
+    return this.hasTarget(target)
+  }
+
   async expectText(target: SemanticTarget, expectedText: string) {
     if (!this.text(target).includes(expectedText)) {
       throw new Error(`Expected ${target.name} to contain ${expectedText}.`)
@@ -162,7 +166,7 @@ class ProofDriver implements ElectronNativeUiDriver {
   async fill() {}
 
   async waitFor(target: SemanticTarget) {
-    if (!this.exists(target)) throw new Error(`Missing ${target.name}.`)
+    if (!this.hasTarget(target)) throw new Error(`Missing ${target.name}.`)
   }
 
   async waitForText(target: SemanticTarget, expectedText: string) {
@@ -173,7 +177,7 @@ class ProofDriver implements ElectronNativeUiDriver {
     this.companyName = cliUiDevProofCompanyName
   }
 
-  private exists(target: SemanticTarget) {
+  private hasTarget(target: SemanticTarget) {
     if (target.name === 'Complete Job information') return !this.jobCreated
     if (target.name === 'Complete Capture into a Job') return this.dialogOpen
     if (target.name === 'Captures') return this.phase === 'captures'

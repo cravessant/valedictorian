@@ -121,10 +121,40 @@ describe('Electron native UI proof', () => {
     expect(cliMutation).toBe(true)
     expect(driver.lastCompanyExpectation).toBe(cliUiDevProofCompanyName)
   })
+
+  it('expands the sidebar then navigates through exact Application views controls', async () => {
+    const evidenceDirectory = temporaryDirectory()
+    const driver = new FakeNativeUiDriver()
+
+    const result = await runElectronNativeUiProof({
+      build: { branch: 'feat/electron-proof', commit: '1234567', worktree: { state: 'clean' } },
+      driver,
+      evidenceDirectory,
+      fixture: isolatedValidationFixture,
+      rendererConsole: rendererConsole(),
+      workspace: { id: 'workspace-proof', path: '/tmp/workspace-proof' },
+    })
+
+    expect(result.outcome).toBe('completed')
+    expect(driver.clickedTargets).toEqual(expect.arrayContaining([
+      { name: 'Expand sidebar', role: 'button' },
+      {
+        name: 'Jobs',
+        role: 'button',
+        within: { name: 'Application views', role: 'navigation' },
+      },
+      {
+        name: 'Companies',
+        role: 'button',
+        within: { name: 'Application views', role: 'navigation' },
+      },
+    ]))
+  })
 })
 
 class FakeNativeUiDriver implements ElectronNativeUiDriver {
   populatedBeforeScreenshot = false
+  readonly clickedTargets: SemanticTarget[] = []
   readonly screenshots: ProofScreenshot['name'][] = []
   lastCompanyExpectation = ''
   private companyDisplayName = 'Validation Company'
@@ -154,6 +184,7 @@ class FakeNativeUiDriver implements ElectronNativeUiDriver {
   }
 
   async click(target: SemanticTarget) {
+    this.clickedTargets.push(target)
     if (target.name === 'Complete Job information') this.dialogOpen = true
     if (target.name === 'Use') this.companySelected = true
     if (target.name === 'Create Job' && this.companySelected && !this.options.blockJobTransition) {
@@ -162,6 +193,10 @@ class FakeNativeUiDriver implements ElectronNativeUiDriver {
     }
     if (target.name === 'Jobs') this.phase = 'jobs'
     if (target.name === 'Companies') this.phase = 'companies'
+  }
+
+  async exists(target: SemanticTarget) {
+    return this.hasTarget(target)
   }
 
   async expectText(target: SemanticTarget, expectedText: string) {
@@ -176,7 +211,7 @@ class FakeNativeUiDriver implements ElectronNativeUiDriver {
   }
 
   async waitFor(target: SemanticTarget) {
-    if (!this.exists(target)) throw new Error(`Missing accessible ${target.role}: ${target.name}`)
+    if (!this.hasTarget(target)) throw new Error(`Missing accessible ${target.role}: ${target.name}`)
   }
 
   async waitForText(target: SemanticTarget, expectedText: string) {
@@ -193,7 +228,7 @@ class FakeNativeUiDriver implements ElectronNativeUiDriver {
 
   private provenanceLoaded = false
 
-  private exists(target: SemanticTarget) {
+  private hasTarget(target: SemanticTarget) {
     if (target.name === 'Complete Job information') return this.phase === 'captures' && !this.jobCreated
     if (target.name === 'Complete Capture into a Job') return this.dialogOpen
     if (target.name === 'Company search results') return this.dialogOpen

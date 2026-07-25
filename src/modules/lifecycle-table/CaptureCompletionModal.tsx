@@ -381,7 +381,7 @@ export function CaptureCompletionModal({
       >
         <DialogHeader data-probe="capture-completion-header" className="shrink-0 border-b px-5 py-5 pr-14">
           <DialogTitle>Complete Capture into a Job</DialogTitle>
-          <DialogDescription>Confirm the evidence and select the local Company that will group this Job.</DialogDescription>
+          <DialogDescription className="break-words">Confirm the evidence and select the local Company that will group this Job.</DialogDescription>
         </DialogHeader>
         <div
           data-probe="capture-completion-body"
@@ -390,37 +390,41 @@ export function CaptureCompletionModal({
         >
           {!detail || !draft ? <p className="text-sm text-muted-foreground">Loading Capture provenance…</p> : (
             <div className="space-y-4">
-              <section aria-label="Provenance path" className="rounded-md border border-primary/35 bg-muted/45 px-4 py-3">
+              <section
+                aria-label="Provenance path"
+                data-probe="capture-completion-provenance"
+                className="min-w-0 rounded-md border border-primary/35 bg-muted/45 px-4 py-3"
+              >
                 <p className="text-xs font-medium tracking-wide text-primary">CAPTURE PROVENANCE</p>
-                <div className="mt-2 flex flex-col gap-2 text-sm sm:flex-row sm:items-center">
-                  <span><span className="font-medium">Source</span> {detail.sourceSummary.displayName}</span>
+                <div className="mt-2 flex min-w-0 flex-col gap-2 text-sm sm:flex-row sm:items-center">
+                  <span className="min-w-0 break-words"><span className="font-medium">Source</span> {detail.sourceSummary.displayName}</span>
                   <span aria-hidden="true" className="hidden text-primary sm:inline">→</span>
-                  <span><span className="font-medium">Resolved destination</span> <span className="font-mono text-xs">{detail.destination.url ?? 'No resolved destination'}</span></span>
+                  <span className="min-w-0 break-words"><span className="font-medium">Resolved destination</span> <span data-probe="capture-completion-provenance-url" className="break-all font-mono text-xs">{detail.destination.url ?? 'No resolved destination'}</span></span>
                 </div>
               </section>
-              <div className="grid gap-6 lg:grid-cols-[minmax(18rem,0.9fr)_minmax(24rem,1.2fr)]">
-              <section aria-label="Capture source" className="space-y-3 rounded-md border bg-muted/30 p-4">
+              <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)]">
+              <section aria-label="Capture source" data-probe="capture-completion-source" className="min-w-0 space-y-3 rounded-md border bg-muted/30 p-4">
                 <h3 className="font-medium">Source evidence</h3>
-                <p className="text-sm">{detail.sourceSummary.displayName}</p>
-                <p className="text-xs text-muted-foreground">Observed {new Date(detail.sourceSummary.observedAt).toLocaleString()}</p>
-                <details>
+                <p className="break-words text-sm">{detail.sourceSummary.displayName}</p>
+                <p className="break-words text-xs text-muted-foreground">Observed {new Date(detail.sourceSummary.observedAt).toLocaleString()}</p>
+                <details className="min-w-0">
                   <summary className="cursor-pointer text-sm font-medium">Raw evidence ({detail.rawEvidence.length})</summary>
-                  <ul className="mt-2 space-y-2 font-mono text-xs text-muted-foreground">
+                  <ul data-probe="capture-completion-raw-evidence" className="mt-2 max-w-full space-y-2 overflow-x-auto rounded border bg-background/70 font-mono text-xs text-muted-foreground">
                     {detail.rawEvidence.map((evidence) => (
-                      <li key={`${evidence.captureRevision}-${evidence.evidenceIndex}`}>
+                      <li key={`${evidence.captureRevision}-${evidence.evidenceIndex}`} className="min-w-max px-2 py-1 whitespace-pre">
                         <span className="font-sans font-medium text-foreground">{evidence.label}:</span> {evidence.displayValue}
                       </li>
                     ))}
                   </ul>
                 </details>
               </section>
-              <section aria-label="Job destination" className="space-y-4">
+              <section aria-label="Job destination" data-probe="capture-completion-destination" className="min-w-0 space-y-4">
                 <h3 className="font-medium">Destination Job</h3>
-                <label className="grid gap-1 text-sm">
+                <label data-probe="capture-completion-company-field" className="grid min-w-0 gap-1 text-sm">
                   Job facts company
                   <input
                     autoFocus
-                    className="rounded-md border bg-background px-3 py-2"
+                    className="w-full min-w-0 rounded-md border bg-background px-3 py-2"
                     disabled={pending}
                     value={draft.companyName}
                     onChange={(event) => setDraft((current) => current ? {
@@ -432,29 +436,29 @@ export function CaptureCompletionModal({
                     } : current)}
                   />
                 </label>
-                <label className="grid gap-1 text-sm">
+                <label data-probe="capture-completion-role-field" className="grid min-w-0 gap-1 text-sm">
                   Role title
                   <input
-                    className="rounded-md border bg-background px-3 py-2"
+                    className="w-full min-w-0 rounded-md border bg-background px-3 py-2"
                     disabled={pending}
                     value={draft.roleTitle}
                     onChange={(event) => setDraft({ ...draft, roleTitle: event.target.value })}
                   />
                 </label>
-                <label className="grid gap-1 text-sm">
+                <label data-probe="capture-completion-url-field" className="grid min-w-0 gap-1 text-sm">
                   Employer or ATS URL
                   <input
-                    className="rounded-md border bg-background px-3 py-2 font-mono text-xs"
+                    className="w-full min-w-0 rounded-md border bg-background px-3 py-2 font-mono text-xs"
                     disabled={pending}
                     inputMode="url"
                     value={draft.destinationUrl}
                     onChange={(event) => setDraft({ ...draft, destinationUrl: event.target.value })}
                   />
                 </label>
-                <fieldset className="space-y-3 rounded-md border bg-muted/20 p-3" aria-label="Local Company choice">
+                <fieldset data-probe="capture-completion-company-choice" className="min-w-0 space-y-3 rounded-md border bg-muted/20 p-3" aria-label="Local Company choice">
                   <legend className="px-1 text-sm font-medium">Local Company</legend>
-                  <p className="text-xs text-muted-foreground">This is a single atomic completion; no Company is created before the Job succeeds.</p>
-                  <label className="flex items-start gap-2 text-sm">
+                  <p className="break-words text-xs text-muted-foreground">This is a single atomic completion; no Company is created before the Job succeeds.</p>
+                  <label className="flex min-w-0 items-start gap-2 text-sm">
                     <input
                       checked={draft.companyMode === 'create_local'}
                       disabled={pending}
@@ -462,13 +466,13 @@ export function CaptureCompletionModal({
                       type="radio"
                       onChange={() => setDraft({ ...draft, companyMode: 'create_local', selectedCompany: null })}
                     />
-                    <span>Create a local Company inside this Job completion</span>
+                    <span className="min-w-0 break-words">Create a local Company inside this Job completion</span>
                   </label>
                   {draft.companyMode === 'create_local' ? (
-                    <label className="grid gap-1 text-sm">
+                    <label className="grid min-w-0 gap-1 text-sm">
                       Local Company display name
                       <input
-                        className="rounded-md border bg-background px-3 py-2"
+                        className="w-full min-w-0 rounded-md border bg-background px-3 py-2"
                         disabled={pending}
                         value={draft.companyDisplayName}
                         onChange={(event) => setDraft({
@@ -479,7 +483,7 @@ export function CaptureCompletionModal({
                       />
                     </label>
                   ) : null}
-                  <label className="flex items-start gap-2 text-sm">
+                  <label className="flex min-w-0 items-start gap-2 text-sm">
                     <input
                       checked={draft.companyMode === 'use_local'}
                       disabled={pending}
@@ -487,41 +491,41 @@ export function CaptureCompletionModal({
                       type="radio"
                       onChange={() => setDraft({ ...draft, companyMode: 'use_local' })}
                     />
-                    <span>Use an existing local Company</span>
+                    <span className="min-w-0 break-words">Use an existing local Company</span>
                   </label>
                   {draft.companyMode === 'use_local' ? (
                     <div className="space-y-2">
-                      <label className="grid gap-1 text-sm">
+                      <label className="grid min-w-0 gap-1 text-sm">
                         Search active local Companies
                         <input
-                          className="rounded-md border bg-background px-3 py-2"
+                          className="w-full min-w-0 rounded-md border bg-background px-3 py-2"
                           disabled={pending}
                           value={companyQuery}
                           onChange={(event) => setCompanyQuery(event.target.value)}
                         />
                       </label>
-                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                         <input
                           checked={includeArchived}
                           disabled={pending}
                           type="checkbox"
                           onChange={(event) => setIncludeArchived(event.target.checked)}
                         />
-                        Include archived Companies for explicit recovery
+                        <span className="min-w-0 break-words">Include archived Companies for explicit recovery</span>
                       </label>
-                      {companyMessage ? <p role="alert" className="text-xs text-destructive">{companyMessage}</p> : null}
+                      {companyMessage ? <p role="alert" className="break-words text-xs text-destructive">{companyMessage}</p> : null}
                       {companyMatches.length > 0 ? (
-                        <ul className="space-y-2" aria-label="Company search results">
+                        <ul className="min-w-0 space-y-2" aria-label="Company search results">
                           {companyMatches.map((company) => (
-                            <li key={company.companyId} className="flex items-center justify-between gap-3 rounded border bg-background px-2 py-2 text-sm">
-                              <span>{company.displayName} <span className="text-xs text-muted-foreground">{company.status === 'archived' ? 'Archived — restore on completion' : 'Active'} · rev {company.revision}</span></span>
-                              <Button type="button" size="xs" variant="outline" disabled={pending} onClick={() => selectCompany(company)}>Use</Button>
+                            <li key={company.companyId} className="flex min-w-0 items-center justify-between gap-3 rounded border bg-background px-2 py-2 text-sm">
+                              <span className="min-w-0 break-words">{company.displayName} <span className="text-xs text-muted-foreground">{company.status === 'archived' ? 'Archived — restore on completion' : 'Active'} · rev {company.revision}</span></span>
+                              <Button type="button" size="xs" variant="outline" disabled={pending} className="shrink-0" onClick={() => selectCompany(company)}>Use</Button>
                             </li>
                           ))}
                         </ul>
                       ) : null}
                       {selectedCompany ? (
-                        <p className="rounded border border-primary/30 bg-primary/5 px-2 py-2 text-xs" aria-live="polite">
+                        <p data-probe="capture-completion-selected-company" className="min-w-0 break-words rounded border border-primary/30 bg-primary/5 px-2 py-2 text-xs" aria-live="polite">
                           Using {selectedCompany.displayName} · rev {selectedCompany.revision} · {selectedCompanyStatus === 'archived' ? 'archived (will restore on completion)' : 'active'}
                         </p>
                       ) : null}
@@ -530,16 +534,17 @@ export function CaptureCompletionModal({
                   {companyPreviews.length > 0 ? (
                     <div className="space-y-2 border-t pt-3">
                       <p className="text-xs font-medium">Possible existing Companies</p>
-                      <p className="text-xs text-muted-foreground">Advisory only. Choosing one is explicit and does not create or reserve anything.</p>
+                      <p className="break-words text-xs text-muted-foreground">Advisory only. Choosing one is explicit and does not create or reserve anything.</p>
                       <ul className="space-y-2" aria-label="Advisory Company matches">
                         {companyPreviews.map((company) => (
-                          <li key={company.companyId} className="flex items-center justify-between gap-3 text-xs">
-                            <span>{company.displayName} · rev {company.revision}</span>
+                          <li key={company.companyId} className="flex min-w-0 items-center justify-between gap-3 text-xs">
+                            <span className="min-w-0 break-words">{company.displayName} · rev {company.revision}</span>
                             <Button
                               type="button"
                               size="xs"
                               variant="outline"
                               disabled={pending}
+                              className="shrink-0"
                               onClick={() => selectCompany({ ...company, status: 'active' })}
                             >
                               Use existing
@@ -550,10 +555,11 @@ export function CaptureCompletionModal({
                     </div>
                   ) : null}
                 </fieldset>
+                {message ? <p data-probe="capture-completion-message" role={recovery ? 'alert' : 'status'} aria-live="polite" className="min-w-0 break-words text-sm text-muted-foreground">{message}</p> : null}
               </section>
             </div>
               {recoveryLoading ? (
-                <p role="status" className="text-sm text-muted-foreground">Loading current completion recovery guards…</p>
+                <p role="status" className="break-words text-sm text-muted-foreground">Loading current completion recovery guards…</p>
               ) : null}
               {recovery ? (
                 <RecoveryPanel
@@ -571,7 +577,6 @@ export function CaptureCompletionModal({
               ) : null}
             </div>
           )}
-          {message ? <p role={recovery ? 'alert' : 'status'} aria-live="polite" className="mt-4 text-sm text-muted-foreground">{message}</p> : null}
         </div>
         <DialogFooter data-probe="capture-completion-footer" className="shrink-0 border-t px-5 py-4">
           <Button type="button" variant="outline" onClick={requestClose} disabled={pending}>Discard</Button>

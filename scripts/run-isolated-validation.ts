@@ -162,6 +162,7 @@ async function prepareEnvironment(options: ValidationOptions) {
     throw new ValidationFailure('setup_failure', 'setup', 'The isolated fixture seed was intentionally failed.')
   }
   await seedIsolatedValidationFixture({
+    captureCompletionLongContent: options.electronLayoutProof,
     pgliteDataPath: workspace.pgliteDataPath,
     profilePath: workspace.profilePath,
     workspaceId: workspace.id,

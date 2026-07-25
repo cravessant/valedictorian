@@ -260,6 +260,7 @@ function AppSidebar({
                     {isVisible(APP_VIEWS.CAPTURES) ? <SidebarMenuItem>
                       <SidebarMenuButton
                         type="button"
+                        aria-label="Captures"
                         isActive={currentView === APP_VIEWS.CAPTURES}
                         aria-current={currentView === APP_VIEWS.CAPTURES ? 'page' : undefined}
                         onClick={() => onViewChange(APP_VIEWS.CAPTURES)}
@@ -271,6 +272,7 @@ function AppSidebar({
                     {isVisible(APP_VIEWS.JOBS) ? <SidebarMenuItem>
                       <SidebarMenuButton
                         type="button"
+                        aria-label="Jobs"
                         isActive={currentView === APP_VIEWS.JOBS}
                         aria-current={currentView === APP_VIEWS.JOBS ? 'page' : undefined}
                         onClick={() => onViewChange(APP_VIEWS.JOBS)}
@@ -282,6 +284,7 @@ function AppSidebar({
                     {isVisible(APP_VIEWS.OPPORTUNITIES) ? <SidebarMenuItem>
                       <SidebarMenuButton
                         type="button"
+                        aria-label="Opportunities"
                         isActive={currentView === APP_VIEWS.OPPORTUNITIES}
                         aria-current={currentView === APP_VIEWS.OPPORTUNITIES ? 'page' : undefined}
                         onClick={() => onViewChange(APP_VIEWS.OPPORTUNITIES)}
@@ -293,6 +296,7 @@ function AppSidebar({
                     {isVisible(APP_VIEWS.APPLICATIONS) ? <SidebarMenuItem>
                       <SidebarMenuButton
                         type="button"
+                        aria-label="Applications"
                         isActive={currentView === APP_VIEWS.APPLICATIONS}
                         aria-current={currentView === APP_VIEWS.APPLICATIONS ? 'page' : undefined}
                         onClick={() => onViewChange(APP_VIEWS.APPLICATIONS)}
@@ -314,6 +318,7 @@ function AppSidebar({
                       <SidebarMenuItem>
                         <SidebarMenuButton
                           type="button"
+                          aria-label="Companies"
                           isActive={currentView === APP_VIEWS.COMPANIES}
                           aria-current={
                             currentView === APP_VIEWS.COMPANIES ? 'page' : undefined
