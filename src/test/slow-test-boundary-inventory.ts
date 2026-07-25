@@ -743,5 +743,3 @@ export const testBoundaryMoves = [
     ],
   },
 ] as const
-
-export { testBoundaryDeletions } from './slow-test-boundary-deletions'
