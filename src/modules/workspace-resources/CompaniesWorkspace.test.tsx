@@ -164,7 +164,7 @@ describe('CompaniesWorkspace', () => {
         client={client}
         entry={{
           location: { view: 'companies', resourceId: 'company-not-on-page' },
-          cursorChain: [],
+
         }}
         onBack={vi.fn()}
         onNavigate={vi.fn()}
@@ -189,7 +189,7 @@ describe('CompaniesWorkspace', () => {
     render(
       <CompaniesWorkspace
         client={client}
-        entry={{ location: { view: 'companies' }, cursorChain: [] }}
+        entry={{ location: { view: 'companies' } }}
         onBack={vi.fn()}
         onNavigate={vi.fn()}
       />,
@@ -218,7 +218,7 @@ describe('CompaniesWorkspace', () => {
       <CompaniesWorkspace
         client={client}
         workspaceId="workspace-company"
-        entry={{ location: { view: 'companies' }, cursorChain: [] }}
+        entry={{ location: { view: 'companies' } }}
         onBack={vi.fn()}
         onNavigate={vi.fn()}
       />,
@@ -239,7 +239,7 @@ describe('CompaniesWorkspace', () => {
       <CompaniesWorkspace
         client={client}
         workspaceId="workspace-company"
-        entry={{ location: { view: 'companies' }, cursorChain: [] }}
+        entry={{ location: { view: 'companies' } }}
         onBack={vi.fn()}
         onNavigate={vi.fn()}
       />,
@@ -258,7 +258,7 @@ describe('CompaniesWorkspace', () => {
         client={client}
         entry={{
           location: { view: 'companies', resourceId: 'company-not-on-page' },
-          cursorChain: [],
+
         }}
         onBack={vi.fn()}
         onNavigate={vi.fn()}
@@ -278,7 +278,7 @@ describe('CompaniesWorkspace', () => {
         client={client}
         entry={{
           location: { view: 'companies', resourceId: 'company-not-on-page' },
-          cursorChain: [],
+
         }}
         onBack={vi.fn()}
         onNavigate={vi.fn()}
@@ -300,7 +300,7 @@ describe('CompaniesWorkspace', () => {
         client={client}
         entry={{
           location: { view: 'companies', resourceId: 'company-a' },
-          cursorChain: [],
+
         }}
         onBack={vi.fn()}
         onNavigate={vi.fn()}
@@ -313,7 +313,7 @@ describe('CompaniesWorkspace', () => {
         client={client}
         entry={{
           location: { view: 'companies', resourceId: 'company-b' },
-          cursorChain: [],
+
         }}
         onBack={vi.fn()}
         onNavigate={vi.fn()}
@@ -330,7 +330,7 @@ describe('CompaniesWorkspace', () => {
     render(
       <CompaniesWorkspace
         client={client}
-        entry={{ location: { view: 'companies', filter: 'all' }, cursorChain: [] }}
+        entry={{ location: { view: 'companies', filter: 'all' } }}
         onBack={vi.fn()}
         onNavigate={navigate}
       />,
@@ -343,8 +343,6 @@ describe('CompaniesWorkspace', () => {
       filter: 'all',
       cursor: page.pageInfo.endCursor,
       cursorDirection: 'after',
-    }, {
-      cursorChain: [{ view: 'companies', filter: 'all' }],
     })
 
     await user.click(screen.getByRole('button', { name: 'Go to previous page' }))
@@ -353,7 +351,7 @@ describe('CompaniesWorkspace', () => {
       filter: 'all',
       cursor: page.pageInfo.startCursor,
       cursorDirection: 'before',
-    }, { cursorChain: [] })
+    })
   })
 
   it('resets paging and selection when the filter changes', async () => {
@@ -371,7 +369,6 @@ describe('CompaniesWorkspace', () => {
             cursor: 'page-two',
             cursorDirection: 'after',
           },
-          cursorChain: [{ view: 'companies' }],
         }}
         onBack={vi.fn()}
         onNavigate={navigate}
@@ -404,7 +401,7 @@ describe('CompaniesWorkspace', () => {
         client={client}
         entry={{
           location: { view: 'companies', resourceId: 'company-not-on-page' },
-          cursorChain: [],
+
         }}
         onBack={back}
         onNavigate={vi.fn()}
@@ -431,7 +428,7 @@ describe('CompaniesWorkspace', () => {
             filter: 'open',
             sort: 'score_desc',
           },
-          cursorChain: [],
+
         }}
         onBack={vi.fn()}
         onNavigate={navigate}
@@ -465,10 +462,7 @@ describe('CompaniesWorkspace', () => {
       filter: 'open',
       sort: 'score_desc',
       resourceId: candidate.candidateId,
-    }, {
-      cursorChain: [],
-      focusAnchor: `company-duplicate-link-${candidate.candidateId}`,
-    })
+    }, { focusAnchor: `company-duplicate-link-${candidate.candidateId}` })
     await user.click(screen.getByRole('button', { name: 'Go to next page' }))
     expect(navigate).toHaveBeenLastCalledWith({
       view: 'companies',
@@ -477,13 +471,6 @@ describe('CompaniesWorkspace', () => {
       sort: 'score_desc',
       cursor: duplicatePage.pageInfo.endCursor,
       cursorDirection: 'after',
-    }, {
-      cursorChain: [{
-        view: 'companies',
-        mode: 'duplicates',
-        filter: 'open',
-        sort: 'score_desc',
-      }],
     })
   })
 
@@ -503,7 +490,7 @@ describe('CompaniesWorkspace', () => {
             sort: 'score_desc',
             resourceId: candidate.candidateId,
           },
-          cursorChain: [],
+
         }}
         onBack={back}
         onNavigate={vi.fn()}
@@ -546,7 +533,7 @@ describe('CompaniesWorkspace', () => {
             mode: 'duplicates',
             resourceId: candidate.candidateId,
           },
-          cursorChain: [],
+
         }}
         onBack={vi.fn()}
         onNavigate={navigate}
@@ -602,7 +589,7 @@ describe('CompaniesWorkspace', () => {
             mode: 'duplicates',
             resourceId: candidate.candidateId,
           },
-          cursorChain: [],
+
         }}
         onBack={vi.fn()}
         onNavigate={vi.fn()}
@@ -649,7 +636,7 @@ describe('CompaniesWorkspace', () => {
             mode: 'duplicates',
             resourceId: candidate.candidateId,
           },
-          cursorChain: [],
+
         }}
         onBack={back}
         onNavigate={vi.fn()}

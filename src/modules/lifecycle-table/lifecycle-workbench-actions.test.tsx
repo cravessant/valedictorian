@@ -19,6 +19,15 @@ import {
 import type { LifecycleOutcome } from './lifecycle-outcome-types'
 import { LifecycleOutcomeView } from './lifecycle-outcome-view'
 
+/** The canonical page boundaries a single-page lifecycle list reports. */
+const emptyPageInfo = {
+  startCursor: null,
+  endCursor: null,
+  hasPreviousPage: false,
+  hasNextPage: false,
+} as const
+
+
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 Element.prototype.scrollIntoView = vi.fn()
@@ -179,13 +188,13 @@ function makeClient(seed: {
   applications?: Application[]
 } = {}): MockClient {
   const captures = {
-    list: vi.fn(async () => ({ items: seed.captures ?? [], limit: 100, nextCursor: null })),
+    list: vi.fn(async () => ({ items: seed.captures ?? [], pageInfo: emptyPageInfo })),
     get: vi.fn(async () => null),
     create: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeCapture('cap-new'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     correct: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeCapture('cap-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     remove: vi.fn(async () => ({ status: 'removed' as const, id: 'cap-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     restore: vi.fn(async () => ({ status: 'restored' as const, id: 'cap-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    history: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })),
+    history: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })),
     promoteToJob: vi.fn(async () => ({ status: 'promoted' as const, resource: makeJob('job-new'), created: true, warnings: [], override: null, duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
   }
   const captureResolution = {
@@ -204,7 +213,7 @@ function makeClient(seed: {
     }),
   }
   const jobs = {
-    list: vi.fn(async () => ({ items: seed.jobs ?? [], limit: 100, nextCursor: null })),
+    list: vi.fn(async () => ({ items: seed.jobs ?? [], pageInfo: emptyPageInfo })),
     get: vi.fn(async () => null),
     create: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeJob('job-new'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     correctFacts: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeJob('job-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
@@ -212,22 +221,22 @@ function makeClient(seed: {
     externalIdentities: { add: vi.fn(async () => ({})), remove: vi.fn(async () => ({})) },
     remove: vi.fn(async () => ({ status: 'removed' as const, id: 'job-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     restore: vi.fn(async () => ({ status: 'restored' as const, id: 'job-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    history: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })),
+    history: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })),
     promoteToOpportunity: vi.fn(async () => ({ status: 'promoted' as const, resource: makeOpportunity('opp-new'), created: true, warnings: [], override: null, duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
   }
   const opportunities = {
-    list: vi.fn(async () => ({ items: seed.opportunities ?? [], limit: 100, nextCursor: null })),
+    list: vi.fn(async () => ({ items: seed.opportunities ?? [], pageInfo: emptyPageInfo })),
     get: vi.fn(async () => null),
     create: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeOpportunity('opp-new'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     updateEvaluation: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeOpportunity('opp-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     updateDisposition: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeOpportunity('opp-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     remove: vi.fn(async () => ({ status: 'removed' as const, id: 'opp-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     restore: vi.fn(async () => ({ status: 'restored' as const, id: 'opp-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    history: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })),
+    history: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })),
     promoteToApplication: vi.fn(async () => ({ status: 'promoted' as const, resource: makeApplication('app-new'), created: true, warnings: [], override: null, duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
   }
   const applications = {
-    list: vi.fn(async () => ({ items: seed.applications ?? [], limit: 100, nextCursor: null })),
+    list: vi.fn(async () => ({ items: seed.applications ?? [], pageInfo: emptyPageInfo })),
     get: vi.fn(async () => null),
     create: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeApplication('app-new'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     updateStatus: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeApplication('app-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
@@ -237,9 +246,9 @@ function makeClient(seed: {
     refreshSnapshot: vi.fn(async () => ({})),
     remove: vi.fn(async () => ({ status: 'removed' as const, id: 'app-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     restore: vi.fn(async () => ({ status: 'restored' as const, id: 'app-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    history: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })),
-    attempts: { list: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })) },
-    events: { list: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })) },
+    history: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })),
+    attempts: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
+    events: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
   }
   const companyAssignments = {
     get: vi.fn(async (jobId: string) => {
@@ -557,8 +566,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
         { revision: 2, kind: 'removed', audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-01T00:00:00Z' } },
         { revision: 3, kind: 'restored', audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-02T00:00:00Z' } },
       ],
-      limit: 50,
-      nextCursor: null,
+      pageInfo: emptyPageInfo,
     })
     render(<LifecycleWorkbench client={client} />)
 

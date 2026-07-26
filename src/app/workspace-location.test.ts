@@ -7,10 +7,9 @@ import {
   serializeWorkspaceLocation,
 } from './workspace-location'
 import {
-  nextLegacyForwardCursorPage,
   nextWorkspacePage,
-  previousLegacyForwardCursorPage,
   previousWorkspacePage,
+  workspacePageRequest,
 } from './workspace-page'
 
 describe('workspace location', () => {
@@ -60,8 +59,8 @@ describe('workspace location', () => {
     'https://app.test/?view=companies&mode=duplicates&filter=archived',
     'https://app.test/?view=companies&mode=duplicates&sort=display_name_asc',
     'https://app.test/?view=companies&filter=open',
-    'https://app.test/?view=jobs&cursor=x&direction=before',
     'https://app.test/?view=opportunities&cursor=x&direction=after',
+    'https://app.test/?view=applications&cursor=x&direction=before',
     'https://app.test/?view=applications&resource=application-one',
   ])('falls back safely for invalid or incompatible input: %s', (address) => {
     expect(parseWorkspaceLocation(new URL(address))).toEqual({ view: 'captures' })
@@ -115,33 +114,36 @@ describe('workspace location', () => {
     })
   })
 
-  it('validates history state including its cursor chain', () => {
+  it('round-trips a bidirectional Jobs page location', () => {
+    const location = {
+      view: 'jobs' as const,
+      filter: 'include_removed',
+      cursor: 'opaque-job-cursor',
+      cursorDirection: 'before' as const,
+    }
+    expect(parseWorkspaceLocation(serializeWorkspaceLocation(
+      location,
+      new URL('https://app.test/workspace'),
+    ))).toEqual(location)
+  })
+
+  it('validates history state without any client-held cursor stack', () => {
     expect(isWorkspaceHistoryEntry({
       location: { view: 'jobs', resourceId: 'job-1' },
-      cursorChain: [{ view: 'jobs', filter: 'all' }],
       focusAnchor: 'job-link-job-1',
     })).toBe(true)
-    expect(isWorkspaceHistoryEntry({
-      location: { view: 'jobs' },
-      cursorChain: [{ view: 'jobs', filter: 'archived' }],
-    })).toBe(false)
-    expect(isWorkspaceHistoryEntry({
-      location: { view: 'jobs' },
-      cursorChain: [{ view: 'companies' }],
-    })).toBe(false)
+    expect(isWorkspaceHistoryEntry({ location: { view: 'jobs', filter: 'archived' } })).toBe(false)
+    expect(isWorkspaceHistoryEntry({ location: 'jobs' })).toBe(false)
   })
 })
 
 describe('workspace page transitions', () => {
-  const entry = {
-    location: {
-      view: 'companies' as const,
-      resourceId: 'selected',
-      filter: 'active',
-      cursor: 'current',
-      cursorDirection: 'after' as const,
-    },
-    cursorChain: [{ view: 'companies' as const, filter: 'active' }],
+  const location = {
+    view: 'companies' as const,
+    resourceId: 'selected',
+    filter: 'active',
+    cursor: 'current',
+    cursorDirection: 'after' as const,
   }
 
   it('uses PageInfo raw cursors exactly for Next and Previous', () => {
@@ -151,13 +153,13 @@ describe('workspace page transitions', () => {
       hasPreviousPage: true,
       hasNextPage: true,
     }
-    expect(nextWorkspacePage(entry, pageInfo)?.location).toEqual({
+    expect(nextWorkspacePage(location, pageInfo)).toEqual({
       view: 'companies',
       filter: 'active',
       cursor: pageInfo.endCursor,
       cursorDirection: 'after',
     })
-    expect(previousWorkspacePage(entry, pageInfo)?.location).toEqual({
+    expect(previousWorkspacePage(location, pageInfo)).toEqual({
       view: 'companies',
       filter: 'active',
       cursor: pageInfo.startCursor,
@@ -172,51 +174,57 @@ describe('workspace page transitions', () => {
       hasPreviousPage: false,
       hasNextPage: false,
     }
-    expect(nextWorkspacePage(entry, pageInfo)).toBeNull()
-    expect(previousWorkspacePage(entry, pageInfo)).toBeNull()
+    expect(nextWorkspacePage(location, pageInfo)).toBeNull()
+    expect(previousWorkspacePage(location, pageInfo)).toBeNull()
   })
 
-  it('keeps legacy forward cursors backend-owned and Previous history-owned', () => {
-    const jobsEntry = {
-      location: {
-        view: 'jobs' as const,
-        filter: 'include_removed',
-        resourceId: 'selected-job',
-        cursor: 'current-page',
-        cursorDirection: 'after' as const,
-      },
-      cursorChain: [{ view: 'jobs' as const, filter: 'include_removed' }],
+  it('re-addresses its own cursor when an emptied page offers the opposite direction', () => {
+    const emptiedAfter = {
+      startCursor: null,
+      endCursor: null,
+      hasPreviousPage: true,
+      hasNextPage: false,
     }
-    const cursor = 'server/+==:\u0000\n +'
-    const next = nextLegacyForwardCursorPage(jobsEntry, cursor)
-    expect(next).toEqual({
-      location: {
-        view: 'jobs',
-        filter: 'include_removed',
-        cursor,
-        cursorDirection: 'after',
-      },
-      cursorChain: [
-        { view: 'jobs', filter: 'include_removed' },
-        {
-          view: 'jobs',
-          filter: 'include_removed',
-          cursor: 'current-page',
-          cursorDirection: 'after',
-        },
-      ],
+    expect(previousWorkspacePage(location, emptiedAfter)).toEqual({
+      view: 'companies',
+      filter: 'active',
+      cursor: 'current',
+      cursorDirection: 'before',
     })
-    expect(previousLegacyForwardCursorPage({
-      location: next!.location,
-      cursorChain: next!.cursorChain,
-    })).toEqual({
-      location: {
-        view: 'jobs',
-        filter: 'include_removed',
-        cursor: 'current-page',
-        cursorDirection: 'after',
-      },
-      cursorChain: [{ view: 'jobs', filter: 'include_removed' }],
+    expect(nextWorkspacePage(location, emptiedAfter)).toBeNull()
+
+    const backward = { ...location, cursorDirection: 'before' as const }
+    const emptiedBefore = {
+      startCursor: null,
+      endCursor: null,
+      hasPreviousPage: false,
+      hasNextPage: true,
+    }
+    expect(nextWorkspacePage(backward, emptiedBefore)).toEqual({
+      view: 'companies',
+      filter: 'active',
+      cursor: 'current',
+      cursorDirection: 'after',
     })
+    expect(previousWorkspacePage(backward, emptiedBefore)).toBeNull()
+  })
+
+  it('does not fabricate a transition when neither the page nor the location holds a cursor', () => {
+    const unanchored = { view: 'companies' as const, filter: 'active' }
+    const pageInfo = {
+      startCursor: null,
+      endCursor: null,
+      hasPreviousPage: true,
+      hasNextPage: true,
+    }
+    expect(nextWorkspacePage(unanchored, pageInfo)).toBeNull()
+    expect(previousWorkspacePage(unanchored, pageInfo)).toBeNull()
+  })
+
+  it('asks each direction of the contract for exactly the addressed page', () => {
+    expect(workspacePageRequest(undefined, undefined)).toEqual({})
+    expect(workspacePageRequest('c', undefined)).toEqual({ after: 'c' })
+    expect(workspacePageRequest('c', 'after')).toEqual({ after: 'c' })
+    expect(workspacePageRequest('c', 'before')).toEqual({ before: 'c' })
   })
 })

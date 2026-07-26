@@ -74,7 +74,7 @@ interface CompaniesWorkspaceProps {
   readonly onBack: () => void
   readonly onNavigate: (
     location: WorkspaceLocation,
-    options?: { cursorChain?: readonly WorkspaceLocation[]; focusAnchor?: string },
+    options?: { focusAnchor?: string },
   ) => void
 }
 
@@ -316,7 +316,7 @@ export function CompaniesWorkspace({
                 onNavigate={onNavigate}
                 onOpen={(candidateId, anchor) => onNavigate(
                   { ...location, resourceId: candidateId },
-                  { cursorChain: entry.cursorChain, focusAnchor: anchor },
+                  { focusAnchor: anchor },
                 )}
                 page={duplicatePage}
               />
@@ -342,7 +342,7 @@ export function CompaniesWorkspace({
                   onNavigate={onNavigate}
                   onOpen={(companyId, anchor) => onNavigate(
                     { ...location, resourceId: companyId },
-                    { cursorChain: entry.cursorChain, focusAnchor: anchor },
+                    { focusAnchor: anchor },
                   )}
                   page={page}
                 />

@@ -36,15 +36,16 @@ import type {
   Application,
   ApplicationAttemptRecord,
   ApplicationEventRecord,
-  ApplicationAttemptsListResult,
-  ApplicationEventsListResult,
   ApplicationHistoryEntry,
   LifecycleApplicationHistoryResult,
-  LifecycleApplicationListResult,
 } from '@sparxie/sdk'
 import { jobTermSchema } from '@sparxie/sdk'
 import { jobFactsTiming } from '../job/job.timing'
 import { toContractActor, toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
+import {
+  sliceLifecycleHistoryPage,
+  type LifecyclePageWindow,
+} from '../lifecycle/lifecycle-page.dto'
 
 /** The subset of `applications` the read-model selects for a resource. */
 export interface ApplicationHeadRow {
@@ -316,7 +317,7 @@ export function reconstructApplicationHistory(
   head: ApplicationHeadRow,
   history: readonly ApplicationHistoryRow[],
   links: readonly ApplicationLinkRow[],
-  options: { readonly limit: number; readonly afterRevision?: number },
+  window: LifecyclePageWindow,
 ): LifecycleApplicationHistoryResult {
   const ordered = [...history].sort((left, right) => left.revision - right.revision)
   const currentLinks = orderByCreated(links).map(toLink)
@@ -361,82 +362,5 @@ export function reconstructApplicationHistory(
     })
   }
 
-  const afterRevision = options.afterRevision
-  const windowed = afterRevision === undefined ? all : all.filter((item) => item.revision > afterRevision)
-  const page = windowed.slice(0, options.limit)
-  const hasMore = windowed.length > options.limit
-  return {
-    limit: options.limit,
-    nextCursor: hasMore ? String(page.at(-1)?.revision ?? '') : null,
-    items: page,
-  }
-}
-
-/** Opaque keyset cursor over a stable (primary, id) ordering. */
-export interface ApplicationKeysetCursor {
-  readonly primary: string
-  readonly id: string
-}
-
-export function encodeApplicationCursor(cursor: ApplicationKeysetCursor): string {
-  return Buffer.from(JSON.stringify([cursor.primary, cursor.id]), 'utf8').toString('base64url')
-}
-
-export function decodeApplicationCursor(cursor: string): ApplicationKeysetCursor | null {
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'))
-    if (
-      Array.isArray(parsed)
-      && parsed.length === 2
-      && typeof parsed[0] === 'string'
-      && typeof parsed[1] === 'string'
-    ) {
-      return { primary: parsed[0], id: parsed[1] }
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-/** Assemble the `LifecycleApplicationListResult` page. */
-export function toApplicationListResult(
-  page: readonly Application[],
-  limit: number,
-  hasMore: boolean,
-): LifecycleApplicationListResult {
-  const last = page.at(-1)
-  return {
-    limit,
-    nextCursor: hasMore && last ? encodeApplicationCursor({ primary: last.createdAt, id: last.id }) : null,
-    items: [...page],
-  }
-}
-
-/** Assemble the attempts technical-list page. */
-export function toAttemptsListResult(
-  page: readonly ApplicationAttemptRecord[],
-  limit: number,
-  hasMore: boolean,
-): ApplicationAttemptsListResult {
-  const last = page.at(-1)
-  return {
-    limit,
-    nextCursor: hasMore && last ? encodeApplicationCursor({ primary: last.startedAt, id: last.id }) : null,
-    items: [...page],
-  }
-}
-
-/** Assemble the events technical-list page. */
-export function toEventsListResult(
-  page: readonly ApplicationEventRecord[],
-  limit: number,
-  hasMore: boolean,
-): ApplicationEventsListResult {
-  const last = page.at(-1)
-  return {
-    limit,
-    nextCursor: hasMore && last ? encodeApplicationCursor({ primary: last.occurredAt, id: last.id }) : null,
-    items: [...page],
-  }
+  return sliceLifecycleHistoryPage(all, window, (entry) => entry.revision)
 }

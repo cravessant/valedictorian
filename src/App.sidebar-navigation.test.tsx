@@ -197,10 +197,11 @@ describe('App sidebar navigation', () => {
   it('switches workspace surfaces atomically on popstate without a cross-type lookup', async () => {
     const companyId = 'company-one'
     const jobId = '01900000-0000-7000-8000-000000000001'
-    window.history.replaceState({
-      location: { view: 'companies', resourceId: companyId },
-      cursorChain: [],
-    }, '', `/?view=companies&resource=${companyId}`)
+    window.history.replaceState(
+      { location: { view: 'companies', resourceId: companyId } },
+      '',
+      `/?view=companies&resource=${companyId}`,
+    )
     const companiesGet = vi.fn(async () => ({
       lookup: {
         requested: {
@@ -226,8 +227,12 @@ describe('App sidebar navigation', () => {
     }))
     const emptyLifecyclePage = async () => ({
       items: [],
-      limit: 50,
-      nextCursor: null,
+      pageInfo: {
+        startCursor: null,
+        endCursor: null,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      },
     })
     const workspaceClient = {
       captures: { list: vi.fn(emptyLifecyclePage) },
@@ -293,10 +298,7 @@ describe('App sidebar navigation', () => {
 
     act(() => {
       window.dispatchEvent(new PopStateEvent('popstate', {
-        state: {
-          location: { view: 'jobs', resourceId: jobId },
-          cursorChain: [],
-        },
+        state: { location: { view: 'jobs', resourceId: jobId } },
       }))
     })
 
@@ -333,8 +335,12 @@ function installAppApis(): {
       workspaceId: 'workspace-one',
       request: vi.fn(async () => new Response(JSON.stringify({
         items: [],
-        limit: 100,
-        nextCursor: null,
+        pageInfo: {
+          startCursor: null,
+          endCursor: null,
+          hasPreviousPage: false,
+          hasNextPage: false,
+        },
       }), {
         headers: { 'content-type': 'application/json' },
         status: 200,

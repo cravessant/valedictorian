@@ -17,6 +17,15 @@ import {
   createActionQueueResult,
 } from '../../App.test-helpers'
 
+/** The canonical page boundaries a single-page lifecycle list reports. */
+const emptyPageInfo = {
+  startCursor: null,
+  endCursor: null,
+  hasPreviousPage: false,
+  hasNextPage: false,
+} as const
+
+
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 Element.prototype.scrollIntoView = vi.fn()
@@ -62,7 +71,7 @@ function makeApplication(id: string, overrides: Partial<Application> = {}): Appl
 }
 
 function emptyPage() {
-  return { items: [], limit: 100, nextCursor: null }
+  return { items: [], pageInfo: emptyPageInfo }
 }
 
 function makeClient(seed: {
@@ -70,7 +79,7 @@ function makeClient(seed: {
   actionQueueItems?: ReturnType<typeof createActionQueueItem>[]
 } = {}) {
   const applications = {
-    list: vi.fn(async () => ({ items: seed.applications ?? [], limit: 100, nextCursor: null })),
+    list: vi.fn(async () => ({ items: seed.applications ?? [], pageInfo: emptyPageInfo })),
     get: vi.fn(async (id: string) => seed.applications?.find((a) => a.id === id) ?? null),
     create: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeApplication('app-new'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     updateStatus: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeApplication('app-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
@@ -80,9 +89,9 @@ function makeClient(seed: {
     refreshSnapshot: vi.fn(async () => ({})),
     remove: vi.fn(async () => ({ status: 'removed' as const, id: 'app-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     restore: vi.fn(async () => ({ status: 'restored' as const, id: 'app-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    history: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })),
-    attempts: { list: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })) },
-    events: { list: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })) },
+    history: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })),
+    attempts: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
+    events: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
   }
   const actionQueue = {
     list: vi.fn(async () => createActionQueueResult(seed.actionQueueItems ?? [])),
@@ -162,7 +171,6 @@ describe('A308-1: navigation hierarchy and mode placement', () => {
         selectedPhase="applications"
         workspaceEntry={{
           location: { view: 'applications', mode: 'action-queue' },
-          cursorChain: [],
         }}
         onWorkspaceNavigate={navigate}
       />,
@@ -172,10 +180,7 @@ describe('A308-1: navigation hierarchy and mode placement', () => {
       .toHaveAttribute('aria-checked', 'true')
 
     await user.click(within(modeGroup).getByRole('radio', { name: 'All' }))
-    expect(navigate).toHaveBeenCalledWith(
-      { view: 'applications', mode: 'all' },
-      { cursorChain: [] },
-    )
+    expect(navigate).toHaveBeenCalledWith({ view: 'applications', mode: 'all' })
 
     rerender(
       <LifecycleWorkbench
@@ -183,7 +188,6 @@ describe('A308-1: navigation hierarchy and mode placement', () => {
         selectedPhase="applications"
         workspaceEntry={{
           location: { view: 'applications', mode: 'all' },
-          cursorChain: [],
         }}
         onWorkspaceNavigate={navigate}
       />,

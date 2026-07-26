@@ -5,22 +5,22 @@
  * (strict), that active identities/evidence references order by (createdAt,id),
  * that history reconstruction replays facts/availability/tombstone/revisions from
  * the ordered payloads and derives point-in-time identities from their table
- * timestamps, and that the keyset cursor encode/decode is total and drives
- * `JobListResult.nextCursor` only when a further page exists.
+ * timestamps, and that the list and history pages carry canonical bidirectional
+ * page info.
  */
 import { describe, expect, it } from 'vitest'
-import { jobHistoryResultSchema, jobListResultSchema, jobSchema } from '@sparxie/sdk'
+
+import { jobHistoryResultSchema, jobSchema } from '@sparxie/sdk'
 import {
-  decodeJobCursor,
-  encodeJobCursor,
   reconstructJobHistory,
-  toJobListResult,
   toJobResource,
   type JobEvidenceRefRow,
   type JobHeadRow,
   type JobHistoryRow,
   type JobIdentityRow,
 } from './job.dto'
+
+const firstPage = (limit: number) => ({ limit, cursor: null, backward: false })
 
 const facts = {
   companyName: 'Acme',
@@ -136,7 +136,7 @@ describe('reconstructJobHistory', () => {
     // Founding capture lineage exists from creation (jobSchema requires >=1 ref).
     const evidenceRefs = [evidenceRow({ createdAt: '2026-07-20T00:00:00.000Z' })]
 
-    const result = reconstructJobHistory(head, history, identities, evidenceRefs, { limit: 50 })
+    const result = reconstructJobHistory(head, history, identities, evidenceRefs, firstPage(50))
     expect(() => jobHistoryResultSchema.parse(result)).not.toThrow()
     expect(result.items.map((item) => item.kind)).toEqual([
       'created', 'identity_added', 'facts_corrected', 'availability_changed', 'removed', 'restored',
@@ -155,7 +155,7 @@ describe('reconstructJobHistory', () => {
     expect(result.items[5]!.snapshot.removedAt).toBeNull()
   })
 
-  it('windows the reconstructed page by the after-sequence cursor', () => {
+  it('windows the reconstructed page in both directions', () => {
     const history: JobHistoryRow[] = [1, 2, 3].map((sequence) => ({
       sequence,
       kind: sequence === 1 ? 'created' : 'facts_corrected',
@@ -163,12 +163,14 @@ describe('reconstructJobHistory', () => {
       auditJson: '{"actor":{"type":"system"}}',
       createdAt: `2026-07-20T00:00:0${sequence}.000Z`,
     }))
-    const page = reconstructJobHistory(head, history, [], [], { limit: 1 })
+    const page = reconstructJobHistory(head, history, [], [], firstPage(1))
     expect(page.items.map((item) => item.sequence)).toEqual([1])
-    expect(page.nextCursor).toBe('1')
-    const next = reconstructJobHistory(head, history, [], [], { limit: 5, afterSequence: 1 })
+    expect(page.pageInfo).toMatchObject({ endCursor: '1', hasPreviousPage: false, hasNextPage: true })
+    const next = reconstructJobHistory(head, history, [], [], { limit: 5, cursor: '1', backward: false })
     expect(next.items.map((item) => item.sequence)).toEqual([2, 3])
-    expect(next.nextCursor).toBeNull()
+    expect(next.pageInfo).toMatchObject({ hasPreviousPage: true, hasNextPage: false })
+    const back = reconstructJobHistory(head, history, [], [], { limit: 5, cursor: '2', backward: true })
+    expect(back.items.map((item) => item.sequence)).toEqual([1])
   })
 
   it('projects URL-only V2 facts in every reconstructed V1 history snapshot', () => {
@@ -187,26 +189,10 @@ describe('reconstructJobHistory', () => {
       }],
       [],
       [evidenceRow({ createdAt: head.createdAt })],
-      { limit: 50 },
+      firstPage(50),
     )
 
     expect(() => jobHistoryResultSchema.parse(result)).not.toThrow()
     expect(result.items[0]?.snapshot.facts.destination).toBeNull()
-  })
-})
-
-describe('job list cursor + result', () => {
-  it('round-trips the keyset cursor and rejects garbage', () => {
-    const cursor = { createdAt: '2026-07-20T00:00:00.000Z', id: head.id }
-    expect(decodeJobCursor(encodeJobCursor(cursor))).toEqual(cursor)
-    expect(decodeJobCursor('not-base64!!')).toBeNull()
-    expect(decodeJobCursor(Buffer.from('{}', 'utf8').toString('base64url'))).toBeNull()
-  })
-
-  it('drives nextCursor only when a further page exists', () => {
-    const job = toJobResource(head, [], [evidenceRow()])
-    expect(() => jobListResultSchema.parse(toJobListResult([job], 10, false))).not.toThrow()
-    expect(toJobListResult([job], 10, false).nextCursor).toBeNull()
-    expect(toJobListResult([job], 1, true).nextCursor).not.toBeNull()
   })
 })

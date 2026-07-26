@@ -51,6 +51,10 @@ async function makeOpportunity(opportunities: OpportunityService, jobId: string,
   return result.opportunity.id
 }
 
+/** Address one direction of the canonical page contract without widening the union. */
+const afterPage = (after: string | undefined) => (after === undefined ? {} : { after })
+const beforePage = (before: string | undefined) => (before === undefined ? {} : { before })
+
 describe.sequential('Opportunity read-model (#304)', () => {
   it('reads a created opportunity back as a flattened, schema-valid resource', async () => {
     const { jobs, opportunities, readModel } = await setup()
@@ -138,13 +142,27 @@ describe.sequential('Opportunity read-model (#304)', () => {
     }
 
     const seen: string[] = []
-    let cursor: string | undefined
+    const back: string[] = []
+    let after: string | undefined
+    let before: string | undefined
     for (let guard = 0; guard < 10; guard += 1) {
-      const page = await readModel.listOpportunities('ws-a', { limit: 2, cursor })
+      const page = await readModel.listOpportunities('ws-a', { limit: 2, ...afterPage(after) })
       seen.push(...page.items.map((item) => item.id))
-      if (!page.nextCursor) break
-      cursor = page.nextCursor
+      if (!page.pageInfo.hasNextPage) {
+        back.push(...page.items.map((item) => item.id))
+        before = page.pageInfo.hasPreviousPage ? page.pageInfo.startCursor ?? undefined : undefined
+        break
+      }
+      after = page.pageInfo.endCursor ?? undefined
     }
+
+    // Walking back from the final page rebuilds the same sequence in the same order.
+    for (let guard = 0; guard < 10 && before !== undefined; guard += 1) {
+      const page = await readModel.listOpportunities('ws-a', { limit: 2, ...beforePage(before) })
+      back.unshift(...page.items.map((item) => item.id))
+      before = page.pageInfo.hasPreviousPage ? page.pageInfo.startCursor ?? undefined : undefined
+    }
+    expect(back).toEqual(seen)
     expect(seen.sort()).toEqual([...ids].sort())
     expect(new Set(seen).size).toBe(seen.length)
   })

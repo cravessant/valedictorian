@@ -58,16 +58,44 @@ describe('useWorkspaceLocation', () => {
     expect(result.current.entry.location.cursor).toBe(cursor)
   })
 
+  it('addresses a backward Jobs page in the URL and restores it from history', async () => {
+    const { result } = renderHook(() => useWorkspaceLocation())
+    act(() => result.current.navigate({
+      view: 'jobs',
+      filter: 'include_removed',
+      cursor: 'page-two',
+      cursorDirection: 'after',
+    }))
+    act(() => result.current.navigate({
+      view: 'jobs',
+      filter: 'include_removed',
+      cursor: 'page-two-start',
+      cursorDirection: 'before',
+    }))
+
+    const url = new URL(window.location.href)
+    expect(url.searchParams.get('cursor')).toBe('page-two-start')
+    expect(url.searchParams.get('direction')).toBe('before')
+
+    await act(async () => window.history.back())
+
+    await waitFor(() => expect(result.current.entry.location).toEqual({
+      view: 'jobs',
+      filter: 'include_removed',
+      cursor: 'page-two',
+      cursorDirection: 'after',
+    }))
+    expect(new URL(window.location.href).searchParams.get('direction')).toBe('after')
+  })
+
   it('applies both Back and Forward history locations', async () => {
     const { result } = renderHook(() => useWorkspaceLocation())
     const listState = {
       location: { view: 'jobs' as const, filter: 'all' },
-      cursorChain: [],
       focusAnchor: 'job-link',
     }
     const detailState = {
       location: { view: 'jobs' as const, resourceId: 'job-id' },
-      cursorChain: [],
       focusAnchor: 'job-link',
     }
 

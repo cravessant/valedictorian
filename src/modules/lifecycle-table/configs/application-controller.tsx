@@ -17,7 +17,7 @@ import { FormModal, type FieldSpec, type FieldErrors } from '../form-modal'
 import type { LifecycleOutcome, LifecycleOutcomeActions } from '../lifecycle-outcome-types'
 import { HistoryModal, OutcomeToast } from '../history-modal'
 import { outcomeForBlocker } from '../lifecycle-result'
-import { loadHistory } from '../load-history'
+import { afterPage, loadHistory } from '../load-history'
 import type { LifecycleAggregateExtensions } from '../lifecycle-table'
 import {
   PURSUIT_STATUS_CHOICES,
@@ -131,8 +131,8 @@ export function useApplicationController(params: {
     if (!client) { setHistoryOutcome({ kind: 'error', blocker: { code: 'workspace_ownership', message: 'Workspace HTTP client is unavailable.' }, message: 'Workspace HTTP client is unavailable.' }); return }
     setHistoryPending(true)
     try {
-      const entries = await loadHistory<LifecycleApplicationHistoryResult['items'][number]>((cursor) =>
-        client.applications.history({ id: row.id, limit: 50, ...(cursor ? { cursor } : {}) }))
+      const entries = await loadHistory<LifecycleApplicationHistoryResult['items'][number]>((after) =>
+        client.applications.history({ id: row.id, limit: 50, ...afterPage(after) }))
       if (request !== historyRequest.current) return
       setHistoryOutcome({
         kind: 'history',

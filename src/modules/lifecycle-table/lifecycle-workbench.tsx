@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import type {
   Application,
   CaptureListPresentation,
-  CaptureResolutionPageInfo,
   Job,
   JobCompanyAssignmentPresentation,
   Opportunity,
@@ -10,13 +9,6 @@ import type {
 } from '@sparxie/sdk'
 
 import { Button } from '@/components/ui/button'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   getRendererHttpWorkspaceClient,
@@ -36,6 +28,7 @@ import {
   type LifecycleLoadState,
   type LifecycleTableConfig,
 } from './lifecycle-table'
+import { afterPage } from './load-history'
 import { useLifecycleInvalidation } from './use-lifecycle-invalidation'
 import { useActionQueue } from './use-action-queue'
 import { ActionQueueMode } from './action-queue-mode'
@@ -47,12 +40,8 @@ import {
   type WorkspaceHistoryEntry,
   type WorkspaceLocation,
 } from '@/app/workspace-location'
-import {
-  nextWorkspacePage,
-  nextLegacyForwardCursorPage,
-  previousWorkspacePage,
-  previousLegacyForwardCursorPage,
-} from '@/app/workspace-page'
+import { WorkspaceCursorPagination } from '@/app/WorkspaceCursorPagination'
+import { workspacePageRequest, type WorkspacePageInfo } from '@/app/workspace-page'
 import {
   LifecycleRail,
   RefreshToolbar,
@@ -84,10 +73,7 @@ interface WorkbenchProps {
   readonly onOpenResource?: (resourceId: string, focusAnchor: string) => void
   readonly onBackFromResource?: () => void
   readonly workspaceEntry?: WorkspaceHistoryEntry
-  readonly onWorkspaceNavigate?: (
-    location: WorkspaceLocation,
-    options?: { cursorChain?: readonly WorkspaceLocation[] },
-  ) => void
+  readonly onWorkspaceNavigate?: (location: WorkspaceLocation) => void
 }
 
 const initial: WorkbenchState = {
@@ -119,12 +105,7 @@ export function LifecycleWorkbench({
   const [showRemoved, setShowRemoved] = useState(false)
   const [captures, setCaptures] =
     useState<PhaseState<CaptureListPresentation>>(initial.captures)
-  const [capturePageInfo, setCapturePageInfo] = useState<CaptureResolutionPageInfo>({
-    startCursor: null,
-    endCursor: null,
-    hasPreviousPage: false,
-    hasNextPage: false,
-  })
+  const [capturePageInfo, setCapturePageInfo] = useState<WorkspacePageInfo>(emptyPageInfo)
   const [captureTotalCount, setCaptureTotalCount] = useState(0)
   // A null intent opens the Capture detail read-only for destination outcomes
   // the server exposes no supported completion intent for.
@@ -137,7 +118,7 @@ export function LifecycleWorkbench({
     ReadonlyMap<string, JobCompanyAssignmentPresentation>
   >(new Map())
   const [allJobs, setAllJobs] = useState<PhaseState<Job>>(initial.jobs)
-  const [jobNextCursor, setJobNextCursor] = useState<string | null>(null)
+  const [jobPageInfo, setJobPageInfo] = useState<WorkspacePageInfo>(emptyPageInfo)
   const [opportunities, setOpportunities] = useState<PhaseState<Opportunity>>(initial.opportunities)
   const [applications, setApplications] = useState<PhaseState<Application>>(initial.applications)
   const phaseGenerations = useRef<Record<LifecyclePhase, number>>({
@@ -207,8 +188,8 @@ export function LifecycleWorkbench({
     setOpportunities((prev) => ({ data: prev.data, load: { status: 'loading' } }))
     setApplications((prev) => ({ data: prev.data, load: { status: 'loading' } }))
     await Promise.all([
-      loadAll((cursor) => opportunityConfig.list(client, {
-        cursor,
+      loadAll((after) => opportunityConfig.list(client, {
+        ...afterPage(after),
         includeRemoved: showRemoved,
         limit: 100,
       })).then(
@@ -218,8 +199,8 @@ export function LifecycleWorkbench({
           load: loadFailure(error, () => void loadAllPhases()),
         })) },
       ),
-      loadAll((cursor) => applicationConfig.list(client, {
-        cursor,
+      loadAll((after) => applicationConfig.list(client, {
+        ...afterPage(after),
         includeRemoved: showRemoved,
         limit: 100,
       })).then(
@@ -240,12 +221,7 @@ export function LifecycleWorkbench({
         load: { status: 'failure', message: 'Workspace HTTP client is unavailable.' },
       })
       setCaptureTotalCount(0)
-      setCapturePageInfo({
-        startCursor: null,
-        endCursor: null,
-        hasPreviousPage: false,
-        hasNextPage: false,
-      })
+      setCapturePageInfo(emptyPageInfo)
       return
     }
     setCaptures((previous) => ({ data: previous.data, load: { status: 'loading' } }))
@@ -254,11 +230,7 @@ export function LifecycleWorkbench({
         filter: captureFilter,
         sort: 'observed_desc',
         limit: 50,
-        ...(capturesLocation.cursor === undefined
-          ? {}
-          : capturesLocation.cursorDirection === 'before'
-            ? { before: capturesLocation.cursor }
-            : { after: capturesLocation.cursor }),
+        ...workspacePageRequest(capturesLocation.cursor, capturesLocation.cursorDirection),
       })
       if (generation !== phaseGenerations.current.captures) return
       setCaptures({ data: page.items, load: { status: 'loaded' } })
@@ -288,7 +260,7 @@ export function LifecycleWorkbench({
         load: { status: 'failure', message: 'Workspace HTTP client is unavailable.' },
       })
       setJobAssignments(new Map())
-      setJobNextCursor(null)
+      setJobPageInfo(emptyPageInfo)
       return
     }
     setJobs((previous) => ({ data: previous.data, load: { status: 'loading' } }))
@@ -296,7 +268,7 @@ export function LifecycleWorkbench({
       const page = await jobConfig.list(client, {
         includeRemoved: jobsShowRemoved,
         limit: 50,
-        ...(jobsLocation.cursor === undefined ? {} : { cursor: jobsLocation.cursor }),
+        ...workspacePageRequest(jobsLocation.cursor, jobsLocation.cursorDirection),
       })
       const assignments = await Promise.all(
         page.items.map((job) => client.companyAssignments.get(job.id)),
@@ -307,16 +279,16 @@ export function LifecycleWorkbench({
         assignment.jobId,
         assignment,
       ])))
-      setJobNextCursor(page.nextCursor)
+      setJobPageInfo(page.pageInfo)
     } catch (error) {
       if (generation !== phaseGenerations.current.jobs) return
       setJobs((previous) => ({
         data: previous.data,
         load: loadFailure(error, () => void loadVisibleJobsPage()),
       }))
-      setJobNextCursor(null)
+      setJobPageInfo(emptyPageInfo)
     }
-  }, [client, jobsLocation.cursor, jobsShowRemoved])
+  }, [client, jobsLocation.cursor, jobsLocation.cursorDirection, jobsShowRemoved])
 
   const loadAllJobs = useCallback(async function loadCompleteJobsProjection() {
     const generation = ++allJobsGeneration.current
@@ -328,8 +300,8 @@ export function LifecycleWorkbench({
       return
     }
     setAllJobs((previous) => ({ data: previous.data, load: { status: 'loading' } }))
-    await loadAll((cursor) => jobConfig.list(client, {
-      cursor,
+    await loadAll((after) => jobConfig.list(client, {
+      ...afterPage(after),
       includeRemoved: jobsShowRemoved,
       limit: 100,
     })).then(
@@ -368,8 +340,8 @@ export function LifecycleWorkbench({
       await loadJobsPage()
     } else if (phase === 'opportunities') {
       setOpportunities((prev) => ({ data: prev.data, load: { status: 'loading' } }))
-      await loadAll((cursor) => opportunityConfig.list(client, {
-        cursor,
+      await loadAll((after) => opportunityConfig.list(client, {
+        ...afterPage(after),
         includeRemoved: showRemoved,
         limit: 100,
       })).then(
@@ -381,8 +353,8 @@ export function LifecycleWorkbench({
       )
     } else {
       setApplications((prev) => ({ data: prev.data, load: { status: 'loading' } }))
-      await loadAll((cursor) => applicationConfig.list(client, {
-        cursor,
+      await loadAll((after) => applicationConfig.list(client, {
+        ...afterPage(after),
         includeRemoved: showRemoved,
         limit: 100,
       })).then(
@@ -536,18 +508,12 @@ export function LifecycleWorkbench({
     opportunities: opportunities.data?.length ?? 0,
     applications: applications.data?.length ?? 0,
   }
-  const jobsEntry: WorkspaceHistoryEntry = workspaceEntry?.location.view === 'jobs'
-    ? workspaceEntry
-    : { location: jobsLocation, cursorChain: [] }
-  const capturesEntry: WorkspaceHistoryEntry = workspaceEntry?.location.view === 'captures'
-    ? workspaceEntry
-    : { location: capturesLocation, cursorChain: [] }
   const setCaptureFilter = (next: CaptureFilter) => {
     if (onWorkspaceNavigate && workspaceEntry?.location.view === 'captures') {
       onWorkspaceNavigate(resetWorkspaceQuery(capturesLocation, {
         filter: next,
         sort: 'observed_desc',
-      }), { cursorChain: [] })
+      }))
       return
     }
     setUncontrolledCaptureFilter(next)
@@ -556,14 +522,14 @@ export function LifecycleWorkbench({
     if (onWorkspaceNavigate && workspaceEntry?.location.view === 'jobs') {
       onWorkspaceNavigate(resetWorkspaceQuery(jobsLocation, {
         filter: next ? 'include_removed' : 'all',
-      }), { cursorChain: [] })
+      }))
       return
     }
     setShowRemoved(next)
   }
   const setAddressedApplicationMode = (next: ApplicationMode) => {
     if (onWorkspaceNavigate && workspaceEntry?.location.view === 'applications') {
-      onWorkspaceNavigate({ view: 'applications', mode: next }, { cursorChain: [] })
+      onWorkspaceNavigate({ view: 'applications', mode: next })
       return
     }
     setUncontrolledApplicationMode(next)
@@ -616,36 +582,12 @@ export function LifecycleWorkbench({
               />
             )}
           />
-          <Pagination aria-label="Capture pages" className="justify-end">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  disabled={!onWorkspaceNavigate || !capturePageInfo.hasPreviousPage}
-                  onClick={() => {
-                    const transition = previousWorkspacePage(capturesEntry, capturePageInfo)
-                    if (transition) onWorkspaceNavigate?.(transition.location, {
-                      cursorChain: transition.cursorChain,
-                    })
-                  }}
-                >
-                  Previous
-                </PaginationPrevious>
-              </PaginationItem>
-              <PaginationItem>
-                <PaginationNext
-                  disabled={!onWorkspaceNavigate || !capturePageInfo.hasNextPage}
-                  onClick={() => {
-                    const transition = nextWorkspacePage(capturesEntry, capturePageInfo)
-                    if (transition) onWorkspaceNavigate?.(transition.location, {
-                      cursorChain: transition.cursorChain,
-                    })
-                  }}
-                >
-                  Next
-                </PaginationNext>
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+          <WorkspaceCursorPagination
+            label="Capture pages"
+            location={capturesLocation}
+            onNavigate={onWorkspaceNavigate}
+            pageInfo={capturePageInfo}
+          />
         </div>
       ) : null}
       {selected === 'jobs' ? (
@@ -661,39 +603,13 @@ export function LifecycleWorkbench({
               onRefresh={refreshSelected}
               toolbar={<RefreshToolbar caption="Jobs" total={counts.jobs} loading={jobs.load.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={jobsShowRemoved} onShowRemovedChange={setJobsShowRemoved} onAdd={jobController.openCreate} addLabel="Add job" />}
             />
-            <Pagination aria-label="Jobs pages" className="mt-3 justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    disabled={!onWorkspaceNavigate || jobsEntry.cursorChain.length === 0}
-                    onClick={() => {
-                      const transition = previousLegacyForwardCursorPage(jobsEntry)
-                      if (transition) onWorkspaceNavigate?.(transition.location, {
-                        cursorChain: transition.cursorChain,
-                      })
-                    }}
-                  >
-                    Previous
-                  </PaginationPrevious>
-                </PaginationItem>
-                <PaginationItem>
-                  <PaginationNext
-                    disabled={!onWorkspaceNavigate || jobNextCursor === null}
-                    onClick={() => {
-                      const transition = nextLegacyForwardCursorPage(
-                        jobsEntry,
-                        jobNextCursor,
-                      )
-                      if (transition) onWorkspaceNavigate?.(transition.location, {
-                        cursorChain: transition.cursorChain,
-                      })
-                    }}
-                  >
-                    Next
-                  </PaginationNext>
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+            <WorkspaceCursorPagination
+              className="mt-3 justify-end"
+              label="Jobs pages"
+              location={jobsLocation}
+              onNavigate={onWorkspaceNavigate}
+              pageInfo={jobPageInfo}
+            />
           </div>
           {selectedResourceId ? (
             <JobResourceDetail
@@ -789,19 +705,27 @@ function loadFailure(error: unknown, onRetry: () => void): LifecycleLoadState {
 
 interface LifecyclePage<Row> {
   readonly items: ReadonlyArray<Row>
-  readonly nextCursor: string | null
+  readonly pageInfo: WorkspacePageInfo
 }
 
+const emptyPageInfo: WorkspacePageInfo = {
+  startCursor: null,
+  endCursor: null,
+  hasPreviousPage: false,
+  hasNextPage: false,
+}
+
+/** Walk a whole projection forward through the canonical page boundaries. */
 async function loadAll<Row>(
-  fetchPage: (cursor?: string) => Promise<LifecyclePage<Row>>,
+  fetchPage: (after?: string) => Promise<LifecyclePage<Row>>,
 ): Promise<ReadonlyArray<Row>> {
   const items: Row[] = []
-  let cursor: string | undefined
+  let after: string | undefined
   do {
-    const page = await fetchPage(cursor)
+    const page = await fetchPage(after)
     items.push(...page.items)
-    cursor = page.nextCursor ?? undefined
-  } while (cursor !== undefined)
+    after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor ?? undefined : undefined
+  } while (after !== undefined)
   return items
 }
 

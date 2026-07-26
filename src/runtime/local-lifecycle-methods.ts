@@ -704,7 +704,7 @@ export function createLocalLifecycleMethods(
 
     async history(input): Promise<JobHistoryResult> {
       const parsed = parseInput(jobHistoryInputSchema, input)
-      return jobReadModel.historyJobs(workspaceId, { id: parsed.id, limit: parsed.limit, cursor: parsed.cursor })
+      return jobReadModel.historyJobs(workspaceId, parsed)
     },
 
     async promoteToOpportunity(input): Promise<PromoteJobToOpportunityResult> {
@@ -831,7 +831,7 @@ export function createLocalLifecycleMethods(
 
     async history(input): Promise<OpportunityHistoryResult> {
       const parsed = parseInput(opportunityHistoryInputSchema, input)
-      return opportunityReadModel.historyOpportunities(workspaceId, { id: parsed.id, limit: parsed.limit, cursor: parsed.cursor })
+      return opportunityReadModel.historyOpportunities(workspaceId, parsed)
     },
 
     async promoteToApplication(input): Promise<PromoteOpportunityToApplicationResult> {
@@ -1121,20 +1121,20 @@ export function createLocalLifecycleMethods(
 
     async history(input): Promise<LifecycleApplicationHistoryResult> {
       const parsed = parseInput(historyListInputSchema, input)
-      return applicationReadModel.historyApplications(workspaceId, { id: parsed.id, limit: parsed.limit, cursor: parsed.cursor })
+      return applicationReadModel.historyApplications(workspaceId, parsed)
     },
 
     attempts: {
       async list(input): Promise<ApplicationAttemptsListResult> {
         const parsed = parseInput(applicationTechnicalListInputSchema, input)
-        return applicationReadModel.listAttempts(workspaceId, { applicationId: parsed.applicationId, limit: parsed.limit, cursor: parsed.cursor })
+        return applicationReadModel.listAttempts(workspaceId, parsed)
       },
     },
 
     events: {
       async list(input): Promise<ApplicationEventsListResult> {
         const parsed = parseInput(applicationTechnicalListInputSchema, input)
-        return applicationReadModel.listEvents(workspaceId, { applicationId: parsed.applicationId, limit: parsed.limit, cursor: parsed.cursor })
+        return applicationReadModel.listEvents(workspaceId, parsed)
       },
     },
   }

@@ -9,7 +9,7 @@
  * reconstructed history. Reads only — every mutation still flows through the
  * Application aggregate service, which owns validation and policy.
  */
-import { and, asc, eq, gt, isNull, or } from 'drizzle-orm'
+import { and, asc, eq, isNull, type SQL } from 'drizzle-orm'
 import type {
   Application,
   ApplicationAttemptsListResult,
@@ -27,36 +27,35 @@ import {
   pursuitLinks,
 } from '../application/application.schema'
 import {
-  decodeApplicationCursor,
   reconstructApplicationHistory,
-  toApplicationListResult,
   toApplicationResource,
   toAttemptRecord,
-  toAttemptsListResult,
   toEventRecord,
-  toEventsListResult,
   type ApplicationAttemptRow,
   type ApplicationEventRow,
   type ApplicationHeadRow,
   type ApplicationHistoryRow,
   type ApplicationLinkRow,
 } from './application.dto'
+import {
+  emptyLifecyclePage,
+  encodeKeysetCursor,
+  readPageWindow,
+  toLifecyclePage,
+  type LifecyclePageRequest,
+} from '../lifecycle/lifecycle-page.dto'
+import {
+  createLifecycleAdjacencyProbe,
+  lifecycleKeysetOrder,
+  lifecycleKeysetWindow,
+} from '../lifecycle/lifecycle-keyset'
 
-const DEFAULT_LIST_LIMIT = 50
-const MAX_LIST_LIMIT = 200
-const DEFAULT_HISTORY_LIMIT = 50
-const MAX_HISTORY_LIMIT = 200
-
-export interface ApplicationHistoryReadInput {
+export interface ApplicationHistoryReadInput extends LifecyclePageRequest {
   readonly id: string
-  readonly limit?: number
-  readonly cursor?: string
 }
 
-export interface ApplicationTechnicalReadInput {
+export interface ApplicationTechnicalReadInput extends LifecyclePageRequest {
   readonly applicationId: string
-  readonly limit?: number
-  readonly cursor?: string
 }
 
 export interface ApplicationReadModel {
@@ -67,13 +66,12 @@ export interface ApplicationReadModel {
   listEvents(workspaceId: string, input: ApplicationTechnicalReadInput): Promise<ApplicationEventsListResult>
 }
 
-function clampLimit(requested: number | undefined, fallback: number, max: number): number {
-  if (requested === undefined || !Number.isFinite(requested)) return Math.min(fallback, max)
-  const floored = Math.floor(requested)
-  if (floored < 1) return 1
-  if (floored > max) return max
-  return floored
-}
+/** The stable (primary, id) ordering each Application-side page walks. */
+const applicationKeyset = { primary: applications.createdAt, id: applications.id }
+const attemptKeyset = { primary: applicationAttemptRecords.startedAt, id: applicationAttemptRecords.id }
+const eventKeyset = { primary: applicationEventRecords.occurredAt, id: applicationEventRecords.id }
+
+const keysetCursor = (primary: string, id: string) => encodeKeysetCursor({ primary, id })
 
 export function createPgliteApplicationReadModel(database: PgliteDatabase): ApplicationReadModel {
   async function selectHead(workspaceId: string, applicationId: string): Promise<ApplicationHeadRow | null> {
@@ -113,39 +111,31 @@ export function createPgliteApplicationReadModel(database: PgliteDatabase): Appl
     },
 
     async listApplications(workspaceId, input = {}) {
-      const limit = clampLimit(input.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)
-      const cursor = input.cursor ? decodeApplicationCursor(input.cursor) : null
-
-      const filters = [eq(applications.workspaceId, workspaceId)]
+      const window = readPageWindow(input)
+      const filters: SQL[] = [eq(applications.workspaceId, workspaceId)]
       if (input.opportunityId !== undefined) filters.push(eq(applications.opportunityId, input.opportunityId))
       if (input.jobId !== undefined) filters.push(eq(applications.jobId, input.jobId))
       if (input.status !== undefined) filters.push(eq(applications.status, input.status))
       if (input.includeRemoved !== true) filters.push(isNull(applications.removedAt))
-      if (cursor) {
-        const keyset = or(
-          gt(applications.createdAt, cursor.primary),
-          and(eq(applications.createdAt, cursor.primary), gt(applications.id, cursor.id)),
-        )
-        if (keyset) filters.push(keyset)
-      }
-
       const rows = (await database
         .select()
         .from(applications)
-        .where(and(...filters))
-        .orderBy(asc(applications.createdAt), asc(applications.id))
-        .limit(limit + 1)) as ApplicationHeadRow[]
+        .where(and(...filters, ...lifecycleKeysetWindow(applicationKeyset, window)))
+        .orderBy(...lifecycleKeysetOrder(applicationKeyset, window))
+        .limit(window.limit + 1)) as ApplicationHeadRow[]
 
-      const hasMore = rows.length > limit
-      const pageRows = hasMore ? rows.slice(0, limit) : rows
-      const items = await Promise.all(pageRows.map(async (head) => toApplicationResource(head, await selectLinks(head.id))))
-      return toApplicationListResult(items, limit, hasMore)
+      const page = await toLifecyclePage(rows, window, (row) => keysetCursor(row.createdAt, row.id),
+        createLifecycleAdjacencyProbe(database, applications, filters, applicationKeyset))
+      const items = await Promise.all(
+        page.rows.map(async (head) => toApplicationResource(head, await selectLinks(head.id))),
+      )
+      return { items, pageInfo: page.pageInfo }
     },
 
     async historyApplications(workspaceId, input) {
-      const limit = clampLimit(input.limit, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT)
+      const window = readPageWindow(input)
       const head = await selectHead(workspaceId, input.id)
-      if (!head) return { limit, nextCursor: null, items: [] }
+      if (!head) return emptyLifecyclePage()
 
       const [historyRows, links] = await Promise.all([
         database
@@ -162,29 +152,17 @@ export function createPgliteApplicationReadModel(database: PgliteDatabase): Appl
         selectLinks(input.id),
       ])
 
-      const afterRevision = input.cursor !== undefined ? Number.parseInt(input.cursor, 10) : undefined
-      return reconstructApplicationHistory(head, historyRows, links, {
-        limit,
-        afterRevision: afterRevision !== undefined && Number.isFinite(afterRevision) ? afterRevision : undefined,
-      })
+      return reconstructApplicationHistory(head, historyRows, links, window)
     },
 
     async listAttempts(workspaceId, input) {
-      const limit = clampLimit(input.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)
-      if (!(await applicationExists(workspaceId, input.applicationId))) return { limit, nextCursor: null, items: [] }
-      const cursor = input.cursor ? decodeApplicationCursor(input.cursor) : null
+      const window = readPageWindow(input)
+      if (!(await applicationExists(workspaceId, input.applicationId))) return emptyLifecyclePage()
 
-      const filters = [
+      const filters: SQL[] = [
         eq(applicationAttemptRecords.workspaceId, workspaceId),
         eq(applicationAttemptRecords.applicationId, input.applicationId),
       ]
-      if (cursor) {
-        const keyset = or(
-          gt(applicationAttemptRecords.startedAt, cursor.primary),
-          and(eq(applicationAttemptRecords.startedAt, cursor.primary), gt(applicationAttemptRecords.id, cursor.id)),
-        )
-        if (keyset) filters.push(keyset)
-      }
 
       const rows = (await database
         .select({
@@ -197,31 +175,23 @@ export function createPgliteApplicationReadModel(database: PgliteDatabase): Appl
           summary: applicationAttemptRecords.summary,
         })
         .from(applicationAttemptRecords)
-        .where(and(...filters))
-        .orderBy(asc(applicationAttemptRecords.startedAt), asc(applicationAttemptRecords.id))
-        .limit(limit + 1)) as ApplicationAttemptRow[]
+        .where(and(...filters, ...lifecycleKeysetWindow(attemptKeyset, window)))
+        .orderBy(...lifecycleKeysetOrder(attemptKeyset, window))
+        .limit(window.limit + 1)) as ApplicationAttemptRow[]
 
-      const hasMore = rows.length > limit
-      const pageRows = hasMore ? rows.slice(0, limit) : rows
-      return toAttemptsListResult(pageRows.map(toAttemptRecord), limit, hasMore)
+      const page = await toLifecyclePage(rows, window, (row) => keysetCursor(row.startedAt, row.id),
+        createLifecycleAdjacencyProbe(database, applicationAttemptRecords, filters, attemptKeyset))
+      return { items: page.rows.map(toAttemptRecord), pageInfo: page.pageInfo }
     },
 
     async listEvents(workspaceId, input) {
-      const limit = clampLimit(input.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)
-      if (!(await applicationExists(workspaceId, input.applicationId))) return { limit, nextCursor: null, items: [] }
-      const cursor = input.cursor ? decodeApplicationCursor(input.cursor) : null
+      const window = readPageWindow(input)
+      if (!(await applicationExists(workspaceId, input.applicationId))) return emptyLifecyclePage()
 
-      const filters = [
+      const filters: SQL[] = [
         eq(applicationEventRecords.workspaceId, workspaceId),
         eq(applicationEventRecords.applicationId, input.applicationId),
       ]
-      if (cursor) {
-        const keyset = or(
-          gt(applicationEventRecords.occurredAt, cursor.primary),
-          and(eq(applicationEventRecords.occurredAt, cursor.primary), gt(applicationEventRecords.id, cursor.id)),
-        )
-        if (keyset) filters.push(keyset)
-      }
 
       const rows = (await database
         .select({
@@ -236,13 +206,13 @@ export function createPgliteApplicationReadModel(database: PgliteDatabase): Appl
           summary: applicationEventRecords.summary,
         })
         .from(applicationEventRecords)
-        .where(and(...filters))
-        .orderBy(asc(applicationEventRecords.occurredAt), asc(applicationEventRecords.id))
-        .limit(limit + 1)) as ApplicationEventRow[]
+        .where(and(...filters, ...lifecycleKeysetWindow(eventKeyset, window)))
+        .orderBy(...lifecycleKeysetOrder(eventKeyset, window))
+        .limit(window.limit + 1)) as ApplicationEventRow[]
 
-      const hasMore = rows.length > limit
-      const pageRows = hasMore ? rows.slice(0, limit) : rows
-      return toEventsListResult(pageRows.map(toEventRecord), limit, hasMore)
+      const page = await toLifecyclePage(rows, window, (row) => keysetCursor(row.occurredAt, row.id),
+        createLifecycleAdjacencyProbe(database, applicationEventRecords, filters, eventKeyset))
+      return { items: page.rows.map(toEventRecord), pageInfo: page.pageInfo }
     },
   }
 }

@@ -3,23 +3,21 @@
  *
  * Proves the domain -> sparxie `Capture` flattening conforms to `captureSchema`
  * exactly (strict, so unknown/missing keys fail), that evidence orders across
- * revisions, that payload round-trips (object and null), and that the keyset
- * cursor encode/decode is total (round-trips, rejects garbage) and drives the
- * `CaptureListResult.nextCursor` only when a further page exists.
+ * revisions, that payload round-trips (object and null), and that the list and
+ * history pages carry canonical bidirectional page info.
  */
 import { describe, expect, it } from 'vitest'
 import { captureHistoryResultSchema, captureSchema } from '@sparxie/sdk'
 import {
-  decodeCaptureCursor,
-  encodeCaptureCursor,
   reconstructCaptureHistory,
-  toCaptureListResult,
   toCaptureResource,
   toContractActor,
   type CaptureEvidenceRow,
   type CaptureHeadRow,
   type CaptureRevisionRow,
 } from './capture.dto'
+
+const firstPage = (limit: number) => ({ limit, cursor: null, backward: false })
 
 const head: CaptureHeadRow = {
   id: 'cap-1',
@@ -104,7 +102,7 @@ describe('reconstructCaptureHistory', () => {
   ]
 
   it('reconstructs schema-valid per-revision snapshots with tombstone + cumulative evidence', () => {
-    const result = reconstructCaptureHistory(head, revisions, evidence, { limit: 50 })
+    const result = reconstructCaptureHistory(head, revisions, evidence, firstPage(50))
     expect(() => captureHistoryResultSchema.parse(result)).not.toThrow()
     expect(result.items.map((item) => item.revision)).toEqual([1, 2, 3, 4])
     // Cumulative evidence: rev 1 sees one item, rev 2+ see both.
@@ -119,46 +117,20 @@ describe('reconstructCaptureHistory', () => {
     expect(result.items[0]!.audit.actor).toEqual({ id: 'system', type: 'system' })
   })
 
-  it('windows on the afterRevision cursor and reports the next anchor', () => {
-    const first = reconstructCaptureHistory(head, revisions, evidence, { limit: 2 })
+  it('windows the reconstructed history in both directions', () => {
+    const first = reconstructCaptureHistory(head, revisions, evidence, firstPage(2))
     expect(first.items.map((item) => item.revision)).toEqual([1, 2])
-    expect(first.nextCursor).toBe('2')
+    expect(first.pageInfo).toMatchObject({ hasPreviousPage: false, hasNextPage: true, endCursor: '2' })
 
-    const next = reconstructCaptureHistory(head, revisions, evidence, { limit: 2, afterRevision: 2 })
+    const next = reconstructCaptureHistory(head, revisions, evidence, {
+      limit: 2, cursor: '2', backward: false,
+    })
     expect(next.items.map((item) => item.revision)).toEqual([3, 4])
-    expect(next.nextCursor).toBeNull()
-  })
-})
+    expect(next.pageInfo).toMatchObject({ hasPreviousPage: true, hasNextPage: false })
 
-describe('capture keyset cursor', () => {
-  it('round-trips a (createdAt, id) anchor', () => {
-    const encoded = encodeCaptureCursor({ createdAt: '2026-07-20T00:00:01.000Z', id: 'cap-1' })
-    expect(decodeCaptureCursor(encoded)).toEqual({ createdAt: '2026-07-20T00:00:01.000Z', id: 'cap-1' })
-  })
-
-  it('returns null for malformed cursors instead of throwing', () => {
-    expect(decodeCaptureCursor('not-base64-$$')).toBeNull()
-    expect(decodeCaptureCursor(Buffer.from('{"nope":1}', 'utf8').toString('base64url'))).toBeNull()
-    expect(decodeCaptureCursor(Buffer.from('[1,2]', 'utf8').toString('base64url'))).toBeNull()
-  })
-})
-
-describe('toCaptureListResult', () => {
-  const resource = toCaptureResource(head, [])
-
-  it('emits a nextCursor anchored on the last item when more pages remain', () => {
-    const result = toCaptureListResult([resource], 1, true)
-    expect(result.limit).toBe(1)
-    expect(result.items).toHaveLength(1)
-    expect(result.nextCursor).toBe(encodeCaptureCursor({ createdAt: head.createdAt, id: head.id }))
-  })
-
-  it('emits a null nextCursor on the final page', () => {
-    const result = toCaptureListResult([resource], 50, false)
-    expect(result.nextCursor).toBeNull()
-  })
-
-  it('emits a null nextCursor for an empty page', () => {
-    expect(toCaptureListResult([], 50, false).nextCursor).toBeNull()
+    const back = reconstructCaptureHistory(head, revisions, evidence, {
+      limit: 2, cursor: '3', backward: true,
+    })
+    expect(back.items.map((item) => item.revision)).toEqual([1, 2])
   })
 })

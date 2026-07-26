@@ -126,6 +126,10 @@ async function mintJob(
   return jobId
 }
 
+/** Address one direction of the canonical page contract without widening the union. */
+const afterPage = (after: string | undefined) => (after === undefined ? {} : { after })
+const beforePage = (before: string | undefined) => (before === undefined ? {} : { before })
+
 describe.sequential('Job read-model (#304)', () => {
   it('reads a created job back as a flattened, schema-valid resource with lineage + identity', async () => {
     const { database, captures, jobs, readModel } = await setup()
@@ -214,14 +218,115 @@ describe.sequential('Job read-model (#304)', () => {
     }
 
     const seen: string[] = []
-    let cursor: string | undefined
+    const back: string[] = []
+    let after: string | undefined
+    let before: string | undefined
     for (let guard = 0; guard < 10; guard += 1) {
-      const page = await readModel.listJobs('ws-a', { limit: 2, cursor })
+      const page = await readModel.listJobs('ws-a', { limit: 2, ...afterPage(after) })
       seen.push(...page.items.map((item) => item.id))
-      if (!page.nextCursor) break
-      cursor = page.nextCursor
+      if (!page.pageInfo.hasNextPage) {
+        back.push(...page.items.map((item) => item.id))
+        before = page.pageInfo.hasPreviousPage ? page.pageInfo.startCursor ?? undefined : undefined
+        break
+      }
+      after = page.pageInfo.endCursor ?? undefined
     }
+
+    // Walking back from the final page rebuilds the same sequence in the same order.
+    for (let guard = 0; guard < 10 && before !== undefined; guard += 1) {
+      const page = await readModel.listJobs('ws-a', { limit: 2, ...beforePage(before) })
+      back.unshift(...page.items.map((item) => item.id))
+      before = page.pageInfo.hasPreviousPage ? page.pageInfo.startCursor ?? undefined : undefined
+    }
+    expect(back).toEqual(seen)
     expect(seen.sort()).toEqual([...ids].sort())
     expect(new Set(seen).size).toBe(seen.length)
+  })
+
+  it('reports adjacency for the surviving rows after the followed cursor is orphaned', async () => {
+    const { database, captures, jobs, readModel } = await setup()
+    const ids: string[] = []
+    for (let index = 0; index < 4; index += 1) {
+      ids.push(await mintJob(database, captures, jobs, { providerRecordId: `stale-${index}` }))
+    }
+
+    const first = await readModel.listJobs('ws-a', { limit: 2 })
+    expect(first.items.map((item) => item.id)).toEqual(ids.slice(0, 2))
+    const second = await readModel.listJobs('ws-a', {
+      limit: 2, ...afterPage(first.pageInfo.endCursor ?? undefined),
+    })
+    expect(second.items.map((item) => item.id)).toEqual(ids.slice(2))
+    expect(second.pageInfo).toMatchObject({ hasPreviousPage: true, hasNextPage: false })
+
+    // Everything the cursor was anchored on is removed while the page is held.
+    for (const removed of ids.slice(0, 2)) {
+      await jobs.remove({ workspaceId: 'ws-a', jobId: removed, actor: ACTOR })
+    }
+
+    const refreshed = await readModel.listJobs('ws-a', {
+      limit: 2, ...afterPage(first.pageInfo.endCursor ?? undefined),
+    })
+    expect(refreshed.items.map((item) => item.id)).toEqual(ids.slice(2))
+    expect(refreshed.pageInfo).toMatchObject({ hasPreviousPage: false, hasNextPage: false })
+
+    // The stale cursor still resolves, and Previous is no longer offered from it.
+    const backwards = await readModel.listJobs('ws-a', {
+      limit: 2, ...beforePage(first.pageInfo.endCursor ?? undefined),
+    })
+    expect(backwards.items).toEqual([])
+    expect(backwards.pageInfo).toMatchObject({ hasPreviousPage: false, hasNextPage: true })
+  })
+
+  it('keeps a page emptied by removals addressable back toward surviving rows', async () => {
+    const { database, captures, jobs, readModel } = await setup()
+    const ids: string[] = []
+    for (let index = 0; index < 4; index += 1) {
+      ids.push(await mintJob(database, captures, jobs, { providerRecordId: `emptied-${index}` }))
+    }
+
+    const first = await readModel.listJobs('ws-a', { limit: 2 })
+    const boundary = first.pageInfo.endCursor ?? undefined
+
+    // The whole tail the boundary pointed forward at is removed.
+    for (const removed of ids.slice(2)) {
+      await jobs.remove({ workspaceId: 'ws-a', jobId: removed, actor: ACTOR })
+    }
+
+    const emptied = await readModel.listJobs('ws-a', { limit: 2, ...afterPage(boundary) })
+    expect(emptied.items).toEqual([])
+    expect(emptied.pageInfo).toEqual({
+      startCursor: null,
+      endCursor: null,
+      hasPreviousPage: true,
+      hasNextPage: false,
+    })
+
+    // Re-addressing the same boundary backwards reaches rows that still exist.
+    const recovered = await readModel.listJobs('ws-a', { limit: 2, ...beforePage(boundary) })
+    expect(recovered.items.map((item) => item.id)).toEqual([ids[0]])
+    expect(recovered.pageInfo).toMatchObject({ hasPreviousPage: false, hasNextPage: true })
+  })
+
+  it('drops the stale Next a backward request used to assert', async () => {
+    const { database, captures, jobs, readModel } = await setup()
+    const ids: string[] = []
+    for (let index = 0; index < 4; index += 1) {
+      ids.push(await mintJob(database, captures, jobs, { providerRecordId: `tail-${index}` }))
+    }
+
+    const second = await readModel.listJobs('ws-a', {
+      limit: 2, ...afterPage((await readModel.listJobs('ws-a', { limit: 2 })).pageInfo.endCursor ?? undefined),
+    })
+    expect(second.items.map((item) => item.id)).toEqual(ids.slice(2))
+    const boundary = second.pageInfo.startCursor ?? undefined
+
+    // Everything ahead of the backward page is removed while it is held.
+    for (const removed of ids.slice(2)) {
+      await jobs.remove({ workspaceId: 'ws-a', jobId: removed, actor: ACTOR })
+    }
+
+    const backwards = await readModel.listJobs('ws-a', { limit: 2, ...beforePage(boundary) })
+    expect(backwards.items.map((item) => item.id)).toEqual(ids.slice(0, 2))
+    expect(backwards.pageInfo).toMatchObject({ hasPreviousPage: false, hasNextPage: false })
   })
 })

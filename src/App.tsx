@@ -278,10 +278,7 @@ export default function App({
               ...workspaceNavigation.entry.location,
               view: APP_VIEWS.JOBS,
               resourceId,
-            }, {
-              cursorChain: workspaceNavigation.entry.cursorChain,
-              focusAnchor,
-            })}
+            }, { focusAnchor })}
             onBackFromResource={() => backFromResource(
               workspaceNavigation.entry.location,
               workspaceNavigation.entry.focusAnchor,

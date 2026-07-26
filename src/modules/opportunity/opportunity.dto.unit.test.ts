@@ -6,19 +6,18 @@
  * into the warning override, that history reconstruction replays
  * fit/rank/cutoff/disposition/tombstone from the ordered delta payloads while
  * carrying `override: null` per revision (head-only contract reading), and that
- * the keyset cursor encode/decode is total.
+ * the list and history pages carry canonical bidirectional page info.
  */
 import { describe, expect, it } from 'vitest'
-import { opportunityHistoryResultSchema, opportunityListResultSchema, opportunitySchema } from '@sparxie/sdk'
+import { opportunityHistoryResultSchema, opportunitySchema } from '@sparxie/sdk'
 import {
-  decodeOpportunityCursor,
-  encodeOpportunityCursor,
   reconstructOpportunityHistory,
-  toOpportunityListResult,
   toOpportunityResource,
   type OpportunityHeadRow,
   type OpportunityHistoryRow,
 } from './opportunity.dto'
+
+const firstPage = (limit: number) => ({ limit, cursor: null, backward: false })
 
 const override = { actor: { id: 'u-1', type: 'user' as const }, rationale: 'reviewed the cutoff', warningCodes: ['cutoff' as const] }
 
@@ -62,7 +61,7 @@ describe('reconstructOpportunityHistory', () => {
       { revision: 4, kind: 'removed', snapshotJson: JSON.stringify({ kind: 'removed', priorRevision: 3 }), auditJson: '{"actor":{"type":"user","id":"u"}}', createdAt: '2026-07-20T00:00:03.000Z' },
       { revision: 5, kind: 'restored', snapshotJson: JSON.stringify({ kind: 'restored', priorRevision: 4 }), auditJson: '{"actor":{"type":"user","id":"u"}}', createdAt: '2026-07-20T00:00:04.000Z' },
     ]
-    const result = reconstructOpportunityHistory(head, history, { limit: 50 })
+    const result = reconstructOpportunityHistory(head, history, firstPage(50))
     expect(() => opportunityHistoryResultSchema.parse(result)).not.toThrow()
     expect(result.items.map((item) => item.kind)).toEqual([
       'created', 'evaluation_changed', 'disposition_changed', 'removed', 'restored',
@@ -77,7 +76,7 @@ describe('reconstructOpportunityHistory', () => {
     for (const item of result.items) expect(item.snapshot.override).toBeNull()
   })
 
-  it('windows the reconstructed page by the after-revision cursor', () => {
+  it('windows the reconstructed page in both directions', () => {
     const history: OpportunityHistoryRow[] = [1, 2, 3].map((revision) => ({
       revision,
       kind: revision === 1 ? 'created' : 'evaluation_changed',
@@ -85,26 +84,13 @@ describe('reconstructOpportunityHistory', () => {
       auditJson: '{"actor":{"type":"system"}}',
       createdAt: `2026-07-20T00:00:0${revision}.000Z`,
     }))
-    const page = reconstructOpportunityHistory(head, history, { limit: 1 })
+    const page = reconstructOpportunityHistory(head, history, firstPage(1))
     expect(page.items.map((item) => item.revision)).toEqual([1])
-    expect(page.nextCursor).toBe('1')
-    const next = reconstructOpportunityHistory(head, history, { limit: 5, afterRevision: 1 })
+    expect(page.pageInfo).toMatchObject({ endCursor: '1', hasPreviousPage: false, hasNextPage: true })
+    const next = reconstructOpportunityHistory(head, history, { limit: 5, cursor: '1', backward: false })
     expect(next.items.map((item) => item.revision)).toEqual([2, 3])
-    expect(next.nextCursor).toBeNull()
-  })
-})
-
-describe('opportunity list cursor + result', () => {
-  it('round-trips the keyset cursor and rejects garbage', () => {
-    const cursor = { createdAt: head.createdAt, id: head.id }
-    expect(decodeOpportunityCursor(encodeOpportunityCursor(cursor))).toEqual(cursor)
-    expect(decodeOpportunityCursor('not base64 !!')).toBeNull()
-  })
-
-  it('drives nextCursor only when a further page exists', () => {
-    const dto = toOpportunityResource(head)
-    expect(() => opportunityListResultSchema.parse(toOpportunityListResult([dto], 10, false))).not.toThrow()
-    expect(toOpportunityListResult([dto], 10, false).nextCursor).toBeNull()
-    expect(toOpportunityListResult([dto], 1, true).nextCursor).not.toBeNull()
+    expect(next.pageInfo).toMatchObject({ hasPreviousPage: true, hasNextPage: false })
+    const back = reconstructOpportunityHistory(head, history, { limit: 5, cursor: '3', backward: true })
+    expect(back.items.map((item) => item.revision)).toEqual([1, 2])
   })
 })

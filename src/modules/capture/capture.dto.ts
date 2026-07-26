@@ -20,10 +20,13 @@ import type {
   Capture,
   CaptureConnectorProvenance,
   CaptureHistoryResult,
-  CaptureListResult,
   CaptureRevision,
 } from '@sparxie/sdk'
 import { toContractActor, toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
+import {
+  sliceLifecycleHistoryPage,
+  type LifecyclePageWindow,
+} from '../lifecycle/lifecycle-page.dto'
 
 export { toContractActor }
 
@@ -152,7 +155,7 @@ export function reconstructCaptureHistory(
   head: CaptureHeadRow,
   revisions: readonly CaptureRevisionRow[],
   evidence: readonly CaptureEvidenceRow[],
-  options: { readonly limit: number; readonly afterRevision?: number },
+  window: LifecyclePageWindow,
 ): CaptureHistoryResult {
   const ordered = orderEvidence(evidence)
   const sortedRevisions = [...revisions].sort((left, right) => left.revision - right.revision)
@@ -183,61 +186,5 @@ export function reconstructCaptureHistory(
     })
   }
 
-  const afterRevision = options.afterRevision
-  const windowed = afterRevision === undefined
-    ? all
-    : all.filter((item) => item.revision > afterRevision)
-  const page = windowed.slice(0, options.limit)
-  const hasMore = windowed.length > options.limit
-  return {
-    limit: options.limit,
-    nextCursor: hasMore ? String(page.at(-1)?.revision ?? '') : null,
-    items: page,
-  }
-}
-
-/** Opaque keyset cursor over the stable (createdAt, id) capture ordering. */
-export interface CaptureListCursor {
-  readonly createdAt: string
-  readonly id: string
-}
-
-export function encodeCaptureCursor(cursor: CaptureListCursor): string {
-  return Buffer.from(JSON.stringify([cursor.createdAt, cursor.id]), 'utf8').toString('base64url')
-}
-
-export function decodeCaptureCursor(cursor: string): CaptureListCursor | null {
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'))
-    if (
-      Array.isArray(parsed)
-      && parsed.length === 2
-      && typeof parsed[0] === 'string'
-      && typeof parsed[1] === 'string'
-    ) {
-      return { createdAt: parsed[0], id: parsed[1] }
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Assemble a `CaptureListResult` page from an already-fetched, already-ordered
- * page (length up to `limit`) plus the sentinel row that signals a further page.
- * The caller fetches `limit + 1` rows; if a sentinel is present it is dropped and
- * its predecessor becomes the `nextCursor` anchor.
- */
-export function toCaptureListResult(
-  page: readonly Capture[],
-  limit: number,
-  hasMore: boolean,
-): CaptureListResult {
-  const last = page.at(-1)
-  return {
-    limit,
-    nextCursor: hasMore && last ? encodeCaptureCursor({ createdAt: last.createdAt, id: last.id }) : null,
-    items: [...page],
-  }
+  return sliceLifecycleHistoryPage(all, window, (entry) => entry.revision)
 }

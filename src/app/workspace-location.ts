@@ -20,7 +20,6 @@ export interface WorkspaceLocation {
 
 export interface WorkspaceHistoryEntry {
   readonly location: WorkspaceLocation
-  readonly cursorChain: readonly WorkspaceLocation[]
   readonly focusAnchor?: string
 }
 
@@ -108,11 +107,9 @@ export function isWorkspaceLocation(value: unknown): value is WorkspaceLocation 
     return false
   }
   if (location.cursor === undefined) return location.cursorDirection === undefined
-  if (view === 'jobs') return location.cursorDirection === 'after'
-  if (view === 'companies' || view === 'captures') {
-    return location.cursorDirection === 'after' || location.cursorDirection === 'before'
-  }
-  return false
+  // Opportunities and Applications are loaded whole, so they address no page.
+  if (view === 'opportunities' || view === 'applications') return false
+  return location.cursorDirection === 'after' || location.cursorDirection === 'before'
 }
 
 function validCompanyOptions(location: Partial<WorkspaceLocation>) {
@@ -133,12 +130,7 @@ function validCompanyOptions(location: Partial<WorkspaceLocation>) {
 export function isWorkspaceHistoryEntry(value: unknown): value is WorkspaceHistoryEntry {
   if (!value || typeof value !== 'object') return false
   const entry = value as Partial<WorkspaceHistoryEntry>
-  return isWorkspaceLocation(entry.location)
-    && Array.isArray(entry.cursorChain)
-    && entry.cursorChain.length <= 100
-    && entry.cursorChain.every((location) =>
-      isWorkspaceLocation(location) && location.view === entry.location?.view)
-    && optionalBounded(entry.focusAnchor)
+  return isWorkspaceLocation(entry.location) && optionalBounded(entry.focusAnchor)
 }
 
 export function resetWorkspaceQuery(

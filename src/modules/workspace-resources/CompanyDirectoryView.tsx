@@ -1,13 +1,6 @@
 import type { CompanyDirectoryPage } from '@sparxie/sdk'
 import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
@@ -19,7 +12,7 @@ import {
 } from '@/components/ui/table'
 import type { WorkspaceHistoryEntry, WorkspaceLocation } from '@/app/workspace-location'
 import { resetWorkspaceQuery } from '@/app/workspace-location'
-import { nextWorkspacePage, previousWorkspacePage } from '@/app/workspace-page'
+import { WorkspaceCursorPagination } from '@/app/WorkspaceCursorPagination'
 
 export function CompanyDirectoryView({
   entry,
@@ -34,7 +27,7 @@ export function CompanyDirectoryView({
   readonly loading: boolean
   readonly onNavigate: (
     location: WorkspaceLocation,
-    options?: { cursorChain?: readonly WorkspaceLocation[]; focusAnchor?: string },
+    options?: { focusAnchor?: string },
   ) => void
   readonly onOpen: (companyId: string, anchor: string) => void
   readonly page: CompanyDirectoryPage
@@ -108,36 +101,12 @@ export function CompanyDirectoryView({
           </p>
         </div>
       ) : null}
-      <Pagination aria-label="Companies pages" className="justify-end">
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              disabled={!page.pageInfo.hasPreviousPage}
-              onClick={() => {
-                const transition = previousWorkspacePage(entry, page.pageInfo)
-                if (transition) onNavigate(transition.location, {
-                  cursorChain: transition.cursorChain,
-                })
-              }}
-            >
-              Previous
-            </PaginationPrevious>
-          </PaginationItem>
-          <PaginationItem>
-            <PaginationNext
-              disabled={!page.pageInfo.hasNextPage}
-              onClick={() => {
-                const transition = nextWorkspacePage(entry, page.pageInfo)
-                if (transition) onNavigate(transition.location, {
-                  cursorChain: transition.cursorChain,
-                })
-              }}
-            >
-              Next
-            </PaginationNext>
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
+      <WorkspaceCursorPagination
+        label="Companies pages"
+        location={location}
+        onNavigate={onNavigate}
+        pageInfo={page.pageInfo}
+      />
       {loading ? (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner aria-label="Loading Companies" className="size-4" />

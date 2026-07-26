@@ -9,7 +9,7 @@
  * validation and policy. Kept separate from the service so the HTTP boundary
  * composes read + write without either reaching into the other's SQL.
  */
-import { and, asc, eq, exists, gt, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, eq, exists, isNull, sql, type SQL } from 'drizzle-orm'
 import type {
   Capture,
   CaptureHistoryResult,
@@ -20,17 +20,23 @@ import type {
 import type { PgliteDatabase } from '../../db/pglite'
 import { captureEvidenceItems, captureOccurrences, captureRevisions, captures } from './capture.schema'
 import {
-  decodeCaptureCursor,
   reconstructCaptureHistory,
-  toCaptureListResult,
   toCaptureResource,
   type CaptureEvidenceRow,
   type CaptureHeadRow,
   type CaptureRevisionRow,
 } from './capture.dto'
-
-const DEFAULT_LIST_LIMIT = 50
-const MAX_LIST_LIMIT = 200
+import {
+  emptyLifecyclePage,
+  encodeKeysetCursor,
+  readPageWindow,
+  toLifecyclePage,
+} from '../lifecycle/lifecycle-page.dto'
+import {
+  createLifecycleAdjacencyProbe,
+  lifecycleKeysetOrder,
+  lifecycleKeysetWindow,
+} from '../lifecycle/lifecycle-keyset'
 
 /** Read surface only — the workspace database or an open transaction. */
 export type CaptureReadExec = Pick<PgliteDatabase, 'select'>
@@ -41,16 +47,11 @@ export interface CaptureReadModel {
   historyCaptures(workspaceId: string, input: HistoryListInput): Promise<CaptureHistoryResult>
 }
 
-const DEFAULT_HISTORY_LIMIT = 50
-const MAX_HISTORY_LIMIT = 200
+/** The stable (createdAt, id) ordering every Capture page walks. */
+const captureKeyset = { primary: captures.createdAt, id: captures.id }
 
-function clampLimit(requested: number | undefined, max: number = MAX_LIST_LIMIT): number {
-  if (requested === undefined || !Number.isFinite(requested)) return Math.min(DEFAULT_LIST_LIMIT, max)
-  const floored = Math.floor(requested)
-  if (floored < 1) return 1
-  if (floored > max) return max
-  return floored
-}
+const captureCursor = (row: { createdAt: string; id: string }) =>
+  encodeKeysetCursor({ primary: row.createdAt, id: row.id })
 
 async function selectEvidence(
   exec: CaptureReadExec,
@@ -104,10 +105,8 @@ export function createPgliteCaptureReadModel(database: PgliteDatabase): CaptureR
     },
 
     async listCaptures(workspaceId, input = {}) {
-      const limit = clampLimit(input.limit)
-      const cursor = input.cursor ? decodeCaptureCursor(input.cursor) : null
-
-      const filters = [eq(captures.workspaceId, workspaceId)]
+      const window = readPageWindow(input)
+      const filters: SQL[] = [eq(captures.workspaceId, workspaceId)]
       if (input.evidenceMode !== undefined) {
         filters.push(eq(captures.evidenceMode, input.evidenceMode))
       }
@@ -128,32 +127,26 @@ export function createPgliteCaptureReadModel(database: PgliteDatabase): CaptureR
       if (input.includeRemoved !== true) {
         filters.push(isNull(captures.removedAt))
       }
-      if (cursor) {
-        const keyset = or(
-          gt(captures.createdAt, cursor.createdAt),
-          and(eq(captures.createdAt, cursor.createdAt), gt(captures.id, cursor.id)),
-        )
-        if (keyset) filters.push(keyset)
-      }
-
       const rows = (await database
         .select()
         .from(captures)
-        .where(and(...filters))
-        .orderBy(asc(captures.createdAt), asc(captures.id))
-        .limit(limit + 1)) as CaptureHeadRow[]
+        .where(and(...filters, ...lifecycleKeysetWindow(captureKeyset, window)))
+        .orderBy(...lifecycleKeysetOrder(captureKeyset, window))
+        .limit(window.limit + 1)) as CaptureHeadRow[]
 
-      const hasMore = rows.length > limit
-      const pageRows = hasMore ? rows.slice(0, limit) : rows
-      const evidence = await selectEvidence(database, pageRows.map((row) => row.id))
-      const items = pageRows.map((row) => toCaptureResource(row, evidence.get(row.id) ?? []))
-      return toCaptureListResult(items, limit, hasMore)
+      const page = await toLifecyclePage(rows, window, captureCursor,
+        createLifecycleAdjacencyProbe(database, captures, filters, captureKeyset))
+      const evidence = await selectEvidence(database, page.rows.map((row) => row.id))
+      return {
+        items: page.rows.map((row) => toCaptureResource(row, evidence.get(row.id) ?? [])),
+        pageInfo: page.pageInfo,
+      }
     },
 
     async historyCaptures(workspaceId, input) {
-      const limit = clampLimit(input.limit ?? DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT)
+      const window = readPageWindow(input)
       const head = await selectHead(workspaceId, input.id)
-      if (!head) return { limit, nextCursor: null, items: [] }
+      if (!head) return emptyLifecyclePage()
 
       const revisionRows = (await database
         .select({
@@ -171,11 +164,7 @@ export function createPgliteCaptureReadModel(database: PgliteDatabase): CaptureR
         .orderBy(asc(captureRevisions.revision))) as CaptureRevisionRow[]
 
       const evidence = await selectEvidence(database, [input.id])
-      const afterRevision = input.cursor !== undefined ? Number.parseInt(input.cursor, 10) : undefined
-      return reconstructCaptureHistory(head, revisionRows, evidence.get(input.id) ?? [], {
-        limit,
-        afterRevision: afterRevision !== undefined && Number.isFinite(afterRevision) ? afterRevision : undefined,
-      })
+      return reconstructCaptureHistory(head, revisionRows, evidence.get(input.id) ?? [], window)
     },
   }
 }

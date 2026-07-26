@@ -7,7 +7,8 @@
  * defaults for placeholder facts and full pass-through for contract facts, that
  * `capturedAt` prefers the stored value and falls back to the head createdAt, that
  * attempt/event records serialize against their schemas, that history reconstruction
- * replays status/company/source/tombstone, and that the keyset cursor is total.
+ * replays status/company/source/tombstone, and that the list and history pages
+ * carry canonical bidirectional page info.
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -15,14 +16,10 @@ import {
   applicationEventRecordSchema,
   applicationSchema,
   lifecycleApplicationHistoryResultSchema,
-  lifecycleApplicationListResultSchema,
 } from '@sparxie/sdk'
 import {
-  decodeApplicationCursor,
   deriveApplicationSnapshot,
-  encodeApplicationCursor,
   reconstructApplicationHistory,
-  toApplicationListResult,
   toApplicationResource,
   toAttemptRecord,
   toEventRecord,
@@ -32,6 +29,8 @@ import {
   type ApplicationHistoryRow,
   type ApplicationLinkRow,
 } from './application.dto'
+
+const firstPage = (limit: number) => ({ limit, cursor: null, backward: false })
 
 const contractFacts = {
   companyName: 'Acme',
@@ -182,7 +181,7 @@ describe('reconstructApplicationHistory', () => {
       { revision: 4, kind: 'removed', snapshotJson: JSON.stringify({ dependents: 'none' }), auditJson: '{"actor":{"type":"user","id":"u"}}', createdAt: '2026-07-20T00:00:03.000Z' },
       { revision: 5, kind: 'restored', snapshotJson: JSON.stringify({ kind: 'restored', priorRevision: 4 }), auditJson: '{"actor":{"type":"user","id":"u"}}', createdAt: '2026-07-20T00:00:04.000Z' },
     ]
-    const result = reconstructApplicationHistory(head({ companyName: 'Acme Corp' }), history, [link], { limit: 50 })
+    const result = reconstructApplicationHistory(head({ companyName: 'Acme Corp' }), history, [link], firstPage(50))
     expect(() => lifecycleApplicationHistoryResultSchema.parse(result)).not.toThrow()
     expect(result.items.map((item) => item.kind)).toEqual(['created', 'status_changed', 'company_edited', 'removed', 'restored'])
     expect(result.items[1]!.snapshot.status).toBe('submitted')
@@ -190,20 +189,5 @@ describe('reconstructApplicationHistory', () => {
     expect(result.items[3]!.snapshot.removedAt).not.toBeNull()
     expect(result.items[4]!.snapshot.removedAt).toBeNull()
     for (const item of result.items) expect(item.snapshot.id).toBe(head().id)
-  })
-})
-
-describe('application cursor + list result', () => {
-  it('round-trips the keyset cursor and rejects garbage', () => {
-    const cursor = { primary: head().createdAt, id: head().id }
-    expect(decodeApplicationCursor(encodeApplicationCursor(cursor))).toEqual(cursor)
-    expect(decodeApplicationCursor('not base64 !!')).toBeNull()
-  })
-
-  it('drives nextCursor only when a further page exists', () => {
-    const dto = toApplicationResource(head(), [link])
-    expect(() => lifecycleApplicationListResultSchema.parse(toApplicationListResult([dto], 10, false))).not.toThrow()
-    expect(toApplicationListResult([dto], 10, false).nextCursor).toBeNull()
-    expect(toApplicationListResult([dto], 1, true).nextCursor).not.toBeNull()
   })
 })

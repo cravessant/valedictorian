@@ -9,7 +9,6 @@ import {
 } from './workspace-location'
 
 interface NavigateOptions {
-  readonly cursorChain?: readonly WorkspaceLocation[]
   readonly focusAnchor?: string
   readonly replace?: boolean
 }
@@ -41,7 +40,6 @@ export function useWorkspaceLocation() {
     }
     const next: WorkspaceHistoryEntry = {
       location,
-      cursorChain: options.cursorChain ?? [],
       ...(options.focusAnchor ? { focusAnchor: options.focusAnchor } : {}),
     }
     const url = serializeWorkspaceLocation(location, new URL(window.location.href))
@@ -64,10 +62,7 @@ function initialEntry(): WorkspaceHistoryEntry {
 
 function entryFromUrl(): WorkspaceHistoryEntry {
   const parsed = parseWorkspaceLocation(new URL(window.location.href))
-  return {
-    location: parsed ?? safeWorkspaceLocation,
-    cursorChain: [],
-  }
+  return { location: parsed ?? safeWorkspaceLocation }
 }
 
 function restoreAnchor(anchor: string | undefined) {

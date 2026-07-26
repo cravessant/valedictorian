@@ -24,9 +24,12 @@ import type {
   OpportunityHistoryEntry,
   OpportunityHistoryResult,
   OpportunityListInput,
-  OpportunityListResult,
 } from '@sparxie/sdk'
 import { toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
+import {
+  sliceLifecycleHistoryPage,
+  type LifecyclePageWindow,
+} from '../lifecycle/lifecycle-page.dto'
 
 /** The subset of `opportunities` the read-model selects for a resource. */
 export interface OpportunityHeadRow {
@@ -98,7 +101,7 @@ export function toOpportunityResource(head: OpportunityHeadRow): Opportunity {
 export function reconstructOpportunityHistory(
   head: OpportunityHeadRow,
   history: readonly OpportunityHistoryRow[],
-  options: { readonly limit: number; readonly afterRevision?: number },
+  window: LifecyclePageWindow,
 ): OpportunityHistoryResult {
   const ordered = [...history].sort((left, right) => left.revision - right.revision)
 
@@ -143,56 +146,7 @@ export function reconstructOpportunityHistory(
     })
   }
 
-  const afterRevision = options.afterRevision
-  const windowed = afterRevision === undefined ? all : all.filter((item) => item.revision > afterRevision)
-  const page = windowed.slice(0, options.limit)
-  const hasMore = windowed.length > options.limit
-  return {
-    limit: options.limit,
-    nextCursor: hasMore ? String(page.at(-1)?.revision ?? '') : null,
-    items: page,
-  }
-}
-
-/** Opaque keyset cursor over the stable (createdAt, id) opportunity ordering. */
-export interface OpportunityListCursor {
-  readonly createdAt: string
-  readonly id: string
-}
-
-export function encodeOpportunityCursor(cursor: OpportunityListCursor): string {
-  return Buffer.from(JSON.stringify([cursor.createdAt, cursor.id]), 'utf8').toString('base64url')
-}
-
-export function decodeOpportunityCursor(cursor: string): OpportunityListCursor | null {
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'))
-    if (
-      Array.isArray(parsed)
-      && parsed.length === 2
-      && typeof parsed[0] === 'string'
-      && typeof parsed[1] === 'string'
-    ) {
-      return { createdAt: parsed[0], id: parsed[1] }
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-/** Assemble an `OpportunityListResult` page from an already-ordered page plus the has-more flag. */
-export function toOpportunityListResult(
-  page: readonly Opportunity[],
-  limit: number,
-  hasMore: boolean,
-): OpportunityListResult {
-  const last = page.at(-1)
-  return {
-    limit,
-    nextCursor: hasMore && last ? encodeOpportunityCursor({ createdAt: last.createdAt, id: last.id }) : null,
-    items: [...page],
-  }
+  return sliceLifecycleHistoryPage(all, window, (entry) => entry.revision)
 }
 
 export type { OpportunityListInput }

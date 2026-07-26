@@ -1,4 +1,23 @@
-import type { WorkspaceHistoryEntry, WorkspaceLocation } from './workspace-location'
+import type { WorkspaceCursorDirection, WorkspaceLocation } from './workspace-location'
+
+/**
+ * A canonical page request. The three shapes are kept distinct so a request
+ * spread into a list input still satisfies the contract's `after`-xor-`before`
+ * union rather than widening to "both possibly present".
+ */
+export type WorkspacePageRequest =
+  | { readonly after?: never; readonly before?: never }
+  | { readonly after: string; readonly before?: never }
+  | { readonly before: string; readonly after?: never }
+
+/** The page a workspace location's addressed cursor and direction ask a list for. */
+export function workspacePageRequest(
+  cursor: string | undefined,
+  cursorDirection: WorkspaceCursorDirection | undefined,
+): WorkspacePageRequest {
+  if (cursor === undefined) return {}
+  return cursorDirection === 'before' ? { before: cursor } : { after: cursor }
+}
 
 export interface WorkspacePageInfo {
   readonly startCursor: string | null
@@ -7,53 +26,43 @@ export interface WorkspacePageInfo {
   readonly hasNextPage: boolean
 }
 
-export interface WorkspacePageTransition {
-  readonly location: WorkspaceLocation
-  readonly cursorChain: readonly WorkspaceLocation[]
-}
-
+/**
+ * The next/previous location a canonical page addresses.
+ *
+ * Both directions are answered entirely by the page's own boundaries, so a
+ * workspace location is self-contained: no client-side history of visited
+ * cursors is kept or needed.
+ *
+ * A page emptied by concurrent removals reports no boundary of its own. The
+ * cursor it was addressed by is still an exact boundary of the remaining rows,
+ * so the opposite direction re-addresses that same cursor rather than
+ * fabricating one — which is what lets a stale cursor URL walk back to rows
+ * that still exist instead of stranding the workspace.
+ */
 export function nextWorkspacePage(
-  entry: WorkspaceHistoryEntry,
+  location: WorkspaceLocation,
   pageInfo: WorkspacePageInfo,
-): WorkspacePageTransition | null {
-  if (!pageInfo.hasNextPage || pageInfo.endCursor === null) return null
-  return {
-    location: pageLocation(entry.location, pageInfo.endCursor, 'after'),
-    cursorChain: [...entry.cursorChain, listLocation(entry.location)],
-  }
+): WorkspaceLocation | null {
+  if (!pageInfo.hasNextPage) return null
+  const cursor = pageInfo.endCursor ?? addressedCursor(location, 'before')
+  return cursor === null ? null : pageLocation(location, cursor, 'after')
 }
 
 export function previousWorkspacePage(
-  entry: WorkspaceHistoryEntry,
+  location: WorkspaceLocation,
   pageInfo: WorkspacePageInfo,
-): WorkspacePageTransition | null {
-  if (!pageInfo.hasPreviousPage || pageInfo.startCursor === null) return null
-  return {
-    location: pageLocation(entry.location, pageInfo.startCursor, 'before'),
-    cursorChain: entry.cursorChain.slice(0, -1),
-  }
+): WorkspaceLocation | null {
+  if (!pageInfo.hasPreviousPage) return null
+  const cursor = pageInfo.startCursor ?? addressedCursor(location, 'after')
+  return cursor === null ? null : pageLocation(location, cursor, 'before')
 }
 
-export function nextLegacyForwardCursorPage(
-  entry: WorkspaceHistoryEntry,
-  nextCursor: string | null,
-): WorkspacePageTransition | null {
-  if (nextCursor === null) return null
-  return {
-    location: pageLocation(entry.location, nextCursor, 'after'),
-    cursorChain: [...entry.cursorChain, locationWithoutResource(entry.location)],
-  }
-}
-
-export function previousLegacyForwardCursorPage(
-  entry: WorkspaceHistoryEntry,
-): WorkspacePageTransition | null {
-  const previous = entry.cursorChain.at(-1)
-  if (!previous) return null
-  return {
-    location: previous,
-    cursorChain: entry.cursorChain.slice(0, -1),
-  }
+/** The cursor this location holds, when it was addressed in the given direction. */
+function addressedCursor(
+  location: WorkspaceLocation,
+  cursorDirection: WorkspaceCursorDirection,
+): string | null {
+  return location.cursorDirection === cursorDirection ? location.cursor ?? null : null
 }
 
 function pageLocation(
@@ -63,19 +72,4 @@ function pageLocation(
 ): WorkspaceLocation {
   const { resourceId: _resourceId, ...list } = location
   return { ...list, cursor, cursorDirection }
-}
-
-function listLocation(location: WorkspaceLocation): WorkspaceLocation {
-  const {
-    cursor: _cursor,
-    cursorDirection: _cursorDirection,
-    resourceId: _resourceId,
-    ...list
-  } = location
-  return list
-}
-
-function locationWithoutResource(location: WorkspaceLocation): WorkspaceLocation {
-  const { resourceId: _resourceId, ...list } = location
-  return list
 }

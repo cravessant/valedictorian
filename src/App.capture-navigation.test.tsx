@@ -10,6 +10,15 @@ import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import { defaultAppSettings } from './settings/app-settings'
 import type { ConnectorSettingsRun } from './settings/connector-settings.types'
 
+/** The canonical page boundaries a single-page lifecycle list reports. */
+const emptyPageInfo = {
+  startCursor: null,
+  endCursor: null,
+  hasPreviousPage: false,
+  hasNextPage: false,
+} as const
+
+
 afterEach(() => {
   cleanup()
   delete (window as Window & { valedictorianHttp?: unknown }).valedictorianHttp
@@ -72,7 +81,7 @@ describe('App Capture navigation', () => {
               },
               totalCount: 0,
             }
-          : { items: [], limit: 100, nextCursor: null },
+          : { items: [], pageInfo: emptyPageInfo },
       ), {
         headers: { 'content-type': 'application/json' },
         status: 200,

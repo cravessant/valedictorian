@@ -13,7 +13,7 @@ import type {
 import { DESKTOP_USER_ACTOR } from '../lifecycle-actor'
 import { FormModal, type FieldErrors, type FieldSpec } from '../form-modal'
 import { HistoryModal, OutcomeToast } from '../history-modal'
-import { loadHistory } from '../load-history'
+import { afterPage, loadHistory } from '../load-history'
 import type { LifecycleOutcome } from '../lifecycle-outcome-types'
 import { EVIDENCE_MODE_CHOICES } from './field-choices'
 
@@ -106,8 +106,8 @@ export function useCaptureController(params: {
     setHistoryTarget(row)
     setHistoryPending(true)
     try {
-      const entries = await loadHistory<CaptureHistoryResult['items'][number]>((cursor) =>
-        requireClient().captures.history({ id: row.captureId, limit: 50, ...(cursor ? { cursor } : {}) }))
+      const entries = await loadHistory<CaptureHistoryResult['items'][number]>((after) =>
+        requireClient().captures.history({ id: row.captureId, limit: 50, ...afterPage(after) }))
       if (request !== historyRequest.current) return
       setHistoryOutcome({
         kind: 'history',

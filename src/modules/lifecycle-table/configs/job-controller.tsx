@@ -19,7 +19,7 @@ import { FormModal, type FieldSpec, type FieldErrors } from '../form-modal'
 import type { LifecycleOutcome, LifecycleOutcomeActions } from '../lifecycle-outcome-types'
 import { HistoryModal, OutcomeToast } from '../history-modal'
 import { outcomeForBlocker } from '../lifecycle-result'
-import { loadHistory } from '../load-history'
+import { afterPage, loadHistory } from '../load-history'
 import type { LifecycleAggregateExtensions } from '../lifecycle-table'
 import {
   AVAILABILITY_STATE_CHOICES,
@@ -178,8 +178,8 @@ export function useJobController(params: {
     if (!client) { setHistoryOutcome({ kind: 'error', blocker: { code: 'workspace_ownership', message: 'Workspace HTTP client is unavailable.' }, message: 'Workspace HTTP client is unavailable.' }); return }
     setHistoryPending(true)
     try {
-      const entries = await loadHistory<JobHistoryResult['items'][number]>((cursor) =>
-        client.jobs.history({ id: row.id, limit: 50, ...(cursor ? { cursor } : {}) }))
+      const entries = await loadHistory<JobHistoryResult['items'][number]>((after) =>
+        client.jobs.history({ id: row.id, limit: 50, ...afterPage(after) }))
       if (request !== historyRequest.current) return
       setHistoryOutcome({
         kind: 'history',

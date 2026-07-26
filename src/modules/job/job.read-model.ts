@@ -8,7 +8,7 @@
  * `JobHistoryResult`. Reads only — every mutation still flows through the Job
  * service, which owns validation and policy.
  */
-import { and, asc, eq, gt, isNull, or } from 'drizzle-orm'
+import { and, asc, eq, isNull, type SQL } from 'drizzle-orm'
 import type { Job, JobHistoryResult, JobListInput, JobListResult } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
@@ -18,28 +18,31 @@ import {
   jobs,
 } from './job.schema'
 import {
-  decodeJobCursor,
   reconstructJobHistory,
-  toJobListResult,
   toJobResource,
   type JobEvidenceRefRow,
   type JobHeadRow,
   type JobHistoryRow,
   type JobIdentityRow,
 } from './job.dto'
-
-const DEFAULT_LIST_LIMIT = 50
-const MAX_LIST_LIMIT = 200
-const DEFAULT_HISTORY_LIMIT = 50
-const MAX_HISTORY_LIMIT = 200
+import {
+  emptyLifecyclePage,
+  encodeKeysetCursor,
+  readPageWindow,
+  toLifecyclePage,
+  type LifecyclePageRequest,
+} from '../lifecycle/lifecycle-page.dto'
+import {
+  createLifecycleAdjacencyProbe,
+  lifecycleKeysetOrder,
+  lifecycleKeysetWindow,
+} from '../lifecycle/lifecycle-keyset'
 
 /** Read surface only — the workspace database or an open transaction. */
 export type JobReadExec = Pick<PgliteDatabase, 'select'>
 
-export interface JobHistoryReadInput {
+export interface JobHistoryReadInput extends LifecyclePageRequest {
   readonly id: string
-  readonly limit?: number
-  readonly cursor?: string
 }
 
 export interface JobReadModel {
@@ -48,13 +51,11 @@ export interface JobReadModel {
   historyJobs(workspaceId: string, input: JobHistoryReadInput): Promise<JobHistoryResult>
 }
 
-function clampLimit(requested: number | undefined, fallback: number, max: number): number {
-  if (requested === undefined || !Number.isFinite(requested)) return Math.min(fallback, max)
-  const floored = Math.floor(requested)
-  if (floored < 1) return 1
-  if (floored > max) return max
-  return floored
-}
+/** The stable (createdAt, id) ordering every Job page walks. */
+const jobKeyset = { primary: jobs.createdAt, id: jobs.id }
+
+const jobCursor = (row: { createdAt: string; id: string }) =>
+  encodeKeysetCursor({ primary: row.createdAt, id: row.id })
 
 async function selectIdentities(
   exec: JobReadExec,
@@ -115,35 +116,25 @@ export function createPgliteJobReadModel(database: PgliteDatabase): JobReadModel
     },
 
     async listJobs(workspaceId, input = {}) {
-      const limit = clampLimit(input.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)
-      const cursor = input.cursor ? decodeJobCursor(input.cursor) : null
-
-      const filters = [eq(jobs.workspaceId, workspaceId)]
+      const window = readPageWindow(input)
+      const filters: SQL[] = [eq(jobs.workspaceId, workspaceId)]
       if (input.availability !== undefined) {
         filters.push(eq(jobs.availabilityState, input.availability))
       }
       if (input.includeRemoved !== true) {
         filters.push(isNull(jobs.removedAt))
       }
-      if (cursor) {
-        const keyset = or(
-          gt(jobs.createdAt, cursor.createdAt),
-          and(eq(jobs.createdAt, cursor.createdAt), gt(jobs.id, cursor.id)),
-        )
-        if (keyset) filters.push(keyset)
-      }
-
       const rows = (await database
         .select()
         .from(jobs)
-        .where(and(...filters))
-        .orderBy(asc(jobs.createdAt), asc(jobs.id))
-        .limit(limit + 1)) as JobHeadRow[]
+        .where(and(...filters, ...lifecycleKeysetWindow(jobKeyset, window)))
+        .orderBy(...lifecycleKeysetOrder(jobKeyset, window))
+        .limit(window.limit + 1)) as JobHeadRow[]
 
-      const hasMore = rows.length > limit
-      const pageRows = hasMore ? rows.slice(0, limit) : rows
+      const page = await toLifecyclePage(rows, window, jobCursor,
+        createLifecycleAdjacencyProbe(database, jobs, filters, jobKeyset))
       const items = await Promise.all(
-        pageRows.map(async (head) => {
+        page.rows.map(async (head) => {
           const [identities, evidenceRefs] = await Promise.all([
             selectIdentities(database, head.id, { activeOnly: true }),
             selectEvidenceRefs(database, head.id),
@@ -151,13 +142,13 @@ export function createPgliteJobReadModel(database: PgliteDatabase): JobReadModel
           return toJobResource(head, identities, evidenceRefs)
         }),
       )
-      return toJobListResult(items, limit, hasMore)
+      return { items, pageInfo: page.pageInfo }
     },
 
     async historyJobs(workspaceId, input) {
-      const limit = clampLimit(input.limit, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT)
+      const window = readPageWindow(input)
       const head = await selectHead(workspaceId, input.id)
-      if (!head) return { limit, nextCursor: null, items: [] }
+      if (!head) return emptyLifecyclePage()
 
       const [historyRows, identities, evidenceRefs] = await Promise.all([
         database
@@ -175,11 +166,7 @@ export function createPgliteJobReadModel(database: PgliteDatabase): JobReadModel
         selectEvidenceRefs(database, input.id),
       ])
 
-      const afterSequence = input.cursor !== undefined ? Number.parseInt(input.cursor, 10) : undefined
-      return reconstructJobHistory(head, historyRows, identities, evidenceRefs, {
-        limit,
-        afterSequence: afterSequence !== undefined && Number.isFinite(afterSequence) ? afterSequence : undefined,
-      })
+      return reconstructJobHistory(head, historyRows, identities, evidenceRefs, window)
     },
   }
 }

@@ -9,6 +9,15 @@ import { jobConfig, createJobConfig } from './configs/job-config'
 import { opportunityConfig, createOpportunityConfig } from './configs/opportunity-config'
 import { applicationConfig, createApplicationConfig } from './configs/application-config'
 
+/** The canonical page boundaries a single-page lifecycle list reports. */
+const emptyPageInfo = {
+  startCursor: null,
+  endCursor: null,
+  hasPreviousPage: false,
+  hasNextPage: false,
+} as const
+
+
 afterEach(cleanup)
 
 interface WorkspaceClientLike {
@@ -21,7 +30,7 @@ interface WorkspaceClientLike {
 
 function makeClient(): WorkspaceClientLike & Pick<ValedictorianWorkspaceClientV2, 'captures' | 'jobs' | 'opportunities' | 'applications'> {
   return {
-    captures: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
+    captures: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
     captureResolutionV2: {
       list: vi.fn(async () => ({
         items: [],
@@ -34,9 +43,9 @@ function makeClient(): WorkspaceClientLike & Pick<ValedictorianWorkspaceClientV2
         totalCount: 0,
       })),
     },
-    jobs: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
-    opportunities: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
-    applications: { list: vi.fn(async () => ({ limit: 50, nextCursor: null, items: [] })) },
+    jobs: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
+    opportunities: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
+    applications: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
   } as unknown as WorkspaceClientLike & Pick<ValedictorianWorkspaceClientV2, 'captures' | 'jobs' | 'opportunities' | 'applications'>
 }
 

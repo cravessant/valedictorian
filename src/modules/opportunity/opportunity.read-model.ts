@@ -8,7 +8,7 @@
  * `OpportunityHistoryResult`. Reads only — every mutation still flows through the
  * Opportunity service, which owns validation and policy.
  */
-import { and, asc, eq, gt, isNull, or } from 'drizzle-orm'
+import { and, asc, eq, isNull, type SQL } from 'drizzle-orm'
 import type {
   Opportunity,
   OpportunityHistoryResult,
@@ -18,23 +18,26 @@ import type {
 import type { PgliteDatabase } from '../../db/pglite'
 import { opportunities, opportunityHistory } from './opportunity.schema'
 import {
-  decodeOpportunityCursor,
   reconstructOpportunityHistory,
-  toOpportunityListResult,
   toOpportunityResource,
   type OpportunityHeadRow,
   type OpportunityHistoryRow,
 } from './opportunity.dto'
+import {
+  emptyLifecyclePage,
+  encodeKeysetCursor,
+  readPageWindow,
+  toLifecyclePage,
+  type LifecyclePageRequest,
+} from '../lifecycle/lifecycle-page.dto'
+import {
+  createLifecycleAdjacencyProbe,
+  lifecycleKeysetOrder,
+  lifecycleKeysetWindow,
+} from '../lifecycle/lifecycle-keyset'
 
-const DEFAULT_LIST_LIMIT = 50
-const MAX_LIST_LIMIT = 200
-const DEFAULT_HISTORY_LIMIT = 50
-const MAX_HISTORY_LIMIT = 200
-
-export interface OpportunityHistoryReadInput {
+export interface OpportunityHistoryReadInput extends LifecyclePageRequest {
   readonly id: string
-  readonly limit?: number
-  readonly cursor?: string
 }
 
 export interface OpportunityReadModel {
@@ -43,13 +46,11 @@ export interface OpportunityReadModel {
   historyOpportunities(workspaceId: string, input: OpportunityHistoryReadInput): Promise<OpportunityHistoryResult>
 }
 
-function clampLimit(requested: number | undefined, fallback: number, max: number): number {
-  if (requested === undefined || !Number.isFinite(requested)) return Math.min(fallback, max)
-  const floored = Math.floor(requested)
-  if (floored < 1) return 1
-  if (floored > max) return max
-  return floored
-}
+/** The stable (createdAt, id) ordering every Opportunity page walks. */
+const opportunityKeyset = { primary: opportunities.createdAt, id: opportunities.id }
+
+const opportunityCursor = (row: { createdAt: string; id: string }) =>
+  encodeKeysetCursor({ primary: row.createdAt, id: row.id })
 
 export function createPgliteOpportunityReadModel(database: PgliteDatabase): OpportunityReadModel {
   async function selectHead(workspaceId: string, opportunityId: string): Promise<OpportunityHeadRow | null> {
@@ -68,38 +69,28 @@ export function createPgliteOpportunityReadModel(database: PgliteDatabase): Oppo
     },
 
     async listOpportunities(workspaceId, input = {}) {
-      const limit = clampLimit(input.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)
-      const cursor = input.cursor ? decodeOpportunityCursor(input.cursor) : null
-
-      const filters = [eq(opportunities.workspaceId, workspaceId)]
+      const window = readPageWindow(input)
+      const filters: SQL[] = [eq(opportunities.workspaceId, workspaceId)]
       if (input.jobId !== undefined) filters.push(eq(opportunities.jobId, input.jobId))
       if (input.fit !== undefined) filters.push(eq(opportunities.fit, input.fit))
       if (input.disposition !== undefined) filters.push(eq(opportunities.disposition, input.disposition))
       if (input.includeRemoved !== true) filters.push(isNull(opportunities.removedAt))
-      if (cursor) {
-        const keyset = or(
-          gt(opportunities.createdAt, cursor.createdAt),
-          and(eq(opportunities.createdAt, cursor.createdAt), gt(opportunities.id, cursor.id)),
-        )
-        if (keyset) filters.push(keyset)
-      }
-
       const rows = (await database
         .select()
         .from(opportunities)
-        .where(and(...filters))
-        .orderBy(asc(opportunities.createdAt), asc(opportunities.id))
-        .limit(limit + 1)) as OpportunityHeadRow[]
+        .where(and(...filters, ...lifecycleKeysetWindow(opportunityKeyset, window)))
+        .orderBy(...lifecycleKeysetOrder(opportunityKeyset, window))
+        .limit(window.limit + 1)) as OpportunityHeadRow[]
 
-      const hasMore = rows.length > limit
-      const pageRows = hasMore ? rows.slice(0, limit) : rows
-      return toOpportunityListResult(pageRows.map(toOpportunityResource), limit, hasMore)
+      const page = await toLifecyclePage(rows, window, opportunityCursor,
+        createLifecycleAdjacencyProbe(database, opportunities, filters, opportunityKeyset))
+      return { items: page.rows.map(toOpportunityResource), pageInfo: page.pageInfo }
     },
 
     async historyOpportunities(workspaceId, input) {
-      const limit = clampLimit(input.limit, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT)
+      const window = readPageWindow(input)
       const head = await selectHead(workspaceId, input.id)
-      if (!head) return { limit, nextCursor: null, items: [] }
+      if (!head) return emptyLifecyclePage()
 
       const historyRows = (await database
         .select({
@@ -113,11 +104,7 @@ export function createPgliteOpportunityReadModel(database: PgliteDatabase): Oppo
         .where(eq(opportunityHistory.opportunityId, input.id))
         .orderBy(asc(opportunityHistory.revision))) as OpportunityHistoryRow[]
 
-      const afterRevision = input.cursor !== undefined ? Number.parseInt(input.cursor, 10) : undefined
-      return reconstructOpportunityHistory(head, historyRows, {
-        limit,
-        afterRevision: afterRevision !== undefined && Number.isFinite(afterRevision) ? afterRevision : undefined,
-      })
+      return reconstructOpportunityHistory(head, historyRows, window)
     },
   }
 }

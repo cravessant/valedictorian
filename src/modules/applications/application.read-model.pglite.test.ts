@@ -62,6 +62,10 @@ async function makeApplication(applications: ApplicationAggregateService, opport
   return result.application.id
 }
 
+/** Address one direction of the canonical page contract without widening the union. */
+const afterPage = (after: string | undefined) => (after === undefined ? {} : { after })
+const beforePage = (before: string | undefined) => (before === undefined ? {} : { before })
+
 describe.sequential('Application read-model (#304)', () => {
   it('reads a created application back as a flattened, schema-valid resource with a derived snapshot', async () => {
     const { jobs, opportunities, applications, readModel } = await setup()
@@ -156,13 +160,27 @@ describe.sequential('Application read-model (#304)', () => {
 
     // Keyset pagination over attempts walks every row exactly once.
     const seen: string[] = []
-    let cursor: string | undefined
+    const back: string[] = []
+    let after: string | undefined
+    let before: string | undefined
     for (let guard = 0; guard < 6; guard += 1) {
-      const page = await readModel.listAttempts('ws-a', { applicationId, limit: 2, cursor })
+      const page = await readModel.listAttempts('ws-a', { applicationId, limit: 2, ...afterPage(after) })
       seen.push(...page.items.map((item) => item.id))
-      if (!page.nextCursor) break
-      cursor = page.nextCursor
+      if (!page.pageInfo.hasNextPage) {
+        back.push(...page.items.map((item) => item.id))
+        before = page.pageInfo.hasPreviousPage ? page.pageInfo.startCursor ?? undefined : undefined
+        break
+      }
+      after = page.pageInfo.endCursor ?? undefined
     }
+
+    // Walking back from the final page rebuilds the same sequence in the same order.
+    for (let guard = 0; guard < 6 && before !== undefined; guard += 1) {
+      const page = await readModel.listAttempts('ws-a', { applicationId, limit: 2, ...beforePage(before) })
+      back.unshift(...page.items.map((item) => item.id))
+      before = page.pageInfo.hasPreviousPage ? page.pageInfo.startCursor ?? undefined : undefined
+    }
+    expect(back).toEqual(seen)
     expect(new Set(seen).size).toBe(3)
 
     // A foreign workspace sees no technical records.

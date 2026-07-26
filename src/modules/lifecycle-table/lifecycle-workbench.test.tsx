@@ -6,6 +6,15 @@ import type { CaptureListPresentation, Job, ValedictorianWorkspaceClientV2 } fro
 import { LifecycleWorkbench } from './lifecycle-workbench'
 import { useWorkspaceLocation } from '@/app/use-workspace-location'
 
+/** The canonical page boundaries a single-page lifecycle list reports. */
+const emptyPageInfo = {
+  startCursor: null,
+  endCursor: null,
+  hasPreviousPage: false,
+  hasNextPage: false,
+} as const
+
+
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
 vi.mock('@/components/ui/use-toast', () => ({ toast }))
 
@@ -20,12 +29,20 @@ afterEach(() => {
 
 interface TestPage {
   items: unknown[]
-  limit: number
-  nextCursor: string | null
+  pageInfo: typeof emptyPageInfo | {
+    startCursor: string | null
+    endCursor: string | null
+    hasPreviousPage: boolean
+    hasNextPage: boolean
+  }
+}
+
+function morePages(endCursor: string) {
+  return { startCursor: 'start', endCursor, hasPreviousPage: false, hasNextPage: true }
 }
 
 function emptyPage(): TestPage {
-  return { items: [], limit: 50, nextCursor: null }
+  return { items: [], pageInfo: emptyPageInfo }
 }
 
 function capturePage(items: CaptureListPresentation[] = []) {
@@ -166,11 +183,7 @@ describe('LifecycleWorkbench', () => {
       externalIdentities: [],
       removedAt: null,
     } as unknown as Job
-    lists.jobs.mockResolvedValue({
-      items: [job],
-      limit: 50,
-      nextCursor: null,
-    })
+    lists.jobs.mockResolvedValue({ items: [job], pageInfo: emptyPageInfo })
     const navigate = vi.fn()
     render(
       <LifecycleWorkbench
@@ -221,7 +234,7 @@ describe('LifecycleWorkbench', () => {
     const { rerender } = render(
       <LifecycleWorkbench
         client={client}
-        workspaceEntry={{ location: { view: 'captures' }, cursorChain: [] }}
+        workspaceEntry={{ location: { view: 'captures' } }}
         onWorkspaceNavigate={navigate}
       />,
     )
@@ -230,8 +243,6 @@ describe('LifecycleWorkbench', () => {
       view: 'captures',
       cursor: 'opaque-end',
       cursorDirection: 'after',
-    }, {
-      cursorChain: [{ view: 'captures' }],
     })
 
     lists.captures.mockResolvedValueOnce({
@@ -252,7 +263,6 @@ describe('LifecycleWorkbench', () => {
             cursor: 'opaque-end',
             cursorDirection: 'after',
           },
-          cursorChain: [{ view: 'captures' }],
         }}
         onWorkspaceNavigate={navigate}
       />,
@@ -262,8 +272,6 @@ describe('LifecycleWorkbench', () => {
       view: 'captures',
       cursor: 'opaque-return',
       cursorDirection: 'before',
-    }, {
-      cursorChain: [],
     })
   })
 
@@ -363,7 +371,7 @@ describe('LifecycleWorkbench', () => {
     rerender(
       <LifecycleWorkbench
         client={client}
-        workspaceEntry={{ location: { view: 'captures', filter: 'needs_attention' }, cursorChain: [] }}
+        workspaceEntry={{ location: { view: 'captures', filter: 'needs_attention' } }}
       />,
     )
     expect(await screen.findByText('No captures')).toBeInTheDocument()
@@ -597,15 +605,15 @@ describe('LifecycleWorkbench', () => {
     for (const [phase, list] of Object.entries(lists)
       .filter(([phase]) => phase !== 'jobs' && phase !== 'captures')) {
       list
-        .mockResolvedValueOnce({ items: [], limit: 100, nextCursor: `${phase}-page-2` })
+        .mockResolvedValueOnce({ items: [], pageInfo: morePages(`${phase}-page-2`) })
         .mockResolvedValueOnce(emptyPage())
     }
     lists.jobs.mockImplementation(async (input?: unknown) => {
-      const query = input as { cursor?: string; limit?: number }
+      const query = input as { after?: string; limit?: number }
       if (query.limit === 50) return emptyPage()
-      return query.cursor === 'jobs-page-2'
+      return query.after === 'jobs-page-2'
         ? emptyPage()
-        : { items: [], limit: 100, nextCursor: 'jobs-page-2' }
+        : { items: [], pageInfo: morePages('jobs-page-2') }
     })
     render(<LifecycleWorkbench client={client} />)
 
@@ -618,7 +626,7 @@ describe('LifecycleWorkbench', () => {
     for (const [phase, list] of Object.entries(lists)
       .filter(([phase]) => phase !== 'jobs' && phase !== 'captures')) {
       expect(list).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        cursor: `${phase}-page-2`,
+        after: `${phase}-page-2`,
         limit: 100,
       }))
     }
@@ -627,30 +635,31 @@ describe('LifecycleWorkbench', () => {
       limit: 50,
     })
     expect(lists.jobs).toHaveBeenCalledWith({
-      cursor: 'jobs-page-2',
+      after: 'jobs-page-2',
       includeRemoved: false,
       limit: 100,
     })
   })
 
-  it('uses the exact legacy Jobs next cursor and exact prior list location', async () => {
+  it('addresses both Jobs directions from the page boundary cursors', async () => {
     const user = userEvent.setup()
     const { client, lists } = makeClient()
-    const nextCursor = 'opaque/+==:\u0000\n +'
+    const endCursor = 'opaque/+==:\u0000\n +'
     lists.jobs.mockResolvedValueOnce({
       items: [],
-      limit: 50,
-      nextCursor,
+      pageInfo: {
+        startCursor: 'opaque-start',
+        endCursor,
+        hasPreviousPage: false,
+        hasNextPage: true,
+      },
     })
     const navigate = vi.fn()
     const { rerender } = render(
       <LifecycleWorkbench
         client={client}
         selectedPhase="jobs"
-        workspaceEntry={{
-          location: { view: 'jobs', filter: 'include_removed' },
-          cursorChain: [],
-        }}
+        workspaceEntry={{ location: { view: 'jobs', filter: 'include_removed' } }}
         onWorkspaceNavigate={navigate}
       />,
     )
@@ -658,17 +667,25 @@ describe('LifecycleWorkbench', () => {
       includeRemoved: true,
       limit: 50,
     }))
+    expect(screen.getByRole('button', { name: 'Go to previous page' })).toBeDisabled()
 
     await user.click(screen.getByRole('button', { name: 'Go to next page' }))
     expect(navigate).toHaveBeenCalledWith({
       view: 'jobs',
       filter: 'include_removed',
-      cursor: nextCursor,
+      cursor: endCursor,
       cursorDirection: 'after',
-    }, {
-      cursorChain: [{ view: 'jobs', filter: 'include_removed' }],
     })
 
+    lists.jobs.mockResolvedValueOnce({
+      items: [],
+      pageInfo: {
+        startCursor: 'opaque-return',
+        endCursor: 'opaque-final',
+        hasPreviousPage: true,
+        hasNextPage: false,
+      },
+    })
     rerender(
       <LifecycleWorkbench
         client={client}
@@ -677,19 +694,100 @@ describe('LifecycleWorkbench', () => {
           location: {
             view: 'jobs',
             filter: 'include_removed',
-            cursor: nextCursor,
+            cursor: endCursor,
             cursorDirection: 'after',
           },
-          cursorChain: [{ view: 'jobs', filter: 'include_removed' }],
         }}
         onWorkspaceNavigate={navigate}
       />,
     )
+    await waitFor(() => expect(lists.jobs).toHaveBeenLastCalledWith({
+      after: endCursor,
+      includeRemoved: true,
+      limit: 50,
+    }))
+    expect(await screen.findByRole('button', { name: 'Go to next page' })).toBeDisabled()
+
     await user.click(screen.getByRole('button', { name: 'Go to previous page' }))
-    expect(navigate).toHaveBeenLastCalledWith(
-      { view: 'jobs', filter: 'include_removed' },
-      { cursorChain: [] },
+    expect(navigate).toHaveBeenLastCalledWith({
+      view: 'jobs',
+      filter: 'include_removed',
+      cursor: 'opaque-return',
+      cursorDirection: 'before',
+    })
+  })
+
+  it.each([
+    ['empty', emptyPageInfo, true, true],
+    ['first', { startCursor: 's', endCursor: 'e', hasPreviousPage: false, hasNextPage: true }, true, false],
+    ['middle', { startCursor: 's', endCursor: 'e', hasPreviousPage: true, hasNextPage: true }, false, false],
+    ['final', { startCursor: 's', endCursor: 'e', hasPreviousPage: true, hasNextPage: false }, false, true],
+  ])('offers only the reachable Jobs directions on a %s page', async (
+    _position,
+    pageInfo,
+    previousDisabled,
+    nextDisabled,
+  ) => {
+    const { client, lists } = makeClient()
+    lists.jobs.mockResolvedValueOnce({ items: [], pageInfo })
+    render(
+      <LifecycleWorkbench
+        client={client}
+        selectedPhase="jobs"
+        workspaceEntry={{ location: { view: 'jobs' } }}
+        onWorkspaceNavigate={vi.fn()}
+      />,
     )
+    const previous = await screen.findByRole('button', { name: 'Go to previous page' })
+    await waitFor(() => expect(previous.hasAttribute('disabled')).toBe(previousDisabled))
+    expect(screen.getByRole('button', { name: 'Go to next page' }).hasAttribute('disabled'))
+      .toBe(nextDisabled)
+  })
+
+  it('walks a Jobs page emptied by removals back to its own addressed cursor', async () => {
+    const user = userEvent.setup()
+    const { client, lists } = makeClient()
+    lists.jobs.mockResolvedValueOnce({
+      items: [],
+      pageInfo: {
+        startCursor: null,
+        endCursor: null,
+        hasPreviousPage: true,
+        hasNextPage: false,
+      },
+    })
+    const navigate = vi.fn()
+    render(
+      <LifecycleWorkbench
+        client={client}
+        selectedPhase="jobs"
+        workspaceEntry={{
+          location: { view: 'jobs', cursor: 'stale-boundary', cursorDirection: 'after' },
+        }}
+        onWorkspaceNavigate={navigate}
+      />,
+    )
+    const previous = await screen.findByRole('button', { name: 'Go to previous page' })
+    await waitFor(() => expect(previous).not.toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Go to next page' })).toBeDisabled()
+
+    await user.click(previous)
+    expect(navigate).toHaveBeenCalledWith({
+      view: 'jobs',
+      cursor: 'stale-boundary',
+      cursorDirection: 'before',
+    })
+  })
+
+  it('disables both Jobs directions when the surface owns no navigation', async () => {
+    const { client, lists } = makeClient()
+    lists.jobs.mockResolvedValueOnce({
+      items: [],
+      pageInfo: { startCursor: 's', endCursor: 'e', hasPreviousPage: true, hasNextPage: true },
+    })
+    render(<LifecycleWorkbench client={client} selectedPhase="jobs" />)
+    expect(await screen.findByRole('button', { name: 'Go to previous page' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Go to next page' })).toBeDisabled()
   })
 
   it('routes the Jobs Show removed filter through a selection-clearing location reset', async () => {
@@ -710,7 +808,6 @@ describe('LifecycleWorkbench', () => {
             cursor: 'page-two',
             cursorDirection: 'after',
           },
-          cursorChain: [{ view: 'jobs', filter: 'include_removed' }],
         }}
         onWorkspaceNavigate={navigate}
       />,
@@ -718,10 +815,7 @@ describe('LifecycleWorkbench', () => {
     const showRemoved = await screen.findByRole('checkbox', { name: 'Show removed' })
     expect(showRemoved).toBeChecked()
     await user.click(showRemoved)
-    expect(navigate).toHaveBeenCalledWith({
-      view: 'jobs',
-      filter: 'all',
-    }, { cursorChain: [] })
+    expect(navigate).toHaveBeenCalledWith({ view: 'jobs', filter: 'all' })
   })
 
   it('restores the exact origin Job row and page when narrow Back uses browser history', async () => {
@@ -748,7 +842,7 @@ describe('LifecycleWorkbench', () => {
       availability: { state: 'active' },
       externalIdentities: [],
     } as unknown as Job
-    lists.jobs.mockResolvedValue({ items: [job], limit: 50, nextCursor: null })
+    lists.jobs.mockResolvedValue({ items: [job], pageInfo: emptyPageInfo })
     Object.assign(client.jobs, { get: vi.fn(async () => job) })
     render(<JobsHistoryHarness client={client} />)
 
@@ -866,10 +960,7 @@ function JobsHistoryHarness({ client }: { client: ValedictorianWorkspaceClient }
       onOpenResource={(resourceId, focusAnchor) => navigation.navigate({
         ...navigation.entry.location,
         resourceId,
-      }, {
-        cursorChain: navigation.entry.cursorChain,
-        focusAnchor,
-      })}
+      }, { focusAnchor })}
       onBackFromResource={navigation.back}
     />
   )
