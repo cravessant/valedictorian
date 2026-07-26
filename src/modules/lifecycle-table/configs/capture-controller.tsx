@@ -13,16 +13,10 @@ import type {
 import { WorkspaceClientUnavailableError } from '../../../app/app-load-failure'
 import { DESKTOP_USER_ACTOR } from '../lifecycle-actor'
 import { FormModal, requireRationale, type FieldErrors, type FieldSpec } from '../form-modal'
-import { HistoryModal, OutcomeToast } from '../history-modal'
-import type { LifecycleOutcome } from '../lifecycle-outcome-types'
 import { lifecycleKeys, type LifecycleScope } from '../lifecycle-queries'
-import { afterPage, loadAllPages } from '../load-pages'
-import {
-  LifecycleBlockerError,
-  commandFailureMessage,
-  useLifecycleCommand,
-} from '../use-lifecycle-command'
+import { LifecycleBlockerError, commandFailureMessage } from '../use-lifecycle-command'
 import { useLifecycleHistory } from '../use-lifecycle-history'
+import { useLifecycleOutcome } from '../use-lifecycle-outcome'
 import { EVIDENCE_MODE_CHOICES } from './field-choices'
 
 interface CaptureDraft {
@@ -70,25 +64,13 @@ export function useCaptureController(params: {
   const [removeBlocker, setRemoveBlocker] = useState<CaptureRemovalBlocker | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<CaptureListPresentation | null>(null)
   const [restoreDraft, setRestoreDraft] = useState<CaptureRestoreDraft>(emptyRestoreDraft())
-  const [outcome, setOutcome] = useState<LifecycleOutcome | null>(null)
-  const command = useLifecycleCommand((message) => {
-    setOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
-  })
-  const pending = command.pending
-  const history = useLifecycleHistory<CaptureListPresentation>(
+  const outcome = useLifecycleOutcome()
+  const pending = outcome.pending
+  const history = useLifecycleHistory<CaptureListPresentation, CaptureHistoryResult['items'][number]>(
     lifecycleKeys.captures(params.scope),
     (row) => row.captureId,
-    async (row) => {
-      const entries = await loadAllPages<CaptureHistoryResult['items'][number]>((after) =>
-        requireClient().captures.history({ id: row.captureId, limit: 50, ...afterPage(after) }))
-      return entries.map((entry) => ({
-        revision: entry.revision,
-        kind: entry.kind,
-        actor: entry.audit.actor,
-        timestamp: entry.audit.timestamp,
-        summary: `Capture ${entry.kind}.`,
-      }))
-    },
+    (row, page) => requireClient().captures.history({ id: row.captureId, ...page }),
+    (entry) => ({ revision: entry.revision, summary: `Capture ${entry.kind}.` }),
   )
   function requireClient(): Pick<ValedictorianWorkspaceClient, 'captures'> {
     if (!params.client) throw new WorkspaceClientUnavailableError()
@@ -97,7 +79,7 @@ export function useCaptureController(params: {
 
   function openCreate() {
     setCreateDraft(emptyDraft())
-    setOutcome(null)
+    outcome.clear()
     setCreateOpen(true)
   }
 
@@ -105,13 +87,13 @@ export function useCaptureController(params: {
     if (pending) return
     setRemoveDraft(emptyRemovalDraft())
     setRemoveBlocker(null)
-    setOutcome(null)
+    outcome.clear()
     setRemoveTarget(row)
   }
 
   function openRestore(row: CaptureListPresentation) {
     setRestoreDraft(emptyRestoreDraft())
-    setOutcome(null)
+    outcome.clear()
     setRestoreTarget(row)
   }
 
@@ -135,7 +117,7 @@ export function useCaptureController(params: {
   }
 
   function submitCreate(value: CaptureDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: CreateCaptureInput = {
         evidenceMode: value.evidenceMode as CreateCaptureInput['evidenceMode'],
         adapter: {
@@ -153,12 +135,12 @@ export function useCaptureController(params: {
       if (result.status !== 'succeeded') throw new LifecycleBlockerError(result.blocker.message)
       await params.refresh()
       setCreateOpen(false)
-      setOutcome({ kind: 'succeeded' })
+      outcome.show({ kind: 'succeeded' })
     }, 'Capture creation failed.')
   }
 
   function submitRemove(row: CaptureListPresentation, value: CaptureRemovalDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const choice = removeBlocker
         ? value.choice as RemovalChoice
         : 'reject_if_dependents' as const
@@ -185,15 +167,15 @@ export function useCaptureController(params: {
       params.onRemoved?.(row.captureId)
       try {
         await params.refresh()
-        setOutcome({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
+        outcome.show({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
       } catch (error) {
-        setOutcome({ kind: 'partial-success', action: 'removed', refreshError: commandFailureMessage(error, 'The current Capture projection could not be refreshed.') })
+        outcome.show({ kind: 'partial-success', action: 'removed', refreshError: commandFailureMessage(error, 'The current Capture projection could not be refreshed.') })
       }
     }, 'Capture removal failed.')
   }
 
   function submitRestore(row: CaptureListPresentation, value: CaptureRestoreDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: RestoreInput = {
         id: row.captureId,
         actor: DESKTOP_USER_ACTOR,
@@ -201,7 +183,7 @@ export function useCaptureController(params: {
       }
       const result = await requireClient().captures.restore(input)
       if (result.status === 'blocked') {
-        setOutcome({
+        outcome.show({
           kind: 'error',
           blocker: result.blocker,
           message: result.blocker.message,
@@ -211,13 +193,13 @@ export function useCaptureController(params: {
       setRestoreTarget(null)
       try {
         await params.refresh()
-        setOutcome({
+        outcome.show({
           kind: 'restored',
           dependentLinks: result.dependentLinks,
           message: 'Only this Capture was restored. Downstream resources are not restored automatically. It is now available in All and no longer appears in Removed.',
         })
       } catch (error) {
-        setOutcome({ kind: 'partial-success', action: 'restored', refreshError: commandFailureMessage(error, 'The current Capture projection could not be refreshed.') })
+        outcome.show({ kind: 'partial-success', action: 'restored', refreshError: commandFailureMessage(error, 'The current Capture projection could not be refreshed.') })
       }
     }, 'Capture restoration failed.')
   }
@@ -298,14 +280,8 @@ export function useCaptureController(params: {
           submitLabel="Restore Capture"
           afterFields={<p className="text-sm text-muted-foreground">This restores only the Capture, not any downstream resources.</p>}
         />
-        <HistoryModal
-          open={history.target !== null}
-          title={history.target ? `History · ${history.target.captureId}` : 'History'}
-          outcome={history.outcome}
-          pending={history.pending}
-          onClose={history.close}
-        />
-        {outcome ? <OutcomeToast outcome={outcome} pending={pending} onDismiss={() => setOutcome(null)} /> : null}
+        {history.modal}
+        {outcome.toast}
       </>
     ),
   }

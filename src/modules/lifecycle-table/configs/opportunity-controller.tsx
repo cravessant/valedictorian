@@ -16,14 +16,11 @@ import type {
 import { WorkspaceClientUnavailableError } from '../../../app/app-load-failure'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from '../lifecycle-actor'
 import { FormModal, requireRationale, type FieldSpec, type FieldErrors } from '../form-modal'
-import type { LifecycleOutcome, LifecycleOutcomeActions } from '../lifecycle-outcome-types'
-import { HistoryModal, OutcomeToast } from '../history-modal'
-import { duplicateRecovery, outcomeForBlocker, removalBlockedOutcome } from '../lifecycle-result'
+import { removalBlockedOutcome } from '../lifecycle-result'
 import { lifecycleKeys, type LifecycleScope } from '../lifecycle-queries'
-import { afterPage, loadAllPages } from '../load-pages'
 import type { LifecycleAggregateExtensions } from '../lifecycle-table'
-import { useLifecycleCommand } from '../use-lifecycle-command'
 import { useLifecycleHistory } from '../use-lifecycle-history'
+import { useLifecycleOutcome } from '../use-lifecycle-outcome'
 import {
   CUTOFF_CHOICES,
   DISPOSITION_CHOICES,
@@ -86,27 +83,14 @@ export function useOpportunityController(params: {
   const [removeTarget, setRemoveTarget] = useState<Opportunity | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<Opportunity | null>(null)
   const [promoteTarget, setPromoteTarget] = useState<Opportunity | null>(null)
-  const [outcome, setOutcome] = useState<LifecycleOutcome | null>(null)
-  const command = useLifecycleCommand((message) => {
-    showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
-  })
-  const pending = command.pending
-  const history = useLifecycleHistory<Opportunity>(
+  const outcome = useLifecycleOutcome()
+  const pending = outcome.pending
+  const history = useLifecycleHistory<Opportunity, OpportunityHistoryResult['items'][number]>(
     lifecycleKeys.opportunities(scope),
-    (candidate) => candidate.id,
-    async (candidate) => {
-      const entries = await loadAllPages<OpportunityHistoryResult['items'][number]>((after) =>
-        requireClient().opportunities.history({ id: candidate.id, limit: 50, ...afterPage(after) }))
-      return entries.map((entry) => ({
-        revision: entry.revision,
-        kind: entry.kind,
-        actor: entry.audit.actor,
-        timestamp: entry.audit.timestamp,
-        summary: `${entry.kind} at revision ${entry.revision}`,
-      }))
-    },
+    (row) => row.id,
+    (row, page) => requireClient().opportunities.history({ id: row.id, ...page }),
+    (entry) => ({ revision: entry.revision, summary: `${entry.kind} at revision ${entry.revision}` }),
   )
-  const outcomeActions = useRef<LifecycleOutcomeActions>({})
   const createKey = useRef('')
   const promotionKey = useRef('')
 
@@ -126,33 +110,28 @@ export function useOpportunityController(params: {
     return client
   }
 
-  function showOutcome(next: LifecycleOutcome, actions: LifecycleOutcomeActions = {}) {
-    outcomeActions.current = actions
-    setOutcome(next)
-  }
-
   function openCreate() {
     createKey.current = newIdempotencyKey('opportunity-create')
     setCreateDraft(emptyCreateDraft())
-    setOutcome(null)
+    outcome.clear()
     setCreateOpen(true)
   }
   function openEval(row: Opportunity) {
     setEvalDraft({ fit: row.fit, rank: row.rank === null ? '' : String(row.rank), cutoff: row.cutoff })
-    setOutcome(null)
+    outcome.clear()
     setEvalTarget(row)
   }
   function openDisposition(row: Opportunity) {
     setDispositionDraft({ disposition: row.disposition, rationale: '' })
-    setOutcome(null)
+    outcome.clear()
     setDispositionTarget(row)
   }
-  function openRemove(row: Opportunity) { setRemoveDraft(emptyRemoveDraft()); setOutcome(null); setRemoveTarget(row) }
-  function openRestore(row: Opportunity) { setRestoreDraft(emptyRestoreDraft()); setOutcome(null); setRestoreTarget(row) }
+  function openRemove(row: Opportunity) { setRemoveDraft(emptyRemoveDraft()); outcome.clear(); setRemoveTarget(row) }
+  function openRestore(row: Opportunity) { setRestoreDraft(emptyRestoreDraft()); outcome.clear(); setRestoreTarget(row) }
   function openPromote(row: Opportunity) {
     promotionKey.current = newIdempotencyKey('opportunity-promote')
     setPromoteDraft(emptyPromoteDraft())
-    setOutcome(null)
+    outcome.clear()
     setPromoteTarget(row)
   }
 
@@ -176,7 +155,7 @@ export function useOpportunityController(params: {
   }
 
   function submitCreate(d: OppCreateDraft, retry: OpportunityCreateRetry = {}) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: CreateOpportunityInput = {
         idempotencyKey: createKey.current,
         actor: DESKTOP_USER_ACTOR,
@@ -191,23 +170,22 @@ export function useOpportunityController(params: {
       const result: OpportunityMutationResult = await requireClient().opportunities.create(input)
       if (result.status === 'succeeded') {
         await refresh()
-        showOutcome({ kind: 'succeeded' })
+        outcome.show({ kind: 'succeeded' })
         setCreateOpen(false)
       } else {
-        const blocked = outcomeForBlocker(result.blocker)
-        showOutcome(blocked, duplicateRecovery(blocked, (choice) =>
+        outcome.showBlocker(result.blocker, (choice) =>
           submitCreate(createDraftRef.current, {
             duplicateResolution: {
               action: choice.action,
               targetResourceId: choice.targetResourceId as NonNullable<CreateOpportunityInput['duplicateResolution']>['targetResourceId'],
             },
-          })))
+          }))
       }
     })
   }
 
   function submitEval(row: Opportunity, d: OppEvalDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: UpdateOpportunityEvaluationInput = {
         opportunityId: row.id,
         expectedRevision: row.revision,
@@ -219,16 +197,16 @@ export function useOpportunityController(params: {
       const result = await requireClient().opportunities.updateEvaluation(input)
       if (result.status === 'succeeded') {
         await refresh()
-        showOutcome({ kind: 'succeeded' })
+        outcome.show({ kind: 'succeeded' })
         setEvalTarget(null)
       } else {
-        showOutcome(outcomeForBlocker(result.blocker))
+        outcome.showBlocker(result.blocker)
       }
     })
   }
 
   function submitDisposition(row: Opportunity, d: OppDispositionDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: UpdateOpportunityDispositionInput = {
         opportunityId: row.id,
         expectedRevision: row.revision,
@@ -239,16 +217,16 @@ export function useOpportunityController(params: {
       const result = await requireClient().opportunities.updateDisposition(input)
       if (result.status === 'succeeded') {
         await refresh()
-        showOutcome({ kind: 'succeeded' })
+        outcome.show({ kind: 'succeeded' })
         setDispositionTarget(null)
       } else {
-        showOutcome(outcomeForBlocker(result.blocker))
+        outcome.showBlocker(result.blocker)
       }
     })
   }
 
   function submitRemove(row: Opportunity, d: OppRemoveDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: RemovalInput = {
         id: row.id,
         choice: d.choice as RemovalInput['choice'],
@@ -258,10 +236,10 @@ export function useOpportunityController(params: {
       const result = await requireClient().opportunities.remove(input)
       if (result.status === 'removed') {
         await refreshAll()
-        showOutcome({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
+        outcome.show({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
         setRemoveTarget(null)
       } else {
-        showOutcome(removalBlockedOutcome(d.choice as RemovalInput['choice'], result), {
+        outcome.show(removalBlockedOutcome(d.choice as RemovalInput['choice'], result), {
           onResolveRemoval: (choice, rationale) => {
             const next = { choice, rationale }
             setRemoveDraft(next)
@@ -273,21 +251,21 @@ export function useOpportunityController(params: {
   }
 
   function submitRestore(row: Opportunity, d: OppRestoreDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: RestoreInput = { id: row.id, actor: DESKTOP_USER_ACTOR, rationale: d.rationale.trim() }
       const result = await requireClient().opportunities.restore(input)
       if (result.status === 'restored') {
         await refresh()
-        showOutcome({ kind: 'restored', dependentLinks: result.dependentLinks })
+        outcome.show({ kind: 'restored', dependentLinks: result.dependentLinks })
         setRestoreTarget(null)
       } else {
-        showOutcome(outcomeForBlocker(result.blocker))
+        outcome.showBlocker(result.blocker)
       }
     })
   }
 
   function submitPromote(row: Opportunity, d: OppPromoteDraft, retry: OpportunityPromotionRetry = {}) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: PromoteOpportunityToApplicationInput = {
         idempotencyKey: promotionKey.current,
         actor: DESKTOP_USER_ACTOR,
@@ -301,7 +279,7 @@ export function useOpportunityController(params: {
       if (result.status === 'promoted') {
         await Promise.all([refresh(), refreshDestination()])
         if (result.warnings.length > 0 && !input.override) {
-          showOutcome(
+          outcome.show(
             { kind: 'warnings', warnings: result.warnings, override: result.override },
             {
               onOverrideWarnings: (warningCodes, rationale) => {
@@ -314,18 +292,17 @@ export function useOpportunityController(params: {
           )
           return
         }
-        showOutcome({ kind: 'succeeded' })
+        outcome.show({ kind: 'succeeded' })
         setPromoteTarget(null)
       } else {
-        const blocked = outcomeForBlocker(result.blocker)
-        showOutcome(blocked, duplicateRecovery(blocked, (choice) =>
+        outcome.showBlocker(result.blocker, (choice) =>
           submitPromote(row, promoteDraftRef.current, {
             ...retry,
             duplicateResolution: {
               action: choice.action,
               targetResourceId: choice.targetResourceId as NonNullable<PromoteOpportunityToApplicationInput['duplicateResolution']>['targetResourceId'],
             },
-          })))
+          }))
       }
     })
   }
@@ -457,14 +434,8 @@ export function useOpportunityController(params: {
         pending={pending}
         submitLabel="Promote"
       />
-      <HistoryModal
-        open={history.target !== null}
-        title={history.target ? `History · ${history.target.id}` : 'History'}
-        outcome={history.outcome}
-        pending={history.pending}
-        onClose={history.close}
-      />
-      {outcome ? <OutcomeToast outcome={outcome} pending={pending} onDismiss={() => setOutcome(null)} {...outcomeActions.current} /> : null}
+      {history.modal}
+      {outcome.toast}
     </>
   )
 

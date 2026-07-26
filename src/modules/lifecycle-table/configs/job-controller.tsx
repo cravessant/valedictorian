@@ -17,14 +17,11 @@ import { jobFactsTiming } from '../../job/job.timing'
 import { WorkspaceClientUnavailableError } from '../../../app/app-load-failure'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from '../lifecycle-actor'
 import { FormModal, requireRationale, type FieldSpec, type FieldErrors } from '../form-modal'
-import type { LifecycleOutcome, LifecycleOutcomeActions } from '../lifecycle-outcome-types'
-import { HistoryModal, OutcomeToast } from '../history-modal'
-import { duplicateRecovery, outcomeForBlocker, removalBlockedOutcome } from '../lifecycle-result'
+import { removalBlockedOutcome } from '../lifecycle-result'
 import { lifecycleKeys, type LifecycleScope } from '../lifecycle-queries'
-import { afterPage, loadAllPages } from '../load-pages'
 import type { LifecycleAggregateExtensions } from '../lifecycle-table'
-import { useLifecycleCommand } from '../use-lifecycle-command'
 import { useLifecycleHistory } from '../use-lifecycle-history'
+import { useLifecycleOutcome } from '../use-lifecycle-outcome'
 import {
   AVAILABILITY_STATE_CHOICES,
   EMPLOYMENT_TYPE_CHOICES,
@@ -103,27 +100,14 @@ export function useJobController(params: {
   const [removeTarget, setRemoveTarget] = useState<Job | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<Job | null>(null)
   const [promoteTarget, setPromoteTarget] = useState<Job | null>(null)
-  const [outcome, setOutcome] = useState<LifecycleOutcome | null>(null)
-  const command = useLifecycleCommand((message) => {
-    showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
-  })
-  const pending = command.pending
-  const history = useLifecycleHistory<Job>(
+  const outcome = useLifecycleOutcome()
+  const pending = outcome.pending
+  const history = useLifecycleHistory<Job, JobHistoryResult['items'][number]>(
     lifecycleKeys.jobs(scope),
-    (candidate) => candidate.id,
-    async (candidate) => {
-      const entries = await loadAllPages<JobHistoryResult['items'][number]>((after) =>
-        requireClient().jobs.history({ id: candidate.id, limit: 50, ...afterPage(after) }))
-      return entries.map((entry) => ({
-        revision: entry.sequence,
-        kind: entry.kind,
-        actor: entry.audit.actor,
-        timestamp: entry.audit.timestamp,
-        summary: `${entry.kind} (#${entry.sequence})`,
-      }))
-    },
+    (row) => row.id,
+    (row, page) => requireClient().jobs.history({ id: row.id, ...page }),
+    (entry) => ({ revision: entry.sequence, summary: `${entry.kind} (#${entry.sequence})` }),
   )
-  const outcomeActions = useRef<LifecycleOutcomeActions>({})
   const createKey = useRef('')
   const promotionKey = useRef('')
 
@@ -143,15 +127,10 @@ export function useJobController(params: {
     return client
   }
 
-  function showOutcome(next: LifecycleOutcome, actions: LifecycleOutcomeActions = {}) {
-    outcomeActions.current = actions
-    setOutcome(next)
-  }
-
   function openCreate() {
     createKey.current = newIdempotencyKey('job-create')
     setCreateDraft(emptyCreateDraft())
-    setOutcome(null)
+    outcome.clear()
     setCreateOpen(true)
   }
   function openCorrect(row: Job) {
@@ -166,20 +145,20 @@ export function useJobController(params: {
       seniority: row.facts.seniority,
       rationale: '',
     })
-    setOutcome(null)
+    outcome.clear()
     setCorrectTarget(row)
   }
   function openAvailability(row: Job) {
     setAvailabilityDraft({ availabilityState: row.availability.state })
-    setOutcome(null)
+    outcome.clear()
     setAvailabilityTarget(row)
   }
-  function openRemove(row: Job) { setRemoveDraft(emptyRemoveDraft()); setOutcome(null); setRemoveTarget(row) }
-  function openRestore(row: Job) { setRestoreDraft(emptyRestoreDraft()); setOutcome(null); setRestoreTarget(row) }
+  function openRemove(row: Job) { setRemoveDraft(emptyRemoveDraft()); outcome.clear(); setRemoveTarget(row) }
+  function openRestore(row: Job) { setRestoreDraft(emptyRestoreDraft()); outcome.clear(); setRestoreTarget(row) }
   function openPromote(row: Job) {
     promotionKey.current = newIdempotencyKey('job-promote')
     setPromoteDraft(emptyPromoteDraft())
-    setOutcome(null)
+    outcome.clear()
     setPromoteTarget(row)
   }
 
@@ -210,7 +189,7 @@ export function useJobController(params: {
   }
 
   function submitCreate(d: JobCreateDraft, retry: JobCreateRetry = {}) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: CreateJobInput = {
         idempotencyKey: createKey.current,
         actor: DESKTOP_USER_ACTOR,
@@ -244,23 +223,22 @@ export function useJobController(params: {
       const result: JobMutationResult = await requireClient().jobs.create(input)
       if (result.status === 'succeeded') {
         await refresh()
-        showOutcome({ kind: 'succeeded' })
+        outcome.show({ kind: 'succeeded' })
         setCreateOpen(false)
       } else {
-        const blocked = outcomeForBlocker(result.blocker)
-        showOutcome(blocked, duplicateRecovery(blocked, (choice) =>
+        outcome.showBlocker(result.blocker, (choice) =>
           submitCreate(createDraftRef.current, {
             duplicateResolution: {
               action: choice.action,
               targetResourceId: choice.targetResourceId as NonNullable<CreateJobInput['duplicateResolution']>['targetResourceId'],
             },
-          })))
+          }))
       }
     })
   }
 
   function submitCorrect(row: Job, d: JobCorrectDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: CorrectJobFactsInput = {
         jobId: row.id,
         expectedFactsRevision: row.factsRevision,
@@ -290,16 +268,16 @@ export function useJobController(params: {
       const result = await requireClient().jobs.correctFacts(input)
       if (result.status === 'succeeded') {
         await refresh()
-        showOutcome({ kind: 'succeeded' })
+        outcome.show({ kind: 'succeeded' })
         setCorrectTarget(null)
       } else {
-        showOutcome(outcomeForBlocker(result.blocker))
+        outcome.showBlocker(result.blocker)
       }
     })
   }
 
   function submitAvailability(row: Job, d: JobAvailabilityDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: UpdateJobAvailabilityInput = {
         jobId: row.id,
         expectedAvailabilityRevision: row.availabilityRevision,
@@ -313,16 +291,16 @@ export function useJobController(params: {
       const result = await requireClient().jobs.updateAvailability(input)
       if (result.status === 'succeeded') {
         await refresh()
-        showOutcome({ kind: 'succeeded' })
+        outcome.show({ kind: 'succeeded' })
         setAvailabilityTarget(null)
       } else {
-        showOutcome(outcomeForBlocker(result.blocker))
+        outcome.showBlocker(result.blocker)
       }
     })
   }
 
   function submitRemove(row: Job, d: JobRemoveDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: RemoveJobInput = {
         id: row.id,
         choice: d.choice as RemoveJobInput['choice'],
@@ -332,10 +310,10 @@ export function useJobController(params: {
       const result = await requireClient().jobs.remove(input)
       if (result.status === 'removed') {
         await refreshAll()
-        showOutcome({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
+        outcome.show({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
         setRemoveTarget(null)
       } else {
-        showOutcome(removalBlockedOutcome(d.choice as RemoveJobInput['choice'], result), {
+        outcome.show(removalBlockedOutcome(d.choice as RemoveJobInput['choice'], result), {
           onResolveRemoval: (choice, rationale) => {
             const next = { choice, rationale }
             setRemoveDraft(next)
@@ -347,7 +325,7 @@ export function useJobController(params: {
   }
 
   function submitRestore(row: Job, d: JobRestoreDraft) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: RestoreJobInput = {
         id: row.id,
         actor: DESKTOP_USER_ACTOR,
@@ -356,16 +334,16 @@ export function useJobController(params: {
       const result = await requireClient().jobs.restore(input)
       if (result.status === 'restored') {
         await refresh()
-        showOutcome({ kind: 'restored', dependentLinks: result.dependentLinks })
+        outcome.show({ kind: 'restored', dependentLinks: result.dependentLinks })
         setRestoreTarget(null)
       } else {
-        showOutcome(outcomeForBlocker(result.blocker))
+        outcome.showBlocker(result.blocker)
       }
     })
   }
 
   function submitPromote(row: Job, d: JobPromoteDraft, retry: JobPromotionRetry = {}) {
-    command.run(async () => {
+    outcome.run(async () => {
       const input: PromoteJobToOpportunityInput = {
         idempotencyKey: promotionKey.current,
         actor: DESKTOP_USER_ACTOR,
@@ -383,7 +361,7 @@ export function useJobController(params: {
       if (result.status === 'promoted') {
         await Promise.all([refresh(), refreshDestination()])
         if (result.warnings.length > 0 && !input.override) {
-          showOutcome(
+          outcome.show(
             { kind: 'warnings', warnings: result.warnings, override: result.override },
             {
               onOverrideWarnings: (warningCodes, rationale) => {
@@ -396,18 +374,17 @@ export function useJobController(params: {
           )
           return
         }
-        showOutcome({ kind: 'succeeded' })
+        outcome.show({ kind: 'succeeded' })
         setPromoteTarget(null)
       } else {
-        const blocked = outcomeForBlocker(result.blocker)
-        showOutcome(blocked, duplicateRecovery(blocked, (choice) =>
+        outcome.showBlocker(result.blocker, (choice) =>
           submitPromote(row, promoteDraftRef.current, {
             ...retry,
             duplicateResolution: {
               action: choice.action,
               targetResourceId: choice.targetResourceId as NonNullable<PromoteJobToOpportunityInput['duplicateResolution']>['targetResourceId'],
             },
-          })))
+          }))
       }
     })
   }
@@ -552,14 +529,8 @@ export function useJobController(params: {
         pending={pending}
         submitLabel="Promote"
       />
-      <HistoryModal
-        open={history.target !== null}
-        title={history.target ? `History · ${history.target.id}` : 'History'}
-        outcome={history.outcome}
-        pending={history.pending}
-        onClose={history.close}
-      />
-      {outcome ? <OutcomeToast outcome={outcome} pending={pending} onDismiss={() => setOutcome(null)} {...outcomeActions.current} /> : null}
+      {history.modal}
+      {outcome.toast}
     </>
   )
 
