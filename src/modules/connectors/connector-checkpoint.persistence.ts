@@ -3,37 +3,6 @@ import { connectorCheckpoints } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import type { ConnectorCheckpointRecord, RecordConnectorCheckpointInput } from './connector-checkpoint.persistence-types'
 
-export async function copyConnectorCheckpointIfAbsent(
-  database: Pick<PgliteDatabase, 'insert' | 'select'>,
-  input: {
-    connectorInstanceId: string
-    expectedSchemaVersion: string
-    sourceFilterSignature: string
-    targetFilterSignature: string
-  },
-  now: string,
-) {
-  const [source] = await database
-    .select()
-    .from(connectorCheckpoints)
-    .where(and(
-      eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
-      eq(connectorCheckpoints.filterSignature, input.sourceFilterSignature),
-      eq(connectorCheckpoints.schemaVersion, input.expectedSchemaVersion),
-      isNull(connectorCheckpoints.deletedAt),
-    ))
-    .limit(1)
-  if (!source || !source.coverageStartedAt || !source.coverageEndedAt) return
-
-  await database.insert(connectorCheckpoints).values({
-    ...source,
-    filterSignature: input.targetFilterSignature,
-    savedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  }).onConflictDoNothing()
-}
-
 export async function upsertConnectorCheckpoint(
   database: Pick<PgliteDatabase, 'insert' | 'select' | 'update'>,
   input: RecordConnectorCheckpointInput,

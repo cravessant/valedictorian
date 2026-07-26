@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ConnectorExecutionError,
+  connectorInstalledVersionMismatchError,
   unexpectedConnectorExecutionError,
 } from '../modules/connectors/connector-execution.errors'
 import {
@@ -14,6 +15,10 @@ const INTERNAL_ERROR_BODY = {
 }
 
 const CONFLICT_ERROR_BODY = { message: 'The request conflicts with the current state.' }
+
+function jsonRequest(method: string, body: unknown) {
+  return { body: JSON.stringify(body), headers: { 'content-type': 'application/json' }, method }
+}
 
 describe('local server connector execution HTTP errors', () => {
   const fixture = createLocalServerHttpTestFixture()
@@ -115,4 +120,68 @@ describe('local server connector execution HTTP errors', () => {
     expect(failure.cause).toBeUndefined()
     expect(failure).not.toHaveProperty('detail')
   })
+
+  it.each([
+    {
+      body: {
+        id: 'connector one',
+        connectorId: 'fixture.jobs',
+        connectorVersion: '0.12.0',
+        displayName: 'Fixture Jobs',
+        enabled: true,
+        auth: [],
+        config: {},
+        filters: {},
+      },
+      method: 'POST',
+      path: '/connectors',
+      surface: 'create',
+    },
+    {
+      body: { connectorVersion: '0.13.0', enabled: false },
+      method: 'PATCH',
+      path: '/connectors/connector%20one',
+      surface: 'update',
+    },
+    {
+      body: { mode: 'manual' },
+      method: 'POST',
+      path: '/connectors/connector%20one/runs',
+      surface: 'run trigger',
+    },
+  ])(
+    'returns the fixed 409 conflict without version detail for a $surface mismatch',
+    async ({ body, method, path }) => {
+      const events: unknown[] = []
+      const reject = () => {
+        throw connectorInstalledVersionMismatchError('fixture.jobs', '0.13.0')
+      }
+      const client = createBoundaryWorkspaceClient(() => {}, {
+        connectors: {
+          create: reject,
+          update: reject,
+          runs: { trigger: reject },
+        } as never,
+      })
+      const server = await fixture.start({
+        client,
+        onRequestError(event) {
+          events.push(event)
+        },
+        resolveWorkspaceClient: () => client,
+      })
+
+      const response = await fetch(
+        `${server.url}/v1/workspaces/connector-errors${path}`,
+        jsonRequest(method, body),
+      )
+      const responseBody = await response.text()
+
+      expect(response.status).toBe(409)
+      expect(JSON.parse(responseBody)).toEqual(CONFLICT_ERROR_BODY)
+      expect(responseBody).not.toMatch(/fixture\.jobs|0\.13\.0|0\.12\.0|mismatch|connector one/i)
+      // A fixed classified conflict is not an unexpected failure, so nothing is logged.
+      expect(events).toEqual([])
+    },
+  )
 })

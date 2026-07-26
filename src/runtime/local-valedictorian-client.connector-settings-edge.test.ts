@@ -11,9 +11,10 @@ import {
 } from './local-valedictorian-client.test-harness'
 
 const INSTANCE_ID = 'fixture-required-settings-instance'
+const DISABLED_INSTANCE_ID = 'fixture-required-settings-disabled-instance'
 const CONNECTOR_ID = 'fixture.required-settings'
 
-describe('local connector settings completeness and upgrade edges', () => {
+describe('local connector settings completeness and version-drift edges', () => {
   it('validates descriptor-required config and filters when creating an enabled instance', async () => {
     const client = await clientFor(requiredSettingsConnector('1.0.0'))
 
@@ -107,7 +108,7 @@ describe('local connector settings completeness and upgrade edges', () => {
     })
   })
 
-  it('upgrades an old incomplete instance by saving a newly required field through reconciliation', async () => {
+  it('rejects every update and run on an old-version instance without mutating it', async () => {
     const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-settings-edge-')
     const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('0.12.0')]),
@@ -115,6 +116,13 @@ describe('local connector settings completeness and upgrade edges', () => {
       pgliteDataPath,
     })
     await legacy.connectors.create(createInput({
+      connectorVersion: '0.12.0',
+      auth: [{ id: 'fixture', mode: 'api_key', secretKey: 'old-secret' }],
+      config: {},
+      filters: {},
+    }))
+    await legacy.connectors.create(createInput({
+      id: DISABLED_INSTANCE_ID,
       connectorVersion: '0.12.0',
       config: {},
       enabled: false,
@@ -125,65 +133,73 @@ describe('local connector settings completeness and upgrade edges', () => {
       seedDataMode: 'none',
       pgliteDataPath,
     })
+    const mismatch = new RegExp(`Connector version mismatch for ${CONNECTOR_ID}: expected 0.13.0`)
 
-    await expect(current.connectors.update({
-      connectorInstanceId: INSTANCE_ID,
-      connectorVersion: '0.13.0',
-      config: { batchSize: 20 },
-      enabled: true,
-      filters: { category: 'engineering' },
-    })).resolves.toMatchObject({
-      id: INSTANCE_ID,
-      connectorVersion: '0.13.0',
-      config: { batchSize: 20 },
-      enabled: true,
-      filters: { category: 'engineering' },
-    })
+    for (const update of [
+      { connectorVersion: '0.13.0', config: { batchSize: 20 }, filters: { category: 'engineering' } },
+      { enabled: false },
+      { auth: [{ id: 'fixture', mode: 'api_key' as const, secretKey: 'replacement-secret' }] },
+    ]) {
+      await expect(current.connectors.update({ connectorInstanceId: INSTANCE_ID, ...update }))
+        .rejects.toThrow(mismatch)
+    }
+    for (const connectorInstanceId of [INSTANCE_ID, DISABLED_INSTANCE_ID]) {
+      const rejection = expect(current.connectors.runs.trigger({
+        connectorInstanceId,
+        coverageEndedAt: '2026-07-14T12:00:00.000Z',
+        coverageStartedAt: '2026-07-13T12:00:00.000Z',
+        mode: 'manual',
+      })).rejects
+      await rejection.toThrow(mismatch)
+      await rejection.not.toThrow(/is disabled/i)
+    }
 
-    // Canonical lifecycle records are versioned aggregates; connector upgrades
-    // no longer enqueue legacy normalization replay requests.
-  })
-
-  it('can disable and replace credentials on an old-version instance without remove and re-add', async () => {
-    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-settings-edge-')
-    const legacy = await createLocalValedictorianClient({
-      connectorRegistry: createStaticConnectorRegistry([legacyConnector('0.12.0')]),
-      seedDataMode: 'none',
-      pgliteDataPath,
-    })
-    await legacy.connectors.create(createInput({
-      connectorVersion: '0.12.0',
-      auth: [{ id: 'fixture', mode: 'api_key', secretKey: 'old-secret' }],
-      filters: {},
-    }))
-    const current = await createLocalValedictorianClient({
-      connectorRegistry: createStaticConnectorRegistry([requiredSettingsConnector('0.13.0')]),
-      seedDataMode: 'none',
-      pgliteDataPath,
-    })
-
-    await expect(current.connectors.update({
-      connectorInstanceId: INSTANCE_ID,
-      enabled: false,
-    })).resolves.toMatchObject({
-      id: INSTANCE_ID,
-      connectorVersion: '0.12.0',
-      enabled: false,
-    })
-    await expect(current.connectors.update({
-      connectorInstanceId: INSTANCE_ID,
-      auth: [{ id: 'fixture', mode: 'api_key', secretKey: 'replacement-secret' }],
-    })).resolves.toMatchObject({
-      id: INSTANCE_ID,
-      connectorVersion: '0.12.0',
-      auth: [{ configured: true, id: 'fixture', mode: 'api_key' }],
-    })
     await expect(current.connectors.list()).resolves.toMatchObject({
-      items: [{ id: INSTANCE_ID, connectorVersion: '0.12.0' }],
+      items: [
+        {
+          id: INSTANCE_ID,
+          connectorVersion: '0.12.0',
+          enabled: true,
+          config: {},
+          filters: {},
+          auth: [{ configured: true, id: 'fixture', mode: 'api_key' }],
+        },
+        {
+          id: DISABLED_INSTANCE_ID,
+          connectorVersion: '0.12.0',
+          enabled: false,
+        },
+      ],
+    })
+    for (const connectorInstanceId of [INSTANCE_ID, DISABLED_INSTANCE_ID]) {
+      await expect(current.connectors.runs.list({ connectorInstanceId }))
+        .resolves.toMatchObject({ items: [] })
+    }
+  })
+
+  it('applies a same-version settings update and keeps the stored connector version', async () => {
+    const client = await clientFor(requiredSettingsConnector('0.13.0'))
+    await client.connectors.create(createInput({
+      connectorVersion: '0.13.0',
+      config: { batchSize: 10 },
+      filters: { category: 'engineering' },
+    }))
+
+    await expect(client.connectors.update({
+      connectorInstanceId: INSTANCE_ID,
+      connectorVersion: '0.13.0',
+      config: { batchSize: 20 },
+      filters: { category: 'design' },
+    })).resolves.toMatchObject({
+      id: INSTANCE_ID,
+      connectorVersion: '0.13.0',
+      config: { batchSize: 20 },
+      enabled: true,
+      filters: { category: 'design' },
     })
   })
 
-  it('allows only a current bounded option query to repair an authenticated old-version instance', async () => {
+  it('allows only a current bounded option query against an authenticated old-version instance', async () => {
     const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-settings-edge-')
     const secretCodec = {
       decrypt: (value: string) => value.replace(/^enc:/, ''),

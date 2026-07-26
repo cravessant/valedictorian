@@ -58,8 +58,10 @@ import {
   validateSelectableEarliestBackfillDate,
 } from '../modules/connectors/connector.earliest-backfill'
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
-import { reconcileConnectorPackageUpgrade } from './local-connector-upgrade-reconciliation'
-import { connectorDisabledExecutionError } from '../modules/connectors/connector-execution.errors'
+import {
+  connectorDisabledExecutionError,
+  connectorInstalledVersionMismatchError,
+} from '../modules/connectors/connector-execution.errors'
 import {
   admitConnectorSettings,
 } from '../modules/connectors/connector.settings-validation'
@@ -411,8 +413,9 @@ export async function createLocalValedictorianClient({
         }
         const { connector, descriptor } = registered
         if (input.connectorVersion !== descriptor.connectorVersion) {
-          throw new Error(
-            `Connector version mismatch for ${input.connectorId}: expected ${descriptor.connectorVersion}`,
+          throw connectorInstalledVersionMismatchError(
+            input.connectorId,
+            descriptor.connectorVersion,
           )
         }
         const { config, filters } = input
@@ -445,15 +448,14 @@ export async function createLocalValedictorianClient({
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
         }
         const registered = connectorRegistry.get(existing.connectorId)
-        const installedVersion = registered?.descriptor.connectorVersion
-        if (
-          registered
-          && input.connectorVersion !== undefined
-          && input.connectorVersion !== installedVersion
-        ) {
-          throw new Error(
-            `Connector version mismatch for ${existing.connectorId}: expected ${installedVersion}`,
-          )
+        if (registered) {
+          const installedVersion = registered.descriptor.connectorVersion
+          if (
+            existing.connectorVersion !== installedVersion
+            || (input.connectorVersion !== undefined && input.connectorVersion !== installedVersion)
+          ) {
+            throw connectorInstalledVersionMismatchError(existing.connectorId, installedVersion)
+          }
         }
         const maintenanceOnly = isConnectorMaintenanceOnlyUpdate(input)
         const config = input.config ?? toConnectorJsonRecord(existing.config, 'config')
@@ -483,30 +485,9 @@ export async function createLocalValedictorianClient({
           earliestBackfillDate,
           createdAt: existing.createdAt,
         }
-        if (
-          registered
-          && !maintenanceOnly
-          && existing.connectorVersion !== installedVersion
-        ) {
-          if (input.connectorVersion !== installedVersion) {
-            throw new Error(
-              `Connector version mismatch for ${existing.connectorId}: expected ${installedVersion}`,
-            )
-          }
-          const reconciled = mapConnectorInstanceSummary(await reconcileConnectorPackageUpgrade({
-            registered,
-            connectorRepository,
-            instance: { ...existing, ...proposedInstance },
-          }))
-          onScheduledWorkChanged?.()
-          return reconciled
-        }
-        const updated = mapConnectorInstanceSummary(await connectorRepository.upsertInstance({
-          ...proposedInstance,
-          connectorVersion: maintenanceOnly
-            ? existing.connectorVersion
-            : input.connectorVersion ?? installedVersion ?? existing.connectorVersion,
-        }))
+        const updated = mapConnectorInstanceSummary(
+          await connectorRepository.upsertInstance(proposedInstance),
+        )
         onScheduledWorkChanged?.()
         return updated
       },
@@ -836,10 +817,18 @@ async function executeConnectorRunTrigger({
   if (!instance) {
     throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
   }
+  const registered = connectorRegistry?.get(instance.connectorId) ?? null
+  // Drift outranks lifecycle state so every mismatch reports the one canonical diagnostic;
+  // an uninstalled connector id still reports disabled first, as it always has.
+  if (registered && instance.connectorVersion !== registered.descriptor.connectorVersion) {
+    throw connectorInstalledVersionMismatchError(
+      instance.connectorId,
+      registered.descriptor.connectorVersion,
+    )
+  }
   if (!instance.enabled) {
     throw connectorDisabledExecutionError(input.connectorInstanceId)
   }
-  const registered = connectorRegistry?.get(instance.connectorId) ?? null
   if (!registered) {
     throw new Error(`Unsupported connector id: ${instance.connectorId}`)
   }
@@ -878,24 +867,6 @@ async function executeConnectorRunTrigger({
   })
   if (!claim.claimed) {
     return claim.run
-  }
-  try {
-    await reconcileConnectorPackageUpgrade({
-      registered,
-      connectorRepository,
-      instance,
-    })
-  } catch (error) {
-    await connectorRepository.markRunFailed({
-      connectorRunId: claim.run.id,
-      completedAt: now().toISOString(),
-      retryHints: null,
-      warning: {
-        code: 'connector.upgrade_replay_failed',
-        message: 'Connector upgrade replay failed.',
-      },
-    })
-    throw error
   }
   return executeClaimedConnectorRun({
     connectorRegistry,

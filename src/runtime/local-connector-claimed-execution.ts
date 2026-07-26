@@ -2,9 +2,9 @@ import type { ConnectorRefreshMode } from '@sparxie/valedictorian-connectors-cor
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { createPgliteConnectorRepository, ConnectorRunRecord } from '../modules/connectors/connector.repository'
 import type { createConnectorRunner, AppConnectorRefreshRecord } from '../modules/connectors/connector.runner'
+import { connectorInstalledVersionMismatchError } from '../modules/connectors/connector-execution.errors'
 import { revalidatePersistedConnectorSettings } from '../modules/connectors/connector.settings-validation'
 import { finalizeDeferredConnectorRefreshRecord } from './local-connector-retry-dispatch'
-import { reconcileConnectorPackageUpgrade } from './local-connector-upgrade-reconciliation'
 
 export async function executeClaimedConnectorRun({
   connectorRegistry,
@@ -38,7 +38,7 @@ export async function executeClaimedConnectorRun({
       throw new Error(`Claimed connector run is not running: ${connectorRunId}`)
     }
 
-    let instance = await connectorRepository.getInstance(runRequest.connectorInstanceId)
+    const instance = await connectorRepository.getInstance(runRequest.connectorInstanceId)
     if (!instance) {
       throw new Error(`Connector instance not found: ${runRequest.connectorInstanceId}`)
     }
@@ -47,12 +47,13 @@ export async function executeClaimedConnectorRun({
     if (!registered) {
       throw new Error(`Unsupported connector id: ${instance.connectorId}`)
     }
+    if (instance.connectorVersion !== registered.descriptor.connectorVersion) {
+      throw connectorInstalledVersionMismatchError(
+        instance.connectorId,
+        registered.descriptor.connectorVersion,
+      )
+    }
     const connector = registered.connector
-    instance = await reconcileConnectorPackageUpgrade({
-      registered,
-      connectorRepository,
-      instance,
-    })
     // Single execution-side trust boundary: every entry point (manual, scheduled, retry,
     // deferred refresh) claims a run through here before any connector code is reached.
     revalidatePersistedConnectorSettings(registered.descriptor, instance)

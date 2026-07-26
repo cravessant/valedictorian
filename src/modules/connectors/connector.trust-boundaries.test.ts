@@ -10,7 +10,6 @@ import { listInstalledConnectorDescriptors } from './connector.capabilities'
 import {
   admitConnectorSettings,
   revalidatePersistedConnectorSettings,
-  revalidatePersistedConnectorSettingsForVersionDrift,
 } from './connector.settings-validation'
 import { sanitizeConnectorRefreshResult } from './connector.refresh-result-sanitizer'
 
@@ -162,22 +161,20 @@ describe('persisted settings revalidation boundary', () => {
   const descriptor = createStaticConnectorRegistry([fixtureConnector()]).get(CONNECTOR_ID)!
     .descriptor
   const incomplete = { config: {}, filters: {} }
-  const unsupported = { config: { legacyPrivate: true }, filters: {} }
+  const unsupported = {
+    config: { batchSize: 20, legacyPrivate: true },
+    filters: { category: 'engineering' },
+  }
 
-  it('demands complete persisted settings before execution', () => {
+  it('demands complete and declared persisted settings before execution', () => {
     expect(() => revalidatePersistedConnectorSettings(descriptor, incomplete))
       .toThrow(/batchSize.*required/i)
+    expect(() => revalidatePersistedConnectorSettings(descriptor, unsupported))
+      .toThrow(/legacyPrivate|not declared/i)
     expect(() => revalidatePersistedConnectorSettings(descriptor, {
       config: { batchSize: 20 },
       filters: { category: 'engineering' },
     })).not.toThrow()
-  })
-
-  it('tolerates incomplete but not unsupported persisted settings across version drift', () => {
-    expect(() => revalidatePersistedConnectorSettingsForVersionDrift(descriptor, incomplete))
-      .not.toThrow()
-    expect(() => revalidatePersistedConnectorSettingsForVersionDrift(descriptor, unsupported))
-      .toThrow(/legacyPrivate|not declared/i)
   })
 })
 

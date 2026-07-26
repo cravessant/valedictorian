@@ -31,14 +31,6 @@ export function revalidatePersistedConnectorSettings(
   validateDeclaredConnectorSettings(descriptor, settings, false)
 }
 
-/** Distinct trust boundary: persisted settings re-checked across installed-version drift. */
-export function revalidatePersistedConnectorSettingsForVersionDrift(
-  descriptor: InstalledConnectorDescriptor,
-  settings: ConnectorSettings,
-) {
-  validateDeclaredConnectorSettings(descriptor, settings, true)
-}
-
 function validateDeclaredConnectorSettings(
   descriptor: InstalledConnectorDescriptor,
   settings: ConnectorSettings,

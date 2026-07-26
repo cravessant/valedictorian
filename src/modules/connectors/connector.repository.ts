@@ -17,7 +17,7 @@ import {
 } from './connector.earliest-backfill'
 import { freezeConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
 import { createConnectorInstance, mapConnectorInstance, normalizeConnectorAuthReferences } from './connector-instance.persistence'
-import { copyConnectorCheckpointIfAbsent, upsertConnectorCheckpoint, mapConnectorCheckpoint } from './connector-checkpoint.persistence'
+import { upsertConnectorCheckpoint, mapConnectorCheckpoint } from './connector-checkpoint.persistence'
 import {
   mapConnectorRun,
   persistFrozenConnectorRunLifecycleCounts,
@@ -295,9 +295,6 @@ export function createPgliteConnectorRepository(
         throw new Error(`Connector checkpoint not found after insert: ${input.connectorInstanceId}`)
       }
       return checkpoint
-    },
-    async copyCheckpointIfAbsent(input: Parameters<typeof copyConnectorCheckpointIfAbsent>[1]) {
-      await copyConnectorCheckpointIfAbsent(database, input, new Date().toISOString())
     },
     async recordRunRequest(
       input: RecordConnectorRunRequestInput,

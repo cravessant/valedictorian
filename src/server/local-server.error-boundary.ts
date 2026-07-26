@@ -198,8 +198,7 @@ function mapKnownHttpFailure(
     return { body: invalidConnectorOverviewCursorBody, statusCode: 400 }
   }
 
-  if (context.method === 'POST'
-    && pathname === '/v1/connectors'
+  if (isConnectorCreateRoute(context.method, pathname)
     && code
     && (connectorCreateErrorCodes as readonly string[]).includes(code)) {
     const createCode = code as keyof typeof connectorCreateErrorBodies
@@ -249,7 +248,7 @@ function mapKnownHttpFailure(
     }
   }
 
-  if (isConnectorRunTriggerRoute(context.method, pathname)
+  if (isConnectorAdmissionConflictRoute(context.method, pathname)
     && error instanceof ConnectorExecutionError
     && error.statusCode === 409) {
     return { body: conflictErrorBody, statusCode: 409 }
@@ -304,6 +303,25 @@ function isConnectorScheduleRoute(pathname: string) {
 
 function isConnectorRunTriggerRoute(method: string, pathname: string) {
   return method === 'POST' && /^\/v1\/connectors\/[^/]+\/runs$/.test(pathname)
+}
+
+function isConnectorCreateRoute(method: string, pathname: string) {
+  return method === 'POST' && pathname === '/v1/connectors'
+}
+
+function isConnectorInstanceUpdateRoute(method: string, pathname: string) {
+  return method === 'PATCH' && /^\/v1\/connectors\/[^/]+$/.test(pathname)
+}
+
+/**
+ * A connector admission conflict — disabled instance, installed-version mismatch — can surface
+ * from create, update, or run trigger, and every one renders the same fixed conflict body.
+ * The typed create-code mapping above stays ahead of this broader class match.
+ */
+function isConnectorAdmissionConflictRoute(method: string, pathname: string) {
+  return isConnectorRunTriggerRoute(method, pathname)
+    || isConnectorCreateRoute(method, pathname)
+    || isConnectorInstanceUpdateRoute(method, pathname)
 }
 
 function readProperty(value: unknown, property: string): unknown {
