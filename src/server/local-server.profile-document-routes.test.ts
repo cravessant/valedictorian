@@ -108,12 +108,14 @@ describe('local server profile document routes', () => {
     expect(profile.status).toBe(200)
     await expect(readJson(profile)).resolves.toMatchObject({ email: 'kenny@example.com' })
 
-    const legacySensitiveUpdate = await fetch(`${base}/profile/sensitive`, {
+    // Route-absence proof on a fixture where every other profile route is served: no identity
+    // secret or demographic field can be read or written through the retired sensitive surface.
+    const retiredSensitiveUpdate = await fetch(`${base}/profile/sensitive`, {
       body: JSON.stringify({ ssnLast4: '5125', gender: 'Man' }),
       headers: { 'content-type': 'application/json' },
       method: 'PATCH',
     })
-    expect(legacySensitiveUpdate.status).toBe(404)
+    expect(retiredSensitiveUpdate.status).toBe(404)
     expect((await fetch(`${base}/profile/sensitive`)).status).toBe(404)
 
     const secretUpsert = await fetch(`${base}/secrets/jobright`, {

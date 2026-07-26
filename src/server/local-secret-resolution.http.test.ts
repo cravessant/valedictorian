@@ -703,18 +703,6 @@ describe.sequential('local secret resolution HTTP route', () => {
       disabilityStatus: 'No',
     })
     expect(JSON.stringify(profilePayload)).not.toContain('ssn')
-    expect((await fetch(
-      `${server.url}/v1/workspaces/${workspaceA.id}/profile/sensitive`,
-      {
-        body: JSON.stringify({ ssnLast4: '5125' }),
-        headers: authHeaders,
-        method: 'PATCH',
-      },
-    )).status).toBe(404)
-    expect((await fetch(
-      `${server.url}/v1/workspaces/${workspaceA.id}/profile/sensitive`,
-      { headers: { authorization: 'Bearer server-token' } },
-    )).status).toBe(404)
 
     const deleteResponse = await fetch(`${secretsBase}/greenhouse_password`, {
       headers: { authorization: 'Bearer server-token' },
