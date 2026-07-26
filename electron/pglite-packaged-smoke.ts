@@ -3,6 +3,7 @@ import { workspaces } from '../src/db/workspaces.schema'
 import { createPgliteCaptureReadModel } from '../src/modules/capture/capture.read-model'
 import { createPgliteCaptureService } from '../src/modules/capture/capture.service'
 import { createCompanyCoverageService } from '../src/modules/company/company.coverage'
+import { jobFactsTiming } from '../src/modules/job/job.timing'
 import { createLocalLifecycleMethods } from '../src/runtime/local-lifecycle-methods'
 
 const smokeProviderRecordId = 'packaged-pglite-smoke'
@@ -115,8 +116,9 @@ async function openPackagedPgliteSmokeOwner(dataDirectory: string): Promise<Pack
         captureRevision: result.capture.revision,
         selectedFacts: {
           companyName: 'Packaged Smoke', roleTitle: 'Lifecycle Engineer', sourceName: 'package',
-          roleKind: 'experienced', term: null, terms: [], timingMode: 'unknown', startDate: null,
-          endDate: null, location: null, workMode: 'remote', employmentType: 'full_time',
+          roleKind: 'experienced',
+          ...jobFactsTiming({ terms: [], timingMode: 'unknown', startDate: null, endDate: null }),
+          location: null, workMode: 'remote', employmentType: 'full_time',
           seniority: 'senior', compensation: null, postedAt: null, destination: null,
         },
         evidenceReferences: [{ captureId: result.capture.id, captureRevision: result.capture.revision, evidenceIndexes: [0] }],

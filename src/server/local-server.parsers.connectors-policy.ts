@@ -30,6 +30,7 @@ import {
   setNumberQuery,
   setStringQuery,
 } from './local-server.parsers.query-primitives'
+import { policyConfigPatchViolation } from '../modules/policy/policy.patch'
 
 export function parseConnectorOverviewListQuery(requestUrl: URL): ConnectorOverviewListQuery {
   const query: Record<string, unknown> = {}
@@ -203,7 +204,14 @@ export function parsePolicyEvidenceListQuery(requestUrl: URL): PolicyEvidenceLis
 }
 
 export function parsePolicyConfigPatch(body: unknown): PolicyConfigPatch {
-  return readRecord(body) as PolicyConfigPatch
+  const record = readRecord(body)
+  // Authoritative admission: an unknown key OR a known field whose value normalization would
+  // discard is a request error here, never a silently unchanged (or default-reset) update.
+  const violation = policyConfigPatchViolation(record)
+  if (violation !== null) {
+    throw localHttpValidationError(violation)
+  }
+  return record as PolicyConfigPatch
 }
 
 export function parsePolicyEvidenceInput(body: unknown): PolicyEvidenceInput {

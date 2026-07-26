@@ -13,6 +13,7 @@ import type {
   ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 
+import { jobFactsTiming } from '../../job/job.timing'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from '../lifecycle-actor'
 import { FormModal, type FieldSpec, type FieldErrors } from '../form-modal'
 import type { LifecycleOutcome, LifecycleOutcomeActions } from '../lifecycle-outcome-types'
@@ -243,11 +244,12 @@ export function useJobController(params: {
           roleTitle: d.roleTitle.trim(),
           sourceName: d.sourceName.trim(),
           roleKind: d.roleKind as CreateJobInput['facts']['roleKind'],
-          term: null,
-          terms: [],
-          timingMode: d.timingMode as CreateJobInput['facts']['timingMode'],
-          startDate: null,
-          endDate: null,
+          ...jobFactsTiming({
+            terms: [],
+            timingMode: d.timingMode as CreateJobInput['facts']['timingMode'],
+            startDate: null,
+            endDate: null,
+          }),
           location: null,
           workMode: d.workMode as CreateJobInput['facts']['workMode'],
           employmentType: d.employmentType as CreateJobInput['facts']['employmentType'],
@@ -302,11 +304,12 @@ export function useJobController(params: {
           roleTitle: d.roleTitle.trim(),
           sourceName: d.sourceName.trim(),
           roleKind: d.roleKind as CorrectJobFactsInput['facts']['roleKind'],
-          term: row.facts.term,
-          terms: row.facts.terms,
-          timingMode: d.timingMode as CorrectJobFactsInput['facts']['timingMode'],
-          startDate: row.facts.startDate,
-          endDate: row.facts.endDate,
+          ...jobFactsTiming({
+            terms: row.facts.terms,
+            timingMode: d.timingMode as CorrectJobFactsInput['facts']['timingMode'],
+            startDate: row.facts.startDate,
+            endDate: row.facts.endDate,
+          }),
           location: row.facts.location,
           workMode: d.workMode as CorrectJobFactsInput['facts']['workMode'],
           employmentType: d.employmentType as CorrectJobFactsInput['facts']['employmentType'],

@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/use-toast'
 import { JobCompanyReassignmentModal } from '@/modules/workspace-resources/JobCompanyReassignmentModal'
+import { jobFactsTiming } from '../job/job.timing'
 import type { CaptureCompletionIntent } from './configs/capture-config'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from './lifecycle-actor'
 import { validateDestinationUrl } from '../capture/destination-url-safety'
@@ -841,11 +842,12 @@ function jobFactsFromDraft(detail: CaptureCompletionDetailV2, draft: Draft) {
     roleTitle: normalized.roleTitle,
     sourceName: detail.jobDefaults.sourceName ?? detail.sourceSummary.displayName,
     roleKind: detail.jobDefaults.roleKind ?? 'other',
-    term: detail.jobDefaults.term ?? null,
-    terms: detail.jobDefaults.terms ?? [],
-    timingMode: detail.jobDefaults.timingMode ?? 'unknown',
-    startDate: detail.jobDefaults.startDate ?? null,
-    endDate: detail.jobDefaults.endDate ?? null,
+    ...jobFactsTiming({
+      terms: detail.jobDefaults.terms ?? [],
+      timingMode: detail.jobDefaults.timingMode ?? 'unknown',
+      startDate: detail.jobDefaults.startDate ?? null,
+      endDate: detail.jobDefaults.endDate ?? null,
+    }),
     location: detail.jobDefaults.location ?? null,
     workMode: detail.jobDefaults.workMode ?? 'unknown',
     employmentType: detail.jobDefaults.employmentType ?? 'unknown',

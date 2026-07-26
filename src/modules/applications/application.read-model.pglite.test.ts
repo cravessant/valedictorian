@@ -108,7 +108,7 @@ describe.sequential('Application read-model (#304)', () => {
 
     // Advance the Job facts, then refresh so capturedAt reflects the new capture time.
     await jobs.correctFacts({ workspaceId: 'ws-a', jobId, facts: { company: 'Acme', title: 'Principal Engineer' }, actor: ACTOR })
-    await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId, actor: ACTOR })
+    await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId, actor: ACTOR, preserveCompanyEdit: true, preserveSourceEdit: true, preserveLinkEdits: true })
 
     const after = await readModel.getApplication('ws-a', applicationId)
     expect(after!.snapshot.capturedAt > before!.snapshot.capturedAt).toBe(true)

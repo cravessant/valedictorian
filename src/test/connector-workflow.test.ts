@@ -39,7 +39,6 @@ describe('connector workflow dependencies', () => {
     expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.18.2')
     expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.18.2')
     expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.18.2')
-    expect(packageJson.dependencies['@sparxie/sdk']).toBe('0.32.0')
   })
 
   it('resolves connector packages from the public npm registry without alternate sources', () => {

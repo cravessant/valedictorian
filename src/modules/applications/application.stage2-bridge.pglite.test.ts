@@ -75,7 +75,7 @@ describe.sequential('Application 0.27 create bridge (#304)', () => {
 
     // A refresh re-captures now, so capturedAt advances past the create time.
     await jobs.correctFacts({ workspaceId: 'ws-a', jobId, facts: { company: 'Acme', title: 'Principal' }, actor: ACTOR })
-    const refreshed = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: created.application.id, actor: ACTOR })
+    const refreshed = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: created.application.id, actor: ACTOR, preserveCompanyEdit: true, preserveSourceEdit: true, preserveLinkEdits: true })
     expect(refreshed.ok).toBe(true)
     const afterRefresh = await readSnapshot()
     expect(afterRefresh.capturedAt! > atCreate.capturedAt!).toBe(true)
@@ -149,10 +149,10 @@ describe.sequential('Application 0.27 create bridge (#304)', () => {
     // Advance the Job facts so the application snapshot is stale (still at revision 1).
     const corrected = await jobs.correctFacts({ workspaceId: 'ws-a', jobId, facts: { company: 'Acme', title: 'Principal' }, actor: ACTOR })
     if (!corrected.ok) throw new Error('correct failed')
-    const stale = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: created.application.id, actor: ACTOR, expectedJobFactsRevision: 1 })
+    const stale = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: created.application.id, actor: ACTOR, expectedJobFactsRevision: 1, preserveCompanyEdit: true, preserveSourceEdit: true, preserveLinkEdits: true })
     expect(stale.ok).toBe(false)
     if (!stale.ok) expect(stale.code).toBe('revision_conflict')
-    const refreshed = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: created.application.id, actor: ACTOR, expectedJobFactsRevision: 2 })
+    const refreshed = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: created.application.id, actor: ACTOR, expectedJobFactsRevision: 2, preserveCompanyEdit: true, preserveSourceEdit: true, preserveLinkEdits: true })
     expect(refreshed.ok).toBe(true)
     if (refreshed.ok) expect(refreshed.application.jobFactsRevision).toBe(2)
   })

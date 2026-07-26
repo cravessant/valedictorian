@@ -42,6 +42,8 @@ import type {
   LifecycleApplicationHistoryResult,
   LifecycleApplicationListResult,
 } from '@sparxie/sdk'
+import { jobTermSchema } from '@sparxie/sdk'
+import { jobFactsTiming } from '../job/job.timing'
 import { toContractActor, toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
 
 /** The subset of `applications` the read-model selects for a resource. */
@@ -131,7 +133,6 @@ type PursuitSnapshot = Application['snapshot']
 const ROLE_KINDS = new Set(['internship', 'co_op', 'new_grad', 'entry_level', 'experienced', 'other'])
 const TIMING_MODES = new Set(['fixed', 'rolling', 'unknown'])
 const WORK_MODES = new Set(['onsite', 'hybrid', 'remote', 'unknown'])
-const SEASONS = new Set(['spring', 'summer', 'fall', 'winter'])
 const DESTINATION_CLASSES = new Set(['employer_or_ats', 'third_party_job_posting'])
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -163,14 +164,17 @@ function isoDateOrNull(value: unknown): string | null {
   return typeof value === 'string' && ISO_DATE.test(value) ? value : null
 }
 
+/**
+ * Decode the stored terms leniently — a corrupt entry is dropped, never thrown — against the
+ * live `jobTermSchema`. The survivors are contract-valid and within the array cap, which is
+ * what lets `jobFactsTiming` canonicalize them without the read path ever being able to throw.
+ */
 function deriveTerms(value: unknown): PursuitSnapshot['terms'] {
   if (!Array.isArray(value)) return []
   const terms: PursuitSnapshot['terms'] = []
   for (const entry of value) {
-    const record = asObject(entry)
-    if (typeof record.season === 'string' && SEASONS.has(record.season) && typeof record.year === 'number' && Number.isInteger(record.year) && record.year >= 2000 && record.year <= 2200) {
-      terms.push({ season: record.season as PursuitSnapshot['terms'][number]['season'], year: record.year })
-    }
+    const parsed = jobTermSchema.safeParse(entry)
+    if (parsed.success) terms.push(parsed.data)
     if (terms.length >= 20) break
   }
   return terms
@@ -224,6 +228,8 @@ function deriveInitialLinks(value: unknown): PursuitSnapshot['initialLinks'] {
  * `{ job: { facts, factsRevision }, capturedAt }` blob (fork resolution #304).
  * Every enum/string field falls back to a schema-valid default; `capturedAt` prefers
  * the stored value and falls back to the head createdAt; `initialLinks` is always [].
+ * `term` is projected from the structured `terms` rather than read back from the blob,
+ * so it stays a formatted display value and never a stored input (#396).
  */
 export function deriveApplicationSnapshot(head: ApplicationHeadRow): PursuitSnapshot {
   const stored = asObject(parseJson(head.snapshotJson))
@@ -240,11 +246,12 @@ export function deriveApplicationSnapshot(head: ApplicationHeadRow): PursuitSnap
     roleTitle: boundedString(facts.roleTitle, 'Unknown'),
     sourceName: boundedString(facts.sourceName, head.sourceName),
     roleKind: enumOr(facts.roleKind, ROLE_KINDS, 'other'),
-    term: nullableString(facts.term, 200),
-    terms: deriveTerms(facts.terms),
-    timingMode: enumOr(facts.timingMode, TIMING_MODES, 'unknown'),
-    startDate: isoDateOrNull(facts.startDate),
-    endDate: isoDateOrNull(facts.endDate),
+    ...jobFactsTiming({
+      terms: deriveTerms(facts.terms),
+      timingMode: enumOr(facts.timingMode, TIMING_MODES, 'unknown'),
+      startDate: isoDateOrNull(facts.startDate),
+      endDate: isoDateOrNull(facts.endDate),
+    }),
     location: deriveLocation(facts.location),
     workMode: enumOr(facts.workMode, WORK_MODES, 'unknown'),
     initialDestination: deriveDestination(facts.destination),

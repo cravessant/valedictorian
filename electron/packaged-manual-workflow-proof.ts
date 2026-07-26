@@ -20,6 +20,7 @@ import {
 } from '../src/modules/company/company.schema'
 import { createCompanyCoverageService } from '../src/modules/company/company.coverage'
 import { jobs } from '../src/modules/job/job.schema'
+import { jobFactsTiming } from '../src/modules/job/job.timing'
 import type { LocalScheduledWorkSource } from '../src/runtime/local-scheduler'
 import { createLocalValedictorianClient } from '../src/runtime/local-valedictorian-client'
 
@@ -810,11 +811,7 @@ function jobFacts(companyName: string, roleTitle: string, destination: string | 
     roleTitle,
     sourceName: 'Jobright package-proof fixture',
     roleKind: 'experienced' as const,
-    term: null,
-    terms: [],
-    timingMode: 'unknown' as const,
-    startDate: null,
-    endDate: null,
+    ...jobFactsTiming({ terms: [], timingMode: 'unknown', startDate: null, endDate: null }),
     location: null,
     workMode: 'remote' as const,
     employmentType: 'full_time' as const,

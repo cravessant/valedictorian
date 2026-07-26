@@ -38,7 +38,8 @@ const contractFacts = {
   roleTitle: 'Staff Engineer',
   sourceName: 'LinkedIn',
   roleKind: 'experienced',
-  term: 'Fall 2026',
+  // A stored formatted term is never read back: the snapshot projects it from `terms`.
+  term: 'Fall 2026 internship',
   terms: [{ season: 'fall', year: 2026 }],
   timingMode: 'fixed',
   startDate: '2026-09-01',
@@ -87,11 +88,36 @@ describe('deriveApplicationSnapshot', () => {
       roleKind: 'experienced',
       timingMode: 'fixed',
       workMode: 'hybrid',
+      term: 'Fall 2026',
       terms: [{ season: 'fall', year: 2026 }],
       location: { display: 'NYC', city: 'New York', region: 'NY', country: 'US' },
       initialDestination: { class: 'employer_or_ats', url: 'https://boards.greenhouse.io/acme/jobs/1' },
       initialLinks: [],
     })
+  })
+
+  it('canonicalizes decoded stored terms and drops entries the contract rejects', () => {
+    const snapshot = deriveApplicationSnapshot(head({
+      snapshotJson: JSON.stringify({
+        job: {
+          facts: {
+            ...contractFacts,
+            terms: [
+              { season: 'winter', year: 2027 },
+              { season: 'fall', year: 2026 },
+              { season: 'fall', year: 2026 },
+              { season: 'autumn', year: 2026 },
+              { season: 'spring', year: 1999 },
+              'not-a-term',
+            ],
+          },
+          factsRevision: 3,
+        },
+        capturedAt: '2026-07-20T00:00:05.000Z',
+      }),
+    }))
+    expect(snapshot.terms).toEqual([{ season: 'fall', year: 2026 }, { season: 'winter', year: 2027 }])
+    expect(snapshot.term).toBe('Fall 2026 / Winter 2027')
   })
 
   it('yields a schema-valid snapshot from #300 placeholder facts via total defaults', () => {

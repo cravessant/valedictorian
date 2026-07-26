@@ -188,18 +188,18 @@ export interface RefreshSnapshotInput {
    * #304 caller-driven refresh reconciliation (same "the contract forces the domain to
    * accept caller inputs" pattern as job→opp evaluation). A refresh re-captures the Job
    * facts into the snapshot blob; these flags tell the domain what to do with the head's
-   * caller-editable display fields:
-   *  - `preserveCompanyEdit` — when explicitly `false`, the refresh ADOPTS the refreshed
-   *    Job company into `companyName`; `true` (or undefined, the legacy default) keeps a
-   *    prior `editCompany`.
+   * caller-editable display fields. All three are required (#396) — there is no
+   * omitted-value preserve-all default, so every caller states its intent:
+   *  - `preserveCompanyEdit` — `false` ADOPTS the refreshed Job company into `companyName`;
+   *    `true` keeps a prior `editCompany`.
    *  - `preserveSourceEdit` — same, for `sourceName`.
    *  - `preserveLinkEdits` — accepted and recorded; a guaranteed no-op because a refresh
    *    never sources links from Job facts, so the mutable `pursuit_links` set is always
    *    preserved (documented scoped reading: refresh is non-lossy for links).
    */
-  readonly preserveCompanyEdit?: boolean
-  readonly preserveSourceEdit?: boolean
-  readonly preserveLinkEdits?: boolean
+  readonly preserveCompanyEdit: boolean
+  readonly preserveSourceEdit: boolean
+  readonly preserveLinkEdits: boolean
 }
 
 export interface ApplicationLinkInput {
@@ -891,13 +891,12 @@ export function createPgliteApplicationAggregateService(
         throw error
       }
       // #304 caller-driven reconciliation: adopt the refreshed Job company/source into the
-      // head display fields only when the caller did NOT pin the corresponding preserve
-      // flag. `undefined` (legacy callers) preserves — the head is untouched, matching the
-      // pre-#304 refresh behavior. Links are never sourced from facts, so preserveLinkEdits
-      // has no head effect (documented no-op).
+      // head display fields when the caller does not preserve the corresponding edit. Links
+      // are never sourced from facts, so preserveLinkEdits has no head effect (documented
+      // no-op).
       const headUpdate: HeadUpdate = { snapshotJson, jobFactsRevision: lineage.jobFactsRevision }
-      if (input.preserveCompanyEdit === false) headUpdate.companyName = deriveCompany(lineage.jobFacts)
-      if (input.preserveSourceEdit === false) headUpdate.sourceName = deriveSource(lineage.jobFacts, row.sourceName)
+      if (!input.preserveCompanyEdit) headUpdate.companyName = deriveCompany(lineage.jobFacts)
+      if (!input.preserveSourceEdit) headUpdate.sourceName = deriveSource(lineage.jobFacts, row.sourceName)
       return commit(
         row,
         resolved.actor,
@@ -905,9 +904,9 @@ export function createPgliteApplicationAggregateService(
         historySnapshot({
           jobFactsRevision: lineage.jobFactsRevision,
           priorJobFactsRevision: row.jobFactsRevision,
-          preserveCompanyEdit: input.preserveCompanyEdit ?? true,
-          preserveSourceEdit: input.preserveSourceEdit ?? true,
-          preserveLinkEdits: input.preserveLinkEdits ?? true,
+          preserveCompanyEdit: input.preserveCompanyEdit,
+          preserveSourceEdit: input.preserveSourceEdit,
+          preserveLinkEdits: input.preserveLinkEdits,
         }),
         headUpdate,
         eq(applications.revision, row.revision),

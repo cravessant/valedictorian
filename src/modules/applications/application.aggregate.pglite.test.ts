@@ -142,7 +142,7 @@ describe.sequential('Application module contract (#302)', () => {
     await jobs.correctFacts({ workspaceId: 'ws-a', jobId, facts: { company: 'Acme', title: 'Principal Engineer' }, actor: ACTOR })
     expect((await applications.get('ws-a', application.id))?.jobFactsRevision).toBe(1)
     // explicit refresh re-snapshots at the current Job facts revision.
-    const refreshed = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: application.id, actor: ACTOR })
+    const refreshed = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: application.id, actor: ACTOR, preserveCompanyEdit: true, preserveSourceEdit: true, preserveLinkEdits: true })
     expect(refreshed).toMatchObject({ ok: true, application: { jobFactsRevision: 2 } })
     if (refreshed.ok) expect(refreshed.application.snapshot).toMatchObject({ job: { facts: { title: 'Principal Engineer' } } })
     expect((await applications.history('ws-a', application.id)).map((e) => e.kind)).toEqual(['created', 'snapshot_refreshed'])

@@ -101,6 +101,44 @@ describe.sequential('PGlite policy repository', () => {
     }
   })
 
+  it('rejects a retired queue patch instead of reporting an unchanged config as updated', async () => {
+    const { close, repository } = await openMigratedPolicyDb()
+    try {
+      await expect(repository.updateConfig({ queue: { staleLockHours: 9 } } as never))
+        .rejects.toThrow('Unsupported policy config field: queue')
+      await expect(repository.getConfig()).resolves.toEqual(defaultPolicyConfig)
+    } finally {
+      await close()
+    }
+  })
+
+  it('rejects malformed known values before the transaction, leaving a valid setting intact', async () => {
+    const { close, repository } = await openMigratedPolicyDb()
+    try {
+      // A valid non-default setting is what normalization used to silently reset.
+      const stored = await repository.updateConfig({ actionQueue: { staleLockHours: 9 } })
+      expect(stored.actionQueue.staleLockHours).toBe(9)
+
+      for (const [path, patch] of [
+        ['actionQueue', { actionQueue: 3 }],
+        ['actionQueue.staleLockHours', { actionQueue: { staleLockHours: 'bad' } }],
+        ['scoring.applyCutoff', { scoring: { applyCutoff: 0 } }],
+        ['manualReview.daytimeWindow.start', { manualReview: { daytimeWindow: { start: '9am' } } }],
+        ['manualReview.nonOverridableTags', { manualReview: { nonOverridableTags: ['bogus'] } }],
+      ] as const) {
+        await expect(repository.updateConfig(patch as never))
+          .rejects.toThrow(`Unsupported policy config value: ${path}`)
+      }
+
+      await expect(repository.getConfig()).resolves.toEqual({
+        ...defaultPolicyConfig,
+        actionQueue: { staleLockHours: 9 },
+      })
+    } finally {
+      await close()
+    }
+  })
+
   it('atomically merges concurrent disjoint policy config patches', async () => {
     const { close, repository } = await openMigratedPolicyDb()
     try {

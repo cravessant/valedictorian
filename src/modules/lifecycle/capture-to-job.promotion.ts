@@ -56,6 +56,7 @@ import {
   requireActor,
   requireText,
 } from '../job/job.validation'
+import { jobFactsTiming } from '../job/job.timing'
 import { resolveStrongIdentityOwner, type JobIdentityService } from '../job/job.identity'
 import { insertJobCaptureEvidenceReferences, insertJobExternalIdentities, insertJobHistory } from '../job/job.repository'
 
@@ -232,11 +233,7 @@ function deriveDefaultJobFacts(sourceName: string): JsonValue {
     roleTitle: 'Unknown',
     sourceName: sourceName.trim().length > 0 ? sourceName : 'unknown',
     roleKind: 'other',
-    term: null,
-    terms: [],
-    timingMode: 'unknown',
-    startDate: null,
-    endDate: null,
+    ...jobFactsTiming({ terms: [], timingMode: 'unknown', startDate: null, endDate: null }),
     location: null,
     workMode: 'unknown',
     employmentType: 'unknown',

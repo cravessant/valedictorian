@@ -2,7 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import { handleHttpRequestError } from './local-server.error-boundary'
-import { LocalHttpBodyTooLargeError, readJsonBody } from './local-server.http'
+import { LocalHttpBodyTooLargeError, LocalHttpValidationError, readJsonBody } from './local-server.http'
+import { parsePolicyConfigPatch } from './local-server.parsers.connectors-policy'
 
 function requestWith(body: string, headers: IncomingMessage['headers'] = {}) {
   const request = Readable.from([Buffer.from(body)]) as IncomingMessage
@@ -95,5 +96,47 @@ describe('local HTTP body limits', () => {
     }))
     expect(end).toHaveBeenCalledWith(JSON.stringify({ message: 'The request body is too large.' }))
     expect(onRequestError).not.toHaveBeenCalled()
+  })
+})
+
+describe('policy config patch parsing', () => {
+  it('admits a canonical actionQueue patch', () => {
+    expect(parsePolicyConfigPatch({ actionQueue: { staleLockHours: 3 } }))
+      .toEqual({ actionQueue: { staleLockHours: 3 } })
+  })
+
+  it('admits a canonical multi-section patch across every leaf kind', () => {
+    const patch = {
+      scoring: { applyCutoff: 7 },
+      manualReview: { daytimeWindow: { start: '09:00' }, nonOverridableTags: ['yc_company'] },
+      officialPath: { requireEmployerDomainVerificationForHighRiskForms: false },
+      sourcing: { overnightStartHour: 0, timezone: 'UTC' },
+    }
+    expect(parsePolicyConfigPatch(patch)).toEqual(patch)
+  })
+
+  it('rejects a retired queue patch as a validation error rather than ignoring it', () => {
+    expect(() => parsePolicyConfigPatch({ queue: { staleLockHours: 3 } }))
+      .toThrow(new LocalHttpValidationError('Unsupported policy config field: queue'))
+  })
+
+  it('rejects malformed known values as validation errors rather than admitting a default reset', () => {
+    // Each of these parsed cleanly before #396 and then normalized away, so the caller was told
+    // the update succeeded while the stored value stayed default (or was reset back to it).
+    for (const [path, patch] of [
+      ['actionQueue', { actionQueue: 3 }],
+      ['actionQueue.staleLockHours', { actionQueue: { staleLockHours: 'bad' } }],
+      ['manualReview.daytimeWindow.start', { manualReview: { daytimeWindow: { start: '9am' } } }],
+      ['manualReview.nonOverridableTags', { manualReview: { nonOverridableTags: ['bogus'] } }],
+      ['sourcing.overnightStartHour', { sourcing: { overnightStartHour: 24 } }],
+    ] as const) {
+      expect(() => parsePolicyConfigPatch(patch))
+        .toThrow(new LocalHttpValidationError(`Unsupported policy config value: ${path}`))
+    }
+  })
+
+  it('translates an unsupported policy config version into a validation error, not a 500', () => {
+    expect(() => parsePolicyConfigPatch({ version: 3 }))
+      .toThrow(new LocalHttpValidationError('Policy config version 3 is newer than this package supports.'))
   })
 })

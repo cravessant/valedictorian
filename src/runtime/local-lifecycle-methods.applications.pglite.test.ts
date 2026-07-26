@@ -19,6 +19,7 @@ import {
   applicationSchema,
   lifecycleApplicationHistoryResultSchema,
   lifecycleApplicationListResultSchema,
+  refreshApplicationSnapshotInputSchema,
   removalResultSchema,
   restoreResultSchema,
 } from '@sparxie/sdk'
@@ -177,6 +178,28 @@ describe.sequential('local lifecycle facade — applications', () => {
     const adopted = await methods.applications.refreshSnapshot({ applicationId: id, expectedRevision: 3, actor: USER, expectedJobFactsRevision: 1, preserveCompanyEdit: false, preserveSourceEdit: false, preserveLinkEdits: false, rationale: 'r' })
     if (adopted.status !== 'succeeded') throw new Error('unreachable')
     expect(adopted.resource.companyName).toBe('Acme')
+  })
+
+  it('rejects a refreshSnapshot that omits a preserve flag instead of defaulting it to preserve-all', async () => {
+    const { methods } = await setup()
+    const { result } = await createApplication(methods, [])
+    if (result.status !== 'succeeded') throw new Error('unreachable')
+    const complete = {
+      applicationId: result.resource.id, expectedRevision: 1, actor: USER, expectedJobFactsRevision: 1,
+      preserveCompanyEdit: true, preserveSourceEdit: true, preserveLinkEdits: true, rationale: 'r',
+    }
+    // The same input WITH every flag is accepted, so each rejection below isolates the omission.
+    expect(refreshApplicationSnapshotInputSchema.safeParse(complete).success).toBe(true)
+
+    // #396: every omitted flag is a 400 at admission — there is no preserve-all fallback.
+    for (const omitted of ['preserveCompanyEdit', 'preserveSourceEdit', 'preserveLinkEdits'] as const) {
+      const input: Record<string, unknown> = { ...complete }
+      delete input[omitted]
+      await expect(methods.applications.refreshSnapshot(input as never)).rejects.toMatchObject({ status: 400 })
+    }
+
+    // The head is untouched by the rejected refreshes.
+    expect((await methods.applications.get(result.resource.id))?.revision).toBe(1)
   })
 
   it('blocks a duplicate application for the same opportunity with the conflicting id + resolutions', async () => {

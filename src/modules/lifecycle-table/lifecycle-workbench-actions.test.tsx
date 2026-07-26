@@ -768,7 +768,9 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     const job = makeJob('job-1', {
       facts: {
         ...makeJob('seed').facts,
-        term: 'Fall 2026',
+        // A stale stored `term` is never carried into a correction; it is reprojected from `terms`.
+        term: 'Fall 2026 internship',
+        terms: [{ season: 'fall', year: 2026 }],
         startDate: '2026-09-01',
         location: { display: 'Denver', city: 'Denver', region: 'CO', country: 'US' },
         destination: { class: 'employer_or_ats', url: 'https://example.com/jobs/1' },
@@ -789,6 +791,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
       rationale: 'Title verified.',
       facts: expect.objectContaining({
         term: 'Fall 2026',
+        terms: [{ season: 'fall', year: 2026 }],
         startDate: '2026-09-01',
         location: job.facts.location,
         destination: job.facts.destination,
