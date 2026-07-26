@@ -1,20 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import type { AppJobConnector } from './connector.runner'
-import { assertSupportedConnectorSettings } from './connector.settings-validation'
+import { admitInstalledConnectorDescriptor } from './connector.installed-descriptor'
+import { admitConnectorSettings } from './connector.settings-validation'
 
 describe('connector settings host boundary', () => {
   it('rejects undeclared persisted config even when a connector schema permits additional properties', () => {
-    const connector = createPermissiveConfigFixture()
+    const descriptor = admitInstalledConnectorDescriptor(createPermissiveConfigFixture())
 
-    expect(() => assertSupportedConnectorSettings(
-      connector,
-      { batchSize: 20 },
-      {},
+    expect(() => admitConnectorSettings(
+      descriptor,
+      { config: { batchSize: 20 }, filters: {} },
+      'draft',
     )).not.toThrow()
-    expect(() => assertSupportedConnectorSettings(
-      connector,
-      { batchSize: 20, privateProviderConfig: 'must-not-be-persisted' },
-      {},
+    expect(() => admitConnectorSettings(
+      descriptor,
+      { config: { batchSize: 20, privateProviderConfig: 'must-not-be-persisted' }, filters: {} },
+      'draft',
     )).toThrow(/privateProviderConfig|not declared/i)
   })
 })

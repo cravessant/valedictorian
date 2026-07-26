@@ -18,15 +18,9 @@ describe.sequential('runtime local Valedictorian client', () => {
 
   it('creates and updates connector instances through the local client', async () => {
     const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? createTestFixtureJobsConnector({
-              observedAt: '2026-07-08T18:00:00.000Z',
-            })
-            : null
-        },
-      },
+      connectorRegistry: createStaticConnectorRegistry([
+        createTestFixtureJobsConnector({ observedAt: '2026-07-08T18:00:00.000Z' }),
+      ]),
       seedDataMode: 'none',
     })
 
@@ -219,16 +213,12 @@ describe.sequential('runtime local Valedictorian client', () => {
       releaseRefresh = resolve
     })
     const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? createTestFixtureJobsConnector({
-              observedAt: '2026-07-08T18:00:00.000Z',
-              gateRefreshUntil: refreshGate,
-            })
-            : null
-        },
-      },
+      connectorRegistry: createStaticConnectorRegistry([
+        createTestFixtureJobsConnector({
+          observedAt: '2026-07-08T18:00:00.000Z',
+          gateRefreshUntil: refreshGate,
+        }),
+      ]),
       seedDataMode: 'none',
       workspaceId: 'workspace-fixture',
     })

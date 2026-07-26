@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
+import { admitInstalledConnectorDescriptor } from '../modules/connectors/connector.installed-descriptor'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {
   createOwnedTestPgliteDataPath,
@@ -457,18 +458,24 @@ function fixtureConnector(
 }
 
 function versionedRegistry(current: AppJobConnector, exact: AppJobConnector): LocalConnectorRegistry {
+  const admit = (connector: AppJobConnector) => ({
+    connector,
+    descriptor: admitInstalledConnectorDescriptor(connector),
+  })
+  const registeredCurrent = admit(current)
+  const registeredExact = admit(exact)
   return {
     get(connectorId) {
-      return connectorId === CONNECTOR_ID ? current : null
+      return connectorId === CONNECTOR_ID ? registeredCurrent : null
     },
     getVersion(connectorId, connectorVersion) {
       if (connectorId !== CONNECTOR_ID) return null
-      if (connectorVersion === exact.definition.version) return exact
-      if (connectorVersion === current.definition.version) return current
+      if (connectorVersion === exact.definition.version) return registeredExact
+      if (connectorVersion === current.definition.version) return registeredCurrent
       return null
     },
     list() {
-      return [current, exact]
+      return [registeredCurrent, registeredExact]
     },
   }
 }

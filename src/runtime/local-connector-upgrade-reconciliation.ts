@@ -1,23 +1,25 @@
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import type { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
+import type { RegisteredConnector } from '../modules/connectors/connector.registry'
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
-import { assertSupportedConnectorSettings } from '../modules/connectors/connector.settings-validation'
+import { revalidatePersistedConnectorSettingsForVersionDrift } from '../modules/connectors/connector.settings-validation'
 import type { ConnectorInstanceRecord } from '../modules/connectors/connector-instance.persistence-types'
 
 export async function reconcileConnectorPackageUpgrade({
-  connector,
+  registered,
   connectorRepository,
   instance,
 }: {
-  connector: AppJobConnector
+  registered: RegisteredConnector
   connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   instance: ConnectorInstanceRecord
 }): Promise<ConnectorInstanceRecord> {
-  if (instance.connectorVersion === connector.definition.version) {
+  const { connector, descriptor } = registered
+  if (instance.connectorVersion === descriptor.connectorVersion) {
     return instance
   }
 
-  assertSupportedConnectorSettings(connector, instance.config, instance.filters)
+  revalidatePersistedConnectorSettingsForVersionDrift(descriptor, instance)
   await preserveCompatibleProviderCheckpoint({ connector, connectorRepository, instance })
   return connectorRepository.upsertInstance({
     id: instance.id,

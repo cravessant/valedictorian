@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { InstalledConnectorDescriptor } from '@sparxie/sdk'
-import { projectInstalledConnectorDescriptor } from '../modules/connectors/connector.capabilities'
 import { createDefaultLocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import {
   boundOptionResult,
@@ -17,9 +16,7 @@ afterEach(() => {
 
 describe('declarative connector provider descriptor coverage', () => {
   it('defaults the Jobright country and persists a selected location from the popover', async () => {
-    const descriptor = projectInstalledConnectorDescriptor(
-      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-    )
+    const descriptor = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
     const denver = {
       type: 'city',
       city: 'Denver',
@@ -94,9 +91,7 @@ describe('declarative connector provider descriptor coverage', () => {
   })
 
   it('renders every released Jobright bounded field through the provider-neutral descriptor path', async () => {
-    const descriptor = projectInstalledConnectorDescriptor(
-      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-    )
+    const descriptor = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
     const connectorsApi = await createFixtureApi(
       {
         jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
@@ -197,9 +192,7 @@ describe('declarative connector provider descriptor coverage', () => {
   })
 
   it('blocks editing when released presentation metadata is missing', async () => {
-    const complete = projectInstalledConnectorDescriptor(
-      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-    )
+    const complete = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
     const stripped = {
       ...complete,
       configSchema: complete.configSchema
@@ -232,9 +225,7 @@ describe('declarative connector provider descriptor coverage', () => {
   })
 
   it('blocks save when a dynamic oneOf field is missing presentation metadata', async () => {
-    const complete = projectInstalledConnectorDescriptor(
-      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-    )
+    const complete = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
     expect(complete.filterSchema?.presentation?.fields['/locations']).toBeDefined()
     expect(complete.dynamicOptions?.bindings.some((binding) =>
       binding.filterPointer === '/locations')).toBe(true)

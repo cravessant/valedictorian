@@ -1,13 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { projectInstalledConnectorDescriptor } from './connector.capabilities'
 import { createDefaultLocalConnectorRegistry } from './connector.registry'
 
 describe('installed Jobright declarative capabilities', () => {
-  const descriptor = projectInstalledConnectorDescriptor(
-    createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-  )
+  const descriptor = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
 
   it('declares every config, static filter, bounded enum, range, and required taxonomy field', () => {
     expect(Object.keys(descriptor.configSchema!.schema.properties)).toEqual([

@@ -5,6 +5,7 @@ import {
   getTestLocalValedictorianDatabase,
   useTestMissingReferenceTrackerPath,
 } from './local-valedictorian-client.test-harness'
+import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
@@ -15,11 +16,7 @@ describe('runtime local Valedictorian client deferred refresh', () => {
   it('persists deferred_refresh work as public manual mode without schedule provenance or a startup scan API', async () => {
     const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-client-')
     const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs' ? fixtureConnector() : null
-        },
-      },
+      connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       now: () => new Date('2026-07-09T16:00:00.000Z'),
       seedDataMode: 'none',
       pgliteDataPath,

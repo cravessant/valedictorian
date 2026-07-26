@@ -61,12 +61,10 @@ import { connectorCheckpointSignature } from '../modules/connectors/connector.ch
 import { reconcileConnectorPackageUpgrade } from './local-connector-upgrade-reconciliation'
 import { connectorDisabledExecutionError } from '../modules/connectors/connector-execution.errors'
 import {
-  assertSupportedConnectorSettings,
-  validateCompleteConnectorSettings,
+  admitConnectorSettings,
 } from '../modules/connectors/connector.settings-validation'
 import {
   listInstalledConnectorDescriptors,
-  projectInstalledConnectorDescriptor,
 } from '../modules/connectors/connector.capabilities'
 import { createConnectorOptionQueryService } from '../modules/connectors/connector.option-query'
 import {
@@ -238,7 +236,8 @@ export async function createLocalValedictorianClient({
       },
     },
     selectResolver: (adapterId, adapterVersion) => {
-      const resolver = connectorRegistry.getVersion(adapterId, adapterVersion)?.providerUrlResolver
+      const resolver = connectorRegistry.getVersion(adapterId, adapterVersion)
+        ?.connector.providerUrlResolver
       return resolver ? { id: resolver.id, version: resolver.version } : null
     },
     workspaceId,
@@ -249,7 +248,8 @@ export async function createLocalValedictorianClient({
   // client construction never loads connector implementations (retirement invariant).
   const providerFieldDeclaration = jobrightProviderFieldResolverDeclaration
   const getProviderFieldResolver = () =>
-    connectorRegistry.get(JOBRIGHT_CONNECTOR_ID)?.providerFieldResolver ?? createJobrightProviderFieldResolver()
+    connectorRegistry.get(JOBRIGHT_CONNECTOR_ID)?.connector.providerFieldResolver
+    ?? createJobrightProviderFieldResolver()
   const normalizationRepository = createNormalizationWorkRepository(database, { workspaceId, now })
   const captureHost = createConnectorCaptureHost({
     captureService,
@@ -392,30 +392,31 @@ export async function createLocalValedictorianClient({
       descriptors: {
         list: async () => listInstalledConnectorDescriptors(connectorRegistry),
         get: async (connectorId, connectorVersion) => {
-          const exactConnector = connectorRegistry.getVersion(connectorId, connectorVersion)
-          const sameIdConnectors = connectorRegistry.list().filter((candidate) =>
-            candidate.definition.id === connectorId)
-          const connector = exactConnector
-            ?? (sameIdConnectors.length === 1 ? connectorRegistry.get(connectorId) : null)
-          if (!connector) {
+          const exact = connectorRegistry.getVersion(connectorId, connectorVersion)
+          const sameId = connectorRegistry.list().filter((candidate) =>
+            candidate.descriptor.connectorId === connectorId)
+          const registered = exact
+            ?? (sameId.length === 1 ? connectorRegistry.get(connectorId) : null)
+          if (!registered) {
             throw new Error(`Unsupported connector descriptor: ${connectorId}@${connectorVersion}`)
           }
-          return projectInstalledConnectorDescriptor(connector)
+          return registered.descriptor
         },
       },
       options: connectorOptionQueries,
       create: async (input) => {
-        const connector = connectorRegistry.get(input.connectorId)
-        if (!connector) {
+        const registered = connectorRegistry.get(input.connectorId)
+        if (!registered) {
           throw new Error(`Unsupported connector id: ${input.connectorId}`)
         }
-        if (input.connectorVersion !== connector.definition.version) {
+        const { connector, descriptor } = registered
+        if (input.connectorVersion !== descriptor.connectorVersion) {
           throw new Error(
-            `Connector version mismatch for ${input.connectorId}: expected ${connector.definition.version}`,
+            `Connector version mismatch for ${input.connectorId}: expected ${descriptor.connectorVersion}`,
           )
         }
-        assertSupportedConnectorSettings(connector, input.config, input.filters)
-        if (input.enabled) validateCompleteConnectorSettings(connector, input.config, input.filters)
+        const { config, filters } = input
+        admitConnectorSettings(descriptor, { config, filters }, input.enabled ? 'enabled' : 'draft')
         const createdAt = now().toISOString()
         const earliestBackfillDate = input.earliestBackfillDate === undefined
           ? undefined
@@ -443,29 +444,24 @@ export async function createLocalValedictorianClient({
         if (!existing) {
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
         }
-        const connector = connectorRegistry.get(existing.connectorId)
+        const registered = connectorRegistry.get(existing.connectorId)
+        const installedVersion = registered?.descriptor.connectorVersion
         if (
-          connector
+          registered
           && input.connectorVersion !== undefined
-          && input.connectorVersion !== connector.definition.version
+          && input.connectorVersion !== installedVersion
         ) {
           throw new Error(
-            `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
+            `Connector version mismatch for ${existing.connectorId}: expected ${installedVersion}`,
           )
         }
         const maintenanceOnly = isConnectorMaintenanceOnlyUpdate(input)
         const config = input.config ?? toConnectorJsonRecord(existing.config, 'config')
         const filters = input.filters ?? toConnectorJsonRecord(existing.filters, 'filters')
         const enabled = input.enabled ?? existing.enabled
-        if (connector && !maintenanceOnly) {
-          assertSupportedConnectorSettings(
-            connector,
-            config,
-            filters,
-          )
-          if (enabled) {
-            validateCompleteConnectorSettings(connector, config, filters)
-          }
+        if (registered && !maintenanceOnly) {
+          const mode = enabled ? 'enabled' : 'draft'
+          admitConnectorSettings(registered.descriptor, { config, filters }, mode)
         }
         const updateNow = now().toISOString()
         const earliestBackfillDate = input.earliestBackfillDate === undefined
@@ -488,17 +484,17 @@ export async function createLocalValedictorianClient({
           createdAt: existing.createdAt,
         }
         if (
-          connector
+          registered
           && !maintenanceOnly
-          && existing.connectorVersion !== connector.definition.version
+          && existing.connectorVersion !== installedVersion
         ) {
-          if (input.connectorVersion !== connector.definition.version) {
+          if (input.connectorVersion !== installedVersion) {
             throw new Error(
-              `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
+              `Connector version mismatch for ${existing.connectorId}: expected ${installedVersion}`,
             )
           }
           const reconciled = mapConnectorInstanceSummary(await reconcileConnectorPackageUpgrade({
-            connector,
+            registered,
             connectorRepository,
             instance: { ...existing, ...proposedInstance },
           }))
@@ -509,7 +505,7 @@ export async function createLocalValedictorianClient({
           ...proposedInstance,
           connectorVersion: maintenanceOnly
             ? existing.connectorVersion
-            : input.connectorVersion ?? connector?.definition.version ?? existing.connectorVersion,
+            : input.connectorVersion ?? installedVersion ?? existing.connectorVersion,
         }))
         onScheduledWorkChanged?.()
         return updated
@@ -561,11 +557,6 @@ export async function createLocalValedictorianClient({
         },
         trigger: async (input) => {
           try {
-            const instance = await connectorRepository.getInstance(input.connectorInstanceId)
-            const connector = instance ? connectorRegistry.get(instance.connectorId) : null
-            if (instance && connector) {
-              validateCompleteConnectorSettings(connector, instance.config, instance.filters)
-            }
             const run = await executeConnectorRunTrigger({
               connectorRegistry,
               connectorRepository,
@@ -686,7 +677,8 @@ export async function createLocalValedictorianClient({
       if (!instance || !instance.enabled || instance.executionScopeId !== context.executionScopeId) {
         return { status: 'terminal', reason: 'provider_record_invalid' }
       }
-      const connector = connectorRegistry.getVersion(instance.connectorId, instance.connectorVersion)
+      const connector = connectorRegistry
+        .getVersion(instance.connectorId, instance.connectorVersion)?.connector
       const resolver = connector?.providerUrlResolver
       if (!resolver || resolver.id !== context.resolverId || resolver.version !== context.resolverVersion) {
         return { status: 'terminal', reason: 'provider_schema_changed' }
@@ -778,7 +770,7 @@ async function reconnectConnectorStatus({
   if (!instance) {
     throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
   }
-  const connector = connectorRegistry.get(instance.connectorId)
+  const connector = connectorRegistry.get(instance.connectorId)?.connector
   if (connector && typeof connector.validateAuth === 'function') {
     const validation = await connectorRunner.validateAuth(connector, {
       connectorInstanceId: input.connectorInstanceId,
@@ -847,10 +839,11 @@ async function executeConnectorRunTrigger({
   if (!instance.enabled) {
     throw connectorDisabledExecutionError(input.connectorInstanceId)
   }
-  const connector = connectorRegistry?.get(instance.connectorId) ?? null
-  if (!connector) {
+  const registered = connectorRegistry?.get(instance.connectorId) ?? null
+  if (!registered) {
     throw new Error(`Unsupported connector id: ${instance.connectorId}`)
   }
+  const connector = registered.connector
   const executionIntent = input.executionIntent ?? 'ordinary'
   assertExecutableConnectorTrigger(input, executionIntent)
   const filters = toJsonRecord(instance.filters)
@@ -888,7 +881,7 @@ async function executeConnectorRunTrigger({
   }
   try {
     await reconcileConnectorPackageUpgrade({
-      connector,
+      registered,
       connectorRepository,
       instance,
     })

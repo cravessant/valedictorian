@@ -25,11 +25,9 @@ describe.sequential('runtime local Valedictorian client', () => {
     now?: () => Date
   } = {}) {
     const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs' ? options.connector ?? null : null
-        },
-      },
+      connectorRegistry: createStaticConnectorRegistry(
+        options.connector ? [options.connector] : [],
+      ),
       now: options.now,
       seedDataMode: 'none',
     })

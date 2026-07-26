@@ -8,6 +8,7 @@ import {
   createTestLocalValedictorianClient as createFreshLocalValedictorianClient,
   useResettablePgliteTestLocalValedictorianClient,
 } from './local-valedictorian-client.test-harness'
+import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 
 const createLocalValedictorianClient = useResettablePgliteTestLocalValedictorianClient()
 import { createLocalScheduler, type LocalScheduledWorkSource } from './local-scheduler'
@@ -124,11 +125,9 @@ describe.sequential('local connector schedule source', () => {
     let refreshCalls = 0
     let source: LocalScheduledWorkSource | undefined
     const client = await createLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs' ? fixtureConnector(() => { refreshCalls += 1 }) : null
-        },
-      },
+      connectorRegistry: createStaticConnectorRegistry([
+        fixtureConnector(() => { refreshCalls += 1 }),
+      ]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       registerScheduledWorkSource(candidate) {
@@ -184,19 +183,15 @@ describe.sequential('local connector schedule source', () => {
     })
     let source: LocalScheduledWorkSource | undefined
     const client = await createFreshLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? fixtureConnector(async () => {
-              refreshCalls += 1
-              if (refreshCalls === 1) {
-                markManualStarted?.()
-                await manualGate
-              }
-            })
-            : null
-        },
-      },
+      connectorRegistry: createStaticConnectorRegistry([
+        fixtureConnector(async () => {
+          refreshCalls += 1
+          if (refreshCalls === 1) {
+            markManualStarted?.()
+            await manualGate
+          }
+        }),
+      ]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       onScheduledWorkChanged: () => scheduler.signal(),
@@ -246,13 +241,9 @@ describe.sequential('local connector schedule source', () => {
     let refreshCalls = 0
     const scheduler = createLocalScheduler({ now: () => clock })
     const client = await createLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? fixtureConnector(() => { refreshCalls += 1 })
-            : null
-        },
-      },
+      connectorRegistry: createStaticConnectorRegistry([
+        fixtureConnector(() => { refreshCalls += 1 }),
+      ]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       onScheduledWorkChanged: () => scheduler.signal(),
@@ -298,13 +289,9 @@ describe.sequential('local connector schedule source', () => {
     const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-reopen-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
-    const connectorRegistry = {
-      get(connectorId: string) {
-        return connectorId === 'fixture.jobs'
-          ? fixtureConnector(() => { refreshCalls += 1 })
-          : null
-      },
-    }
+    const connectorRegistry = createStaticConnectorRegistry([
+      fixtureConnector(() => { refreshCalls += 1 }),
+    ])
     const initialClient = await createFreshLocalValedictorianClient({
       connectorRegistry,
       connectorScheduling: availableSchedulingCapability,
@@ -386,51 +373,48 @@ describe.sequential('local connector schedule source', () => {
       },
     })
     const client = await createLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          if (connectorId !== 'fixture.jobs') return null
-          return {
-            definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
-            async refresh(input, runtime) {
-              refreshCalls += 1
-              checkpoints.push(input.checkpoint)
-              await runtime.captureIntake?.capture({
-                observedAt: clock.toISOString(),
-                providerRecordId: `accepted-capture-${refreshCalls}`,
-                providerSchema: 'fixture-provider@1',
-                payload: {
-                  companyName: `Captured company ${refreshCalls}`,
-                  roleTitle: `Captured role ${refreshCalls}`,
+      connectorRegistry: createStaticConnectorRegistry([
+        {
+          definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
+          async refresh(input, runtime) {
+            refreshCalls += 1
+            checkpoints.push(input.checkpoint)
+            await runtime.captureIntake?.capture({
+              observedAt: clock.toISOString(),
+              providerRecordId: `accepted-capture-${refreshCalls}`,
+              providerSchema: 'fixture-provider@1',
+              payload: {
+                companyName: `Captured company ${refreshCalls}`,
+                roleTitle: `Captured role ${refreshCalls}`,
+              },
+              evidence: [],
+            })
+            const complete = refreshCalls >= 2
+            return {
+              ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+              coverage: input.coverage,
+              nextCheckpoint: {
+                checkpoint: { cursor: `cursor-${refreshCalls}` },
+                schemaVersion: 'fixture-checkpoint@1',
+              },
+              observations: [],
+              stats: { observations: 0 },
+              warnings: [],
+              synchronization: {
+                newestFrontier: { state: complete ? 'caught_up' : 'advancing' },
+                historicalBackfill: {
+                  state: complete ? 'boundary_reached' : 'advancing',
+                  boundary: { earliestDate: input.coverage.start.slice(0, 10) },
                 },
-                evidence: [],
-              })
-              const complete = refreshCalls >= 2
-              return {
-                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
-                coverage: input.coverage,
-                nextCheckpoint: {
-                  checkpoint: { cursor: `cursor-${refreshCalls}` },
-                  schemaVersion: 'fixture-checkpoint@1',
-                },
-                observations: [],
-                stats: { observations: 0 },
-                warnings: [],
-                synchronization: {
-                  newestFrontier: { state: complete ? 'caught_up' : 'advancing' },
-                  historicalBackfill: {
-                    state: complete ? 'boundary_reached' : 'advancing',
-                    boundary: { earliestDate: input.coverage.start.slice(0, 10) },
-                  },
-                  pendingResolutionCount: complete ? 5 : 0,
-                  outcome: complete
-                    ? { kind: 'boundary_exhausted' }
-                    : { kind: 'yielded', reason: 'invocation_budget' },
-                },
-              }
-            },
-          }
+                pendingResolutionCount: complete ? 5 : 0,
+                outcome: complete
+                  ? { kind: 'boundary_exhausted' }
+                  : { kind: 'yielded', reason: 'invocation_budget' },
+              },
+            }
+          },
         },
-      },
+      ]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       onScheduledWorkChanged: () => scheduler.signal(),

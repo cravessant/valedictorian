@@ -10,7 +10,6 @@ import type { createPgliteConnectorRepository } from './connector.repository'
 import type { AppConnectorAuthHost } from './connector.runner'
 import { createConnectorOptionRuntime } from './connector.option-runtime'
 import type { LocalConnectorRegistry } from './connector.registry'
-import { projectInstalledConnectorDescriptor } from './connector.capabilities'
 import {
   ConnectorOptionQueryCapabilityError,
   sanitizeConnectorOptionCoreResult,
@@ -40,9 +39,9 @@ export function createConnectorOptionQueryService({
       const body = connectorOptionQueryBodySchema.parse(rawInput.body)
       const instance = await connectorRepository.getInstance(rawInput.connectorInstanceId)
       if (!instance) throw new ConnectorOptionQueryCapabilityError('unsupported_descriptor')
-      const connector = connectorRegistry.get(instance.connectorId)
-      if (!connector) throw new ConnectorOptionQueryCapabilityError('unsupported_descriptor')
-      const descriptor = projectInstalledConnectorDescriptor(connector)
+      const registered = connectorRegistry.get(instance.connectorId)
+      if (!registered) throw new ConnectorOptionQueryCapabilityError('unsupported_descriptor')
+      const { connector, descriptor } = registered
       const dynamicOptions = descriptor.dynamicOptions
       const filterSchema = descriptor.filterSchema
       if (!dynamicOptions || !filterSchema || !connector.queryOptions) {

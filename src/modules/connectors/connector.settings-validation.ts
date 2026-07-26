@@ -1,45 +1,53 @@
-import type { AppJobConnector } from './connector.runner'
-import type { ConnectorRendererSchema } from '@sparxie/sdk'
-import { installedConnectorDescriptorSchema } from '@sparxie/sdk'
-import { projectInstalledConnectorDescriptor } from './connector.capabilities'
+import type { ConnectorRendererSchema, InstalledConnectorDescriptor } from '@sparxie/sdk'
 import {
   validateConnectorConfigPersistenceValue,
   validateConnectorSchemaValue,
 } from './connector.renderer-schema-validation'
 
-export function assertSupportedConnectorSettings(
-  connector: AppJobConnector,
-  config: unknown,
-  filters: unknown,
-) {
-  const configRecord = jsonRecord(config, 'config')
-  const filterRecord = jsonRecord(filters, 'filters')
-  const descriptor = installedConnectorDescriptorSchema.parse(
-    projectInstalledConnectorDescriptor(connector),
-  )
-  validateDeclaredSettings('config', descriptor.configSchema?.schema, configRecord, true)
-  validateDeclaredSettings('filters', descriptor.filterSchema?.schema, filterRecord, true)
+export type ConnectorSettingsAdmissionMode = 'draft' | 'enabled'
+
+export interface ConnectorSettings {
+  config: unknown
+  filters: unknown
 }
 
-export function validateCompleteConnectorFilters(
-  connector: AppJobConnector,
-  filters: unknown,
+/**
+ * Host-boundary admission for caller-supplied settings. `draft` tolerates missing root
+ * required values; `enabled` is the single complete pass, never a weaker pass plus a retry.
+ */
+export function admitConnectorSettings(
+  descriptor: InstalledConnectorDescriptor,
+  settings: ConnectorSettings,
+  mode: ConnectorSettingsAdmissionMode,
 ) {
-  const filterRecord = jsonRecord(filters, 'filters')
-  const schema = projectInstalledConnectorDescriptor(connector).filterSchema?.schema
-  validateDeclaredSettings('filters', schema, filterRecord, false)
+  validateDeclaredConnectorSettings(descriptor, settings, mode === 'draft')
 }
 
-export function validateCompleteConnectorSettings(
-  connector: AppJobConnector,
-  config: unknown,
-  filters: unknown,
+/** Distinct trust boundary: persisted settings re-checked before load or execution. */
+export function revalidatePersistedConnectorSettings(
+  descriptor: InstalledConnectorDescriptor,
+  settings: ConnectorSettings,
 ) {
-  const configRecord = jsonRecord(config, 'config')
-  const filterRecord = jsonRecord(filters, 'filters')
-  const descriptor = projectInstalledConnectorDescriptor(connector)
-  validateDeclaredSettings('config', descriptor.configSchema?.schema, configRecord, false)
-  validateDeclaredSettings('filters', descriptor.filterSchema?.schema, filterRecord, false)
+  validateDeclaredConnectorSettings(descriptor, settings, false)
+}
+
+/** Distinct trust boundary: persisted settings re-checked across installed-version drift. */
+export function revalidatePersistedConnectorSettingsForVersionDrift(
+  descriptor: InstalledConnectorDescriptor,
+  settings: ConnectorSettings,
+) {
+  validateDeclaredConnectorSettings(descriptor, settings, true)
+}
+
+function validateDeclaredConnectorSettings(
+  descriptor: InstalledConnectorDescriptor,
+  settings: ConnectorSettings,
+  allowMissingRootRequired: boolean,
+) {
+  const config = jsonRecord(settings.config, 'config')
+  const filters = jsonRecord(settings.filters, 'filters')
+  validateDeclaredSettings('config', descriptor.configSchema?.schema, config, allowMissingRootRequired)
+  validateDeclaredSettings('filters', descriptor.filterSchema?.schema, filters, allowMissingRootRequired)
 }
 
 function validateDeclaredSettings(

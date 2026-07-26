@@ -7,7 +7,6 @@ import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ConnectorStatusListResult, ConnectorStatusView } from './modules/connectors/connector.status'
-import { projectInstalledConnectorDescriptor } from './modules/connectors/connector.capabilities'
 import { createDefaultLocalConnectorRegistry } from './modules/connectors/connector.registry'
 import { defaultEarliestBackfillDate } from './modules/connectors/connector.earliest-backfill'
 import type {
@@ -458,9 +457,7 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
 
 export function createConnectorsApiWithJobrightDescriptor() {
   const api = createConnectorsApi()
-  const descriptor = projectInstalledConnectorDescriptor(
-    createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-  )
+  const descriptor = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
   return Object.assign(api, {
     descriptors: {
       list: vi.fn(async () => ({ items: [descriptor] })),

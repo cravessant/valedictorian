@@ -1,6 +1,5 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { projectInstalledConnectorDescriptor } from '../modules/connectors/connector.capabilities'
 import { createDefaultLocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import {
   createFixtureApi,
@@ -123,9 +122,7 @@ describe('connector validation and action-state synchronization', () => {
   })
 
   it('keeps Jobright experience range field errors through taxonomy edits and blocks Run with matching disabled visuals', async () => {
-    const descriptor = projectInstalledConnectorDescriptor(
-      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-    )
+    const descriptor = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
     const taxonomySource = descriptor.dynamicOptions!.sources.find((source) =>
       source.id === 'jobright.taxonomy')!
     const connectorsApi = await createFixtureApi(
@@ -203,9 +200,7 @@ describe('connector validation and action-state synchronization', () => {
   })
 
   it('disables Save for invalid earliest backfill and reports the date error on Run', async () => {
-    const descriptor = projectInstalledConnectorDescriptor(
-      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-    )
+    const descriptor = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
     const connectorsApi = await createFixtureApi(
       {
         jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
@@ -238,9 +233,7 @@ describe('connector validation and action-state synchronization', () => {
   })
 
   it('disables Save and validate until required write-only credential inputs are present and valid', async () => {
-    const descriptor = projectInstalledConnectorDescriptor(
-      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-    )
+    const descriptor = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
     const connectorsApi = await createFixtureApi(
       {
         jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
@@ -298,9 +291,7 @@ describe('connector validation and action-state synchronization', () => {
   })
 
   it('blocks Run while enabled state is unsaved', async () => {
-    const descriptor = projectInstalledConnectorDescriptor(
-      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
-    )
+    const descriptor = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
     const connectorsApi = await createFixtureApi(
       {
         jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],

@@ -15,9 +15,9 @@ describe('connector registry', () => {
   it('registers the exact released API-only Jobright connector', () => {
     const registry = createDefaultLocalConnectorRegistry()
 
-    const connector = registry.get('jobright.resolver')
+    const registered = registry.get('jobright.resolver')
 
-    expect(connector?.definition).toMatchObject({
+    expect(registered?.connector.definition).toMatchObject({
       id: 'jobright.resolver',
       version: '0.18.2',
       capabilities: { fetchesPublicPages: false },
@@ -76,7 +76,7 @@ describe('connector registry', () => {
   it('reaches the API-only connector and reports missing auth without provider or browser work', async () => {
     const providerFetch = vi.fn()
     vi.stubGlobal('fetch', providerFetch)
-    const connector = createDefaultLocalConnectorRegistry().get('jobright.resolver')!
+    const connector = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.connector
 
     const result = await connector.refresh({
       checkpoint: null,

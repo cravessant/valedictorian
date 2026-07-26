@@ -2,6 +2,7 @@ import type { ConnectorRefreshMode } from '@sparxie/valedictorian-connectors-cor
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { createPgliteConnectorRepository, ConnectorRunRecord } from '../modules/connectors/connector.repository'
 import type { createConnectorRunner, AppConnectorRefreshRecord } from '../modules/connectors/connector.runner'
+import { revalidatePersistedConnectorSettings } from '../modules/connectors/connector.settings-validation'
 import { finalizeDeferredConnectorRefreshRecord } from './local-connector-retry-dispatch'
 import { reconcileConnectorPackageUpgrade } from './local-connector-upgrade-reconciliation'
 
@@ -42,15 +43,19 @@ export async function executeClaimedConnectorRun({
       throw new Error(`Connector instance not found: ${runRequest.connectorInstanceId}`)
     }
 
-    const connector = connectorRegistry.get(instance.connectorId) ?? null
-    if (!connector) {
+    const registered = connectorRegistry.get(instance.connectorId) ?? null
+    if (!registered) {
       throw new Error(`Unsupported connector id: ${instance.connectorId}`)
     }
+    const connector = registered.connector
     instance = await reconcileConnectorPackageUpgrade({
-      connector,
+      registered,
       connectorRepository,
       instance,
     })
+    // Single execution-side trust boundary: every entry point (manual, scheduled, retry,
+    // deferred refresh) claims a run through here before any connector code is reached.
+    revalidatePersistedConnectorSettings(registered.descriptor, instance)
 
     const coverageStartedAt = await persistedClaimedCoverageStart(
       connectorRepository,

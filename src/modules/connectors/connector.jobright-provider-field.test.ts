@@ -13,9 +13,9 @@ import { JOBRIGHT_CONNECTOR_ID } from './jobright.constants'
 describe('Jobright provider-field resolver registration (#325)', () => {
   it('exposes the provider-field resolver through the connector registry', () => {
     const registry = createDefaultLocalConnectorRegistry()
-    const connector = registry.get(JOBRIGHT_CONNECTOR_ID)
-    expect(connector).not.toBeNull()
-    const resolver = connector?.providerFieldResolver
+    const registered = registry.get(JOBRIGHT_CONNECTOR_ID)
+    expect(registered).not.toBeNull()
+    const resolver = registered?.connector.providerFieldResolver
     expect(resolver).toBeDefined()
     expect(resolver?.declaration.id).toBe('jobright.provider-fields')
     expect(resolver?.declaration.version).toBe('jobright-provider-fields@2')
