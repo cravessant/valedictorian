@@ -31,22 +31,22 @@ export function createElectronSecretCodec(safeStorage: ElectronSafeStorage): Sec
       return safeStorage.isEncryptionAvailable()
     },
     decrypt(value) {
+      // Classify before consulting the platform so an unavailable safe storage
+      // cannot mask a retired or malformed ciphertext as a transient failure.
+      if (!value.startsWith(safeStorageVersionPrefix)) {
+        throw value.startsWith(safeStoragePrefix)
+          ? new ElectronSecretCodecError(
+            'secure_storage_unsupported_version',
+            'Secure storage ciphertext version is unsupported',
+          )
+          : invalidCiphertextError()
+      }
+
+      const encryptedBuffer = decodeCiphertext(value.slice(safeStorageVersionPrefix.length))
+
       if (!safeStorage.isEncryptionAvailable()) {
         throw secureStorageUnavailableError()
       }
-
-      if (value.startsWith(safeStoragePrefix) && !value.startsWith(safeStorageVersionPrefix)) {
-        throw new ElectronSecretCodecError(
-          'secure_storage_unsupported_version',
-          'Secure storage ciphertext version is unsupported',
-        )
-      }
-
-      const ciphertext = value.startsWith(safeStorageVersionPrefix)
-        ? value.slice(safeStorageVersionPrefix.length)
-        : value
-
-      const encryptedBuffer = decodeCiphertext(ciphertext)
 
       try {
         return safeStorage.decryptString(encryptedBuffer)

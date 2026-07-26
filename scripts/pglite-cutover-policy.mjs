@@ -31,13 +31,9 @@ const policyImplementationFiles = new Set([
   'src/workspace/workspace.paths.test.ts',
 ])
 
-export const pgliteCutoverAllowedLegacyEvidenceFiles = new Set([
-  'UPGRADING.md',
-  'electron/profile-runtime-composition.test.ts',
+const legacySqliteNamePolicyFiles = new Set([
   'scripts/pglite-cutover-policy.mjs',
   'scripts/pglite-cutover-policy.test.mjs',
-  'src/modules/profile/profile.upgrade-policy.test.ts',
-  'src/modules/profile/profile.upgrade-policy.ts',
 ])
 
 export function auditPgliteCutoverFiles(files) {
@@ -55,13 +51,8 @@ export function auditPgliteCutoverFiles(files) {
         if (pattern.test(contents)) violations.push(`${filePath}: ${label} is forbidden`)
       }
     }
-    if (
-      contents.includes('valedictorian.sqlite')
-      && !pgliteCutoverAllowedLegacyEvidenceFiles.has(filePath)
-    ) {
-      violations.push(
-        `${filePath}: legacy SQLite file name is restricted to the staged profile upgrade policy`,
-      )
+    if (contents.includes('valedictorian.sqlite') && !legacySqliteNamePolicyFiles.has(filePath)) {
+      violations.push(`${filePath}: legacy SQLite file name is forbidden`)
     }
   }
   return [...new Set(violations)].sort()

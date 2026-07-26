@@ -14,7 +14,6 @@ import {
   createJsonProfileStore,
   type CreateJsonProfileStoreOptions,
 } from './profile.json.store'
-import { assertSupportedProfileUpgrade } from './profile.upgrade-policy'
 
 export interface PreparedWorkspaceProfileCapabilities {
   database: PgliteDatabase
@@ -30,7 +29,6 @@ export async function prepareWorkspaceProfileCapabilities(options: {
   pgliteDataPath: string
   workspaceId: string
 }): Promise<PreparedWorkspaceProfileCapabilities> {
-  assertSupportedProfileUpgrade({ profilePath: options.profilePath })
   fs.mkdirSync(options.pgliteDataPath, { recursive: true })
   const pgliteClient = await createPgliteClient({ dataDir: options.pgliteDataPath })
   try {

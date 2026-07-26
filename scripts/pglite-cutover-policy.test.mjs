@@ -1,8 +1,5 @@
 import { expect, it } from 'vitest'
-import {
-  auditPgliteCutoverFiles,
-  pgliteCutoverAllowedLegacyEvidenceFiles,
-} from './pglite-cutover-policy.mjs'
+import { auditPgliteCutoverFiles } from './pglite-cutover-policy.mjs'
 
 it('rejects operational SQLite dependencies, scripts, imports, paths, and migration assets', () => {
   const violations = auditPgliteCutoverFiles(new Map([
@@ -27,20 +24,18 @@ it('rejects operational SQLite dependencies, scripts, imports, paths, and migrat
   expect(violations.some((value) => value.includes('drizzle/0001_legacy_sqlite.sql'))).toBe(true)
 })
 
-it('allows only the documented legacy profile evidence name after reader removal', () => {
-  const allowedFiles = new Map(
-    [...pgliteCutoverAllowedLegacyEvidenceFiles].map((filePath) => [
-      filePath,
-      'The immutable valedictorian.sqlite profile migration evidence is never read.\n',
-    ]),
-  )
-
-  expect(auditPgliteCutoverFiles(allowedFiles)).toEqual([])
+it('forbids the legacy SQLite file name everywhere except this policy itself', () => {
   expect(auditPgliteCutoverFiles(new Map([
-      ['src/runtime/legacy.ts', "const legacy = 'valedictorian.sqlite'\n"],
-    ]))).toEqual(
-    ['src/runtime/legacy.ts: legacy SQLite file name is restricted to the staged profile upgrade policy'],
-  )
+    ['scripts/pglite-cutover-policy.mjs', "contents.includes('valedictorian.sqlite')\n"],
+    ['scripts/pglite-cutover-policy.test.mjs', "'valedictorian.sqlite'\n"],
+  ]))).toEqual([])
+  expect(auditPgliteCutoverFiles(new Map([
+    ['UPGRADING.md', 'Open the workspace once so valedictorian.sqlite is migrated.\n'],
+    ['src/runtime/legacy.ts', "const legacy = 'valedictorian.sqlite'\n"],
+  ]))).toEqual([
+    'UPGRADING.md: legacy SQLite file name is forbidden',
+    'src/runtime/legacy.ts: legacy SQLite file name is forbidden',
+  ])
 })
 
 it('accepts a PGlite-only manifest and journaled PostgreSQL migrations after the baseline', () => {

@@ -3,7 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { defaultAppSettings } from './app-settings'
+import type { AppSecretStore } from './app-secret'
 import { createApplicationFileSecretStore } from './app-secret.composition'
+import { createApplicationSecretScope } from '../modules/secrets/secret.scope'
 import {
   defaultAtomicDocumentFileOperations,
   type AtomicDocumentFileOperations,
@@ -12,16 +14,16 @@ import {
   apiTokenSecretReference,
   createFileAppSettingsStore,
   createWorkspaceAppSettingsStore,
-  defaultAppSettingsFileOperations,
   writeAppSettingsDocumentAtomically,
-  type AppSettingsFileOperations,
 } from './app-settings.store'
 import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
 
 const TOKEN_CANARY = 'canary-api-token-9f3c2a1b'
+const DOCUMENT_CANARY = 'canary-settings-document-3a5e1d7c'
 
 const ORIGINAL_DOCUMENT = `${JSON.stringify({
-  apiToken: TOKEN_CANARY,
+  apiTokenSecretRef: apiTokenSecretReference,
+  note: DOCUMENT_CANARY,
   runtimeMode: 'remote',
 }, null, 2)}\n`
 
@@ -31,14 +33,45 @@ function createTempSettingsPath() {
 
 const testCodec = {
   decrypt: (value: string) => Buffer.from(value.replace(/^encrypted:/, ''), 'base64').toString(),
-  encrypt: (value: string) => {
-    if (value === 'trigger-unavailable') {
-      throw Object.assign(new Error('Secure storage is unavailable'), {
-        code: 'secure_storage_unavailable',
-      })
-    }
-    return `encrypted:${Buffer.from(value).toString('base64')}`
-  },
+  encrypt: (value: string) => `encrypted:${Buffer.from(value).toString('base64')}`,
+}
+
+function createRecordingSecretStore(operations: string[]): AppSecretStore {
+  return {
+    scope: createApplicationSecretScope(),
+    async delete(reference) {
+      operations.push(`delete:${reference}`)
+    },
+    async get(reference) {
+      operations.push(`get:${reference}`)
+      return null
+    },
+    async has(reference) {
+      operations.push(`has:${reference}`)
+      return false
+    },
+    async set(reference) {
+      operations.push(`set:${reference}`)
+    },
+  }
+}
+
+function createWriteRecordingFileOps(writes: string[]): AtomicDocumentFileOperations {
+  return {
+    ...defaultAtomicDocumentFileOperations,
+    openSync(filePath, flags, mode) {
+      writes.push(`open:${flags}`)
+      return defaultAtomicDocumentFileOperations.openSync(filePath, flags, mode)
+    },
+    renameSync(from, to) {
+      writes.push('rename')
+      defaultAtomicDocumentFileOperations.renameSync(from, to)
+    },
+    writeSync(fd, data, offset, length) {
+      writes.push('write')
+      return defaultAtomicDocumentFileOperations.writeSync(fd, data, offset, length)
+    },
+  }
 }
 
 function createSecretBackedSettingsStore(settingsPath: string, codec = testCodec) {
@@ -119,33 +152,8 @@ describe('file app settings store', () => {
     await expect(store.resolveApiToken()).resolves.toBe(TOKEN_CANARY)
   })
 
-  it('migrates legacy plaintext API tokens only after verified encrypted readback', async () => {
+  it('fails the save without persisting anything when secure storage is unavailable', async () => {
     const settingsPath = createTempSettingsPath()
-    fs.writeFileSync(settingsPath, JSON.stringify({
-      apiToken: TOKEN_CANARY,
-      runtimeMode: 'remote',
-    }), 'utf8')
-    const { secretsPath, store } = createSecretBackedSettingsStore(settingsPath)
-
-    await expect(store.get()).resolves.toMatchObject({
-      apiTokenConfigured: true,
-      runtimeMode: 'remote',
-    })
-    await expect(store.resolveApiToken()).resolves.toBe(TOKEN_CANARY)
-
-    const persistedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
-    expect(persistedSettings).not.toHaveProperty('apiToken')
-    expect(persistedSettings).toMatchObject({ apiTokenSecretRef: apiTokenSecretReference })
-    expect(fs.readFileSync(secretsPath, 'utf8')).not.toContain(TOKEN_CANARY)
-    expect(JSON.stringify(persistedSettings)).not.toContain(TOKEN_CANARY)
-  })
-
-  it('keeps legacy plaintext when encryption is unavailable so migration stays retryable', async () => {
-    const settingsPath = createTempSettingsPath()
-    fs.writeFileSync(settingsPath, JSON.stringify({
-      apiToken: TOKEN_CANARY,
-      runtimeMode: 'remote',
-    }), 'utf8')
     const unavailableCodec = {
       decrypt: () => {
         throw Object.assign(new Error('Secure storage is unavailable'), {
@@ -160,48 +168,39 @@ describe('file app settings store', () => {
     }
     const { secretsPath, store } = createSecretBackedSettingsStore(settingsPath, unavailableCodec)
 
-    await expect(store.get()).resolves.toMatchObject({
-      apiTokenConfigured: true,
-      runtimeMode: 'remote',
-    })
-    await expect(store.resolveApiToken()).rejects.toMatchObject({
+    await expect(store.update({ apiToken: TOKEN_CANARY })).rejects.toMatchObject({
       code: 'secure_storage_unavailable',
     })
-    await expect(store.resolveApiToken()).rejects.toSatisfy((error: unknown) => {
+    await expect(store.update({ apiToken: TOKEN_CANARY })).rejects.toSatisfy((error: unknown) => {
       expect(JSON.stringify(error)).not.toContain(TOKEN_CANARY)
       expect(String(error)).not.toContain(TOKEN_CANARY)
       return true
     })
 
-    const persistedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
-    expect(persistedSettings).toMatchObject({ apiToken: TOKEN_CANARY })
-    expect(persistedSettings).not.toHaveProperty('apiTokenSecretRef')
+    await expect(store.get()).resolves.toMatchObject({ apiTokenConfigured: false })
+    await expect(store.resolveApiToken()).resolves.toBeNull()
+    expect(fs.existsSync(settingsPath)).toBe(false)
     expect(fs.existsSync(secretsPath)).toBe(false)
   })
 
-  it('keeps legacy plaintext when encrypted readback does not match', async () => {
+  it('fails the save without a token reference when encrypted readback does not match', async () => {
     const settingsPath = createTempSettingsPath()
-    fs.writeFileSync(settingsPath, JSON.stringify({
-      apiToken: TOKEN_CANARY,
-    }), 'utf8')
     const mismatchedCodec = {
       decrypt: () => 'different-value',
       encrypt: (value: string) => `encrypted:${Buffer.from(value).toString('base64')}`,
     }
-    const { store } = createSecretBackedSettingsStore(settingsPath, mismatchedCodec)
+    const { secretsPath, store } = createSecretBackedSettingsStore(settingsPath, mismatchedCodec)
 
-    await expect(store.get()).resolves.toMatchObject({ apiTokenConfigured: true })
-    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf8'))).toMatchObject({
-      apiToken: TOKEN_CANARY,
-    })
-    await expect(store.resolveApiToken()).rejects.toMatchObject({
-      code: 'secure_storage_unavailable',
-    })
-    await expect(store.resolveApiToken()).rejects.toSatisfy((error: unknown) => {
-      expect(JSON.stringify(error)).not.toContain(TOKEN_CANARY)
+    await expect(store.update({ apiToken: TOKEN_CANARY })).rejects.toSatisfy((error: unknown) => {
+      expect(String(error)).toContain('readback verification failed')
       expect(String(error)).not.toContain(TOKEN_CANARY)
       return true
     })
+
+    await expect(store.get()).resolves.toMatchObject({ apiTokenConfigured: false })
+    await expect(store.resolveApiToken()).resolves.toBeNull()
+    expect(fs.existsSync(settingsPath)).toBe(false)
+    expect(fs.readFileSync(secretsPath, 'utf8')).not.toContain(TOKEN_CANARY)
   })
 
   it('treats a stale apiTokenSecretRef without a store entry as not configured', async () => {
@@ -218,6 +217,34 @@ describe('file app settings store', () => {
     expect(publicSettings).not.toHaveProperty('apiToken')
     expect(publicSettings).not.toHaveProperty('apiTokenSecretRef')
     expect(JSON.stringify(publicSettings)).not.toContain(TOKEN_CANARY)
+  })
+
+  it('ignores a retired plaintext apiToken field without touching the secret store or rewriting settings', async () => {
+    const settingsPath = createTempSettingsPath()
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
+    const retiredDocument = `${JSON.stringify({
+      apiToken: TOKEN_CANARY,
+      runtimeMode: 'remote',
+    }, null, 2)}\n`
+    fs.writeFileSync(settingsPath, retiredDocument, 'utf8')
+
+    const secretOperations: string[] = []
+    const settingsWrites: string[] = []
+    const store = createFileAppSettingsStore(settingsPath, {
+      fileOps: createWriteRecordingFileOps(settingsWrites),
+      secretStore: createRecordingSecretStore(secretOperations),
+    })
+
+    const publicSettings = await store.get()
+    expect(publicSettings).toMatchObject({ apiTokenConfigured: false, runtimeMode: 'remote' })
+    expect(publicSettings).not.toHaveProperty('apiToken')
+    expect(JSON.stringify(publicSettings)).not.toContain(TOKEN_CANARY)
+    await expect(store.resolveApiToken()).resolves.toBeNull()
+    await expect(store.get()).resolves.toMatchObject({ apiTokenConfigured: false })
+
+    expect(secretOperations).toEqual([])
+    expect(settingsWrites).toEqual([])
+    expect(fs.readFileSync(settingsPath, 'utf8')).toBe(retiredDocument)
   })
 
   it('reports configured from ciphertext presence without decrypting', async () => {
@@ -257,22 +284,6 @@ describe('file app settings store', () => {
     expect(publicSettings).not.toHaveProperty('apiTokenSecretRef')
     expect(JSON.stringify(publicSettings)).not.toContain(TOKEN_CANARY)
     expect(decryptCalls).toEqual([])
-  })
-
-  it('removes empty legacy plaintext without storing a secret', async () => {
-    const settingsPath = createTempSettingsPath()
-    fs.writeFileSync(settingsPath, JSON.stringify({
-      apiToken: '',
-      runtimeMode: 'local-shared',
-    }), 'utf8')
-    const { secretsPath, store } = createSecretBackedSettingsStore(settingsPath)
-
-    await expect(store.get()).resolves.toMatchObject({
-      apiTokenConfigured: false,
-      runtimeMode: 'local-shared',
-    })
-    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf8'))).not.toHaveProperty('apiToken')
-    expect(fs.existsSync(secretsPath)).toBe(false)
   })
 
   it('deletes the encrypted API token and returns not configured', async () => {
@@ -359,10 +370,10 @@ describe('file app settings store', () => {
 
 describe('atomic app settings document replacement', () => {
   function createRecordingFileOps(
-    overrides: Partial<AppSettingsFileOperations> = {},
-  ): AppSettingsFileOperations {
+    overrides: Partial<AtomicDocumentFileOperations> = {},
+  ): AtomicDocumentFileOperations {
     return {
-      ...defaultAppSettingsFileOperations,
+      ...defaultAtomicDocumentFileOperations,
       ...overrides,
     }
   }
@@ -476,12 +487,12 @@ describe('atomic app settings document replacement', () => {
     expect(leftovers).toEqual([])
   })
 
-  it('replaces with a complete migrated document and no plaintext on success', async () => {
+  it('replaces with a complete recognized document and no plaintext on success', async () => {
     const settingsPath = createTempSettingsPath()
     fs.writeFileSync(settingsPath, ORIGINAL_DOCUMENT, 'utf8')
     const { secretsPath, store } = createSecretBackedSettingsStore(settingsPath)
 
-    await expect(store.get()).resolves.toMatchObject({
+    await expect(store.update({ apiToken: TOKEN_CANARY })).resolves.toMatchObject({
       apiTokenConfigured: true,
       runtimeMode: 'remote',
     })
@@ -493,7 +504,9 @@ describe('atomic app settings document replacement', () => {
       runtimeMode: 'remote',
     })
     expect(parsed).not.toHaveProperty('apiToken')
+    expect(parsed).not.toHaveProperty('note')
     expect(persisted).not.toContain(TOKEN_CANARY)
+    expect(persisted).not.toContain(DOCUMENT_CANARY)
     expect(fs.readFileSync(secretsPath, 'utf8')).not.toContain(TOKEN_CANARY)
     expect(fs.statSync(settingsPath).mode & 0o777).toBe(0o600)
   })
@@ -506,7 +519,7 @@ describe('atomic app settings document replacement', () => {
 
     const fileOps = createRecordingFileOps({
       openSync(target, flags, mode) {
-        const fd = defaultAppSettingsFileOperations.openSync(target, flags, mode)
+        const fd = defaultAtomicDocumentFileOperations.openSync(target, flags, mode)
         if (target !== settingsPath) {
           openedTemps.push(target)
         }
@@ -529,8 +542,8 @@ describe('atomic app settings document replacement', () => {
     }
 
     expect(thrown).toBeTruthy()
-    expect(String(thrown)).not.toContain(TOKEN_CANARY)
-    expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown as object))).not.toContain(TOKEN_CANARY)
+    expect(String(thrown)).not.toContain(DOCUMENT_CANARY)
+    expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown as object))).not.toContain(DOCUMENT_CANARY)
     expect(fs.readFileSync(settingsPath, 'utf8')).toBe(ORIGINAL_DOCUMENT)
     expect(openedTemps.length).toBeGreaterThan(0)
     for (const temporaryPath of openedTemps) {
@@ -546,27 +559,27 @@ describe('atomic app settings document replacement', () => {
     const fileOps = createRecordingFileOps({
       closeSync(fd) {
         events.push('close:file')
-        defaultAppSettingsFileOperations.closeSync(fd)
+        defaultAtomicDocumentFileOperations.closeSync(fd)
       },
       fsyncDirectory(directoryPath) {
         events.push('fsyncDirectory')
-        defaultAppSettingsFileOperations.fsyncDirectory(directoryPath)
+        defaultAtomicDocumentFileOperations.fsyncDirectory(directoryPath)
       },
       fsyncSync(fd) {
         events.push('fsync:file')
-        defaultAppSettingsFileOperations.fsyncSync(fd)
+        defaultAtomicDocumentFileOperations.fsyncSync(fd)
       },
       openSync(filePath, flags, mode) {
         events.push(`open:${flags}`)
-        return defaultAppSettingsFileOperations.openSync(filePath, flags, mode)
+        return defaultAtomicDocumentFileOperations.openSync(filePath, flags, mode)
       },
       renameSync(from, to) {
         events.push('rename')
-        defaultAppSettingsFileOperations.renameSync(from, to)
+        defaultAtomicDocumentFileOperations.renameSync(from, to)
       },
       writeSync(fd, data, offset, length) {
         events.push('write')
-        return defaultAppSettingsFileOperations.writeSync(fd, data, offset, length)
+        return defaultAtomicDocumentFileOperations.writeSync(fd, data, offset, length)
       },
     })
 
@@ -585,7 +598,7 @@ describe('atomic app settings document replacement', () => {
   })
 })
 
-describe('legacy API token migration durability ordering', () => {
+describe('encrypted API token durability ordering', () => {
   function createPrefixedRecordingOps(
     events: string[],
     prefix: string,
@@ -630,7 +643,7 @@ describe('legacy API token migration durability ordering', () => {
     }
   }
 
-  it('completes durable secret-store set before starting plaintext-removing settings replacement', async () => {
+  it('completes the durable secret-store set before starting settings replacement', async () => {
     const settingsPath = createTempSettingsPath()
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
     fs.writeFileSync(settingsPath, ORIGINAL_DOCUMENT, 'utf8')
@@ -646,7 +659,7 @@ describe('legacy API token migration durability ordering', () => {
       ),
     })
 
-    await expect(store.get()).resolves.toMatchObject({
+    await expect(store.update({ apiToken: TOKEN_CANARY })).resolves.toMatchObject({
       apiTokenConfigured: true,
       runtimeMode: 'remote',
     })

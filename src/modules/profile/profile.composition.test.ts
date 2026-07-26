@@ -10,7 +10,6 @@ import {
 } from './profile.composition'
 import { serializeProfileJsonDocument } from './profile.json.document'
 import { computeProfileRevision } from './profile.revision'
-import { legacyProfileUpgradeFileName } from './profile.upgrade-policy'
 
 const codec: SecretCodec = {
   decrypt: (value) => value,
@@ -90,30 +89,6 @@ describe('profile composition', () => {
     expect(JSON.stringify(await restarted.profileService.get()).toLowerCase()).not.toContain('ssn')
     await expectOperationalDatabaseHasNoProfileTables(restarted.pgliteClient)
     await restarted.dispose()
-  })
-
-  it('requires the staged profile upgrade before opening any PGlite owner', async () => {
-    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-composition-upgrade-'))
-    cleanupPaths.push(rootPath)
-    const layout = resolveWorkspaceLayout(rootPath)
-    fs.mkdirSync(layout.dataPath, { recursive: true })
-    const legacyPath = path.join(layout.dataPath, legacyProfileUpgradeFileName)
-    const evidence = Buffer.from('legacy profile source remains immutable')
-    fs.writeFileSync(legacyPath, evidence)
-
-    await expect(prepareWorkspaceProfileCapabilities({
-      profilePath: layout.profilePath,
-      secretCodec: codec,
-      pgliteDataPath: layout.pgliteDataPath,
-      workspaceId: 'workspace-upgrade-required',
-    })).rejects.toMatchObject({
-      code: 'profile_upgrade_required',
-      name: 'ProfileUpgradeRequiredError',
-    })
-
-    expect(fs.readFileSync(legacyPath)).toEqual(evidence)
-    expect(fs.existsSync(layout.profilePath)).toBe(false)
-    expect(fs.existsSync(layout.pgliteDataPath)).toBe(false)
   })
 })
 

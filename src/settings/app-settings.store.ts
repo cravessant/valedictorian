@@ -17,7 +17,6 @@ import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
 export const apiTokenSecretReference = 'app-secret:api-token'
 
 interface PersistedAppSettingsDocument {
-  apiToken?: string
   apiTokenSecretRef?: string
   localApiHost?: unknown
   localApiPort?: unknown
@@ -30,23 +29,16 @@ interface PersistedAppSettingsDocument {
 }
 
 export interface FileAppSettingsStoreOptions {
-  fileOps?: AppSettingsFileOperations
+  fileOps?: AtomicDocumentFileOperations
   secretStore?: AppSecretStore
 }
 
-/** Compatible alias for the shared durable document filesystem seam. */
-export type AppSettingsFileOperations = AtomicDocumentFileOperations
-
-export const defaultAppSettingsFileOperations: AppSettingsFileOperations =
-  defaultAtomicDocumentFileOperations
-
 export function createFileAppSettingsStore(
   settingsPath: string,
-  { fileOps = defaultAppSettingsFileOperations, secretStore }: FileAppSettingsStoreOptions = {},
+  { fileOps = defaultAtomicDocumentFileOperations, secretStore }: FileAppSettingsStoreOptions = {},
 ): AppSettingsStore {
   return {
     async get() {
-      await maybeMigrateLegacyApiToken(settingsPath, secretStore, fileOps)
       return await toPublicSettings(readPersistedDocument(settingsPath), secretStore)
     },
     async reset() {
@@ -58,13 +50,7 @@ export function createFileAppSettingsStore(
       return { ...defaultAppSettings }
     },
     async resolveApiToken() {
-      await maybeMigrateLegacyApiToken(settingsPath, secretStore, fileOps)
       const document = readPersistedDocument(settingsPath)
-
-      if (typeof document.apiToken === 'string' && document.apiToken.length > 0) {
-        // Migration left plaintext for retry; never bootstrap runtime from it.
-        throw createSecureStorageMigrationFailure()
-      }
 
       if (document.apiTokenSecretRef && secretStore) {
         return secretStore.get(document.apiTokenSecretRef)
@@ -73,14 +59,13 @@ export function createFileAppSettingsStore(
       return null
     },
     async update(patch: AppSettingsPatch) {
-      await maybeMigrateLegacyApiToken(settingsPath, secretStore, fileOps)
       const current = readPersistedDocument(settingsPath)
       const nextPublic = normalizeAppSettings({
         ...(await toPublicSettings(current, secretStore)),
         ...omitWriteOnlyToken(patch),
       })
       const nextDocument: PersistedAppSettingsDocument = {
-        ...current,
+        apiTokenSecretRef: current.apiTokenSecretRef,
         localApiHost: nextPublic.localApiHost,
         localApiPort: nextPublic.localApiPort,
         remoteApiUrl: nextPublic.remoteApiUrl,
@@ -104,13 +89,11 @@ export function createFileAppSettingsStore(
             throw new Error('Encrypted API token readback verification failed')
           }
           nextDocument.apiTokenSecretRef = reference
-          delete nextDocument.apiToken
         } else {
           if (current.apiTokenSecretRef) {
             await secretStore.delete(current.apiTokenSecretRef)
           }
           delete nextDocument.apiTokenSecretRef
-          delete nextDocument.apiToken
         }
       }
 
@@ -127,58 +110,10 @@ export function createWorkspaceAppSettingsStore(
   return createFileAppSettingsStore(resolveWorkspaceLayout(workspaceRootPath).appSettingsPath, options)
 }
 
-async function maybeMigrateLegacyApiToken(
-  settingsPath: string,
-  secretStore?: AppSecretStore,
-  fileOps: AppSettingsFileOperations = defaultAppSettingsFileOperations,
-): Promise<void> {
-  const document = readPersistedDocument(settingsPath)
-  if (!('apiToken' in document)) {
-    return
-  }
-
-  const legacyToken = document.apiToken
-  if (typeof legacyToken !== 'string') {
-    const { apiToken: _ignored, ...rest } = document
-    writePersistedDocument(settingsPath, rest, fileOps)
-    return
-  }
-
-  if (legacyToken.length === 0) {
-    const { apiToken: _empty, ...rest } = document
-    writePersistedDocument(settingsPath, rest, fileOps)
-    return
-  }
-
-  if (!secretStore) {
-    return
-  }
-
-  const reference = document.apiTokenSecretRef ?? apiTokenSecretReference
-
-  try {
-    await secretStore.set(reference, legacyToken)
-    const readback = await secretStore.get(reference)
-    if (readback !== legacyToken) {
-      return
-    }
-
-    const { apiToken: _migrated, ...rest } = document
-    writePersistedDocument(settingsPath, {
-      ...rest,
-      apiTokenSecretRef: reference,
-    }, fileOps)
-  } catch {
-    // Leave plaintext in place for a retryable migration path.
-  }
-}
-
 async function toPublicSettings(
   document: PersistedAppSettingsDocument,
   secretStore?: AppSecretStore,
 ): Promise<AppSettings> {
-  const hasLegacyPlaintext =
-    typeof document.apiToken === 'string' && document.apiToken.length > 0
   const hasStoredCiphertext =
     typeof document.apiTokenSecretRef === 'string'
     && document.apiTokenSecretRef.length > 0
@@ -187,13 +122,7 @@ async function toPublicSettings(
 
   return normalizeAppSettings({
     ...document,
-    apiTokenConfigured: hasLegacyPlaintext || hasStoredCiphertext,
-  })
-}
-
-function createSecureStorageMigrationFailure() {
-  return Object.assign(new Error('Secure storage is unavailable'), {
-    code: 'secure_storage_unavailable',
+    apiTokenConfigured: hasStoredCiphertext,
   })
 }
 
@@ -217,14 +146,11 @@ function readPersistedDocument(settingsPath: string): PersistedAppSettingsDocume
 function writePersistedDocument(
   settingsPath: string,
   document: PersistedAppSettingsDocument,
-  fileOps: AppSettingsFileOperations = defaultAppSettingsFileOperations,
+  fileOps: AtomicDocumentFileOperations,
 ) {
-  const persisted: Record<string, unknown> = { ...document }
-  // Public configured flag is derived; never persist it.
-  delete persisted.apiTokenConfigured
   writeAppSettingsDocumentAtomically(
     settingsPath,
-    `${JSON.stringify(persisted, null, 2)}\n`,
+    `${JSON.stringify(document, null, 2)}\n`,
     fileOps,
   )
 }
@@ -232,7 +158,7 @@ function writePersistedDocument(
 export function writeAppSettingsDocumentAtomically(
   settingsPath: string,
   contents: string,
-  fileOps: AppSettingsFileOperations = defaultAppSettingsFileOperations,
+  fileOps: AtomicDocumentFileOperations = defaultAtomicDocumentFileOperations,
 ) {
   writeAtomicDocument(settingsPath, contents, fileOps)
 }

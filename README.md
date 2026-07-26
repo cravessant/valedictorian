@@ -12,8 +12,8 @@ All workspace data lives in the selected folder:
 
 The workspace manifest is `<workspace>/.valedictorian/manifest.json`.
 The non-secret profile is stored in `.valedictorian/profile.json`; secrets are
-encrypted separately. The PGlite-only runtime never reads or migrates the legacy SQLite file.
-See `UPGRADING.md` before opening an older workspace.
+encrypted separately. Only this layout is supported: a workspace created by an
+older pre-release must be recreated rather than upgraded.
 
 ## Project config discovery
 

@@ -10,7 +10,7 @@ export type ResolveStartupSettingsAndApiTokenOptions = {
   readPublicSettings: () => Promise<AppSettings>
   /**
    * Secret-backed startup path: public settings plus privileged saved token.
-   * May migrate/read/check saved secrets.
+   * May read and check saved secrets.
    */
   readSecretBackedSettingsAndToken: () => Promise<{
     settings: AppSettings

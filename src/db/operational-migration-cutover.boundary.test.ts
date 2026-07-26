@@ -29,12 +29,9 @@ const forbiddenOperationalMigrationAssets = [
   'src/modules/profile/profile.migration.source.ts',
   'src/modules/profile/profile.migration.test.ts',
   'src/modules/profile/profile.migration.ts',
-] as const
-
-const requiredProfileUpgradePolicy = [
-  'UPGRADING.md',
   'src/modules/profile/profile.upgrade-policy.test.ts',
   'src/modules/profile/profile.upgrade-policy.ts',
+  'UPGRADING.md',
 ] as const
 
 describe('operational migration cutover boundary', () => {
@@ -70,10 +67,6 @@ describe('operational migration cutover boundary', () => {
       )
       .sort()
     expect(leftoverOperationalMigrationTests).toEqual([])
-
-    for (const relativePath of requiredProfileUpgradePolicy) {
-      expect(fs.existsSync(path.join(repoRoot, relativePath)), relativePath).toBe(true)
-    }
 
     const profileEvidence = fs
       .readdirSync(profileDir)

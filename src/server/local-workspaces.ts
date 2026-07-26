@@ -23,7 +23,6 @@ import {
   prepareWorkspaceProfileCapabilities,
   type PreparedWorkspaceProfileCapabilities,
 } from '../modules/profile/profile.composition'
-import { ProfileUpgradeRequiredError } from '../modules/profile/profile.upgrade-policy'
 
 export class LocalWorkspaceConflictError extends Error {
   readonly statusCode = 409
@@ -210,7 +209,7 @@ export function createLocalWorkspaceManager({
           if (prepared) await Promise.allSettled([prepared.dispose()])
           await registryStore.recordError(
             workspaceId,
-            sanitizedWorkspaceInitializationError(error),
+            workspaceInitializationErrorMessage,
             now(),
           )
           throw error
@@ -224,20 +223,9 @@ export function createLocalWorkspaceManager({
   }
 }
 
-function sanitizedWorkspaceInitializationError(error: unknown) {
-  if (
-    error instanceof Error
-    && (
-      error.name === 'ProfileMigrationError'
-      || error instanceof ProfileUpgradeRequiredError
-    )
-    && !error.message.includes('/')
-    && !error.message.includes('\\')
-  ) {
-    return error.message
-  }
-  return 'Workspace initialization failed. Retry opening this workspace.'
-}
+/** Fixed text: initialization failures may embed workspace paths or secret values. */
+const workspaceInitializationErrorMessage =
+  'Workspace initialization failed. Retry opening this workspace.'
 
 const unavailableWorkspaceSecretCodec: SecretCodec = {
   decrypt() {
