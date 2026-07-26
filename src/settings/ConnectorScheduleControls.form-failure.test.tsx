@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ConnectorScheduleHttpError,
   connectorScheduleErrorBodies,
-  type ConnectorScheduleSummary,
 } from '@sparxie/sdk'
 import { ConnectorScheduleControls } from './ConnectorScheduleControls'
 import {
@@ -11,8 +10,12 @@ import {
   CONNECTOR_SCHEDULE_UNAVAILABLE_EXPLANATION,
   createEmptyConnectorScheduleDraft,
 } from './connector-schedule.helpers'
+import {
+  respondingScheduleApi,
+  schedulableInstance,
+  scheduleSummary,
+} from './connector-schedule.test-helpers'
 import type { ConnectorScheduleUiApi } from './connector-schedule.types'
-import type { ConnectorSettingsInstance } from './connector-settings.types'
 import { useConnectorInstanceSchedules } from './useConnectorInstanceSchedules'
 
 const sonnerToast = vi.hoisted(() => {
@@ -38,58 +41,6 @@ beforeEach(() => {
   sonnerToast.dismiss.mockClear()
 })
 
-const availableCapability = {
-  available: true as const,
-  supportedCadences: ['interval', 'daily', 'weekly'] as const,
-  minimumIntervalMinutes: 15,
-  maximumCatchUpAgeMinutes: 24 * 60,
-  timezoneModel: 'iana' as const,
-  missedOccurrencePolicy: 'coalesce_one' as const,
-}
-
-const instance = {
-  id: 'jobright-default',
-  connectorId: 'jobright',
-  connectorVersion: '1',
-  displayName: 'Jobright internslist',
-  enabled: true,
-  auth: [],
-  config: {},
-  filters: {},
-  earliestBackfillDate: '2026-01-01',
-  createdAt: '2026-07-12T12:00:00.000Z',
-  updatedAt: '2026-07-12T12:00:00.000Z',
-} as ConnectorSettingsInstance
-
-function createSchedule(overrides: Partial<ConnectorScheduleSummary> = {}): ConnectorScheduleSummary {
-  return {
-    id: 'schedule-1',
-    connectorInstanceId: 'jobright-default',
-    revision: 'rev-1',
-    state: 'enabled',
-    cadence: { kind: 'interval', everyMinutes: 60 },
-    timezone: 'UTC',
-    nextEligibleAt: '2026-07-12T13:00:00.000Z',
-    createdAt: '2026-07-12T12:00:00.000Z',
-    updatedAt: '2026-07-12T12:00:00.000Z',
-    lastOccurrence: null,
-    lastRun: null,
-    ...overrides,
-  }
-}
-
-function createApi(overrides: Partial<ConnectorScheduleUiApi> = {}): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({ connectorScheduling: availableCapability })),
-    getSchedule: vi.fn(async () => createSchedule()),
-    upsertSchedule: vi.fn(async () => createSchedule()),
-    pauseSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
-    resumeSchedule: vi.fn(async () => createSchedule()),
-    deleteSchedule: vi.fn(async () => undefined),
-    ...overrides,
-  }
-}
-
 function rejectWithTypedScheduleError(canary: string) {
   return Object.assign(
     new ConnectorScheduleHttpError(
@@ -112,10 +63,10 @@ function ScheduleHarness({ api }: { api: ConnectorScheduleUiApi }) {
     updateScheduleDraft,
   } = useConnectorInstanceSchedules({
     connectorScheduleApi: api,
-    instances: [instance],
+    instances: [schedulableInstance],
     workspaceId: 'workspace-1',
   })
-  const state = scheduleStates[instance.id]
+  const state = scheduleStates[schedulableInstance.id]
   if (!state || state.isLoading) {
     return <div role="status">Loading schedule</div>
   }
@@ -125,8 +76,8 @@ function ScheduleHarness({ api }: { api: ConnectorScheduleUiApi }) {
       capability={schedulingCapability}
       capabilityLoadError={capabilityLoadError}
       canonical={state.canonical}
-      connectorDisplayName={instance.displayName}
-      connectorEnabled={instance.enabled}
+      connectorDisplayName={schedulableInstance.displayName}
+      connectorEnabled={schedulableInstance.enabled}
       draft={state.draft}
       isDirty={isScheduleDraftDirty(state.draft, state.canonical)}
       isLoading={state.isLoading}
@@ -136,15 +87,15 @@ function ScheduleHarness({ api }: { api: ConnectorScheduleUiApi }) {
       statusTone={state.statusTone}
       validationField={state.validationField}
       onDiscard={vi.fn()}
-      onDraftChange={(patch) => updateScheduleDraft(instance.id, patch)}
+      onDraftChange={(patch) => updateScheduleDraft(schedulableInstance.id, patch)}
       onPause={() => {
-        void pauseConnectorSchedule(instance)
+        void pauseConnectorSchedule(schedulableInstance)
       }}
       onResume={() => {
-        void resumeConnectorSchedule(instance)
+        void resumeConnectorSchedule(schedulableInstance)
       }}
       onSave={() => {
-        void saveConnectorSchedule(instance)
+        void saveConnectorSchedule(schedulableInstance)
       }}
     />
   )
@@ -164,7 +115,7 @@ function expectSingleFocusedFormFailure(section: HTMLElement, canary: RegExp, sa
 
 describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
   it('settles an initial schedule capability AbortError to unavailable non-error UI', async () => {
-    const api = createApi({
+    const api = respondingScheduleApi({
       getCapabilities: vi.fn(async () => {
         throw new DOMException('The operation was aborted.', 'AbortError')
       }),
@@ -176,7 +127,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
         schedulingCapability,
       } = useConnectorInstanceSchedules({
         connectorScheduleApi: api,
-        instances: [instance],
+        instances: [schedulableInstance],
         workspaceId: 'workspace-1',
       })
 
@@ -185,8 +136,8 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
           capability={schedulingCapability}
           capabilityLoadError={capabilityLoadError}
           canonical={null}
-          connectorDisplayName={instance.displayName}
-          connectorEnabled={instance.enabled}
+          connectorDisplayName={schedulableInstance.displayName}
+          connectorEnabled={schedulableInstance.enabled}
           draft={createEmptyConnectorScheduleDraft('UTC')}
           isDirty={false}
           isLoading={false}
@@ -218,7 +169,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
     const canaryText = 'CANARY_SCHEDULE_SAVE /secret/schedule'
     const canary = /CANARY_SCHEDULE_SAVE \/secret\/schedule/
     const safeCopy = connectorScheduleErrorBodies.stale_schedule_revision.message
-    const api = createApi({
+    const api = respondingScheduleApi({
       upsertSchedule: vi.fn(async () => {
         throw rejectWithTypedScheduleError(canaryText)
       }),
@@ -254,7 +205,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
     const canaryText = 'CANARY_SCHEDULE_PAUSE /secret/pause'
     const canary = /CANARY_SCHEDULE_PAUSE \/secret\/pause/
     const safeCopy = connectorScheduleErrorBodies.stale_schedule_revision.message
-    const api = createApi({
+    const api = respondingScheduleApi({
       pauseSchedule: vi.fn(async () => {
         throw rejectWithTypedScheduleError(canaryText)
       }),
@@ -281,8 +232,8 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
     const canaryText = 'CANARY_SCHEDULE_RESUME /secret/resume'
     const canary = /CANARY_SCHEDULE_RESUME \/secret\/resume/
     const safeCopy = connectorScheduleErrorBodies.stale_schedule_revision.message
-    const api = createApi({
-      getSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
+    const api = respondingScheduleApi({
+      getSchedule: vi.fn(async () => scheduleSummary({ state: 'paused' })),
       resumeSchedule: vi.fn(async () => {
         throw rejectWithTypedScheduleError(canaryText)
       }),
@@ -316,7 +267,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
           rejectSecondPause = reject
         }),
       )
-    const api = createApi({ pauseSchedule })
+    const api = respondingScheduleApi({ pauseSchedule })
 
     render(<ScheduleHarness api={api} />)
     await screen.findByRole('button', { name: 'Pause schedule' })
@@ -366,7 +317,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
           rejectDelete = reject
         }),
     )
-    const api = createApi({ deleteSchedule })
+    const api = respondingScheduleApi({ deleteSchedule })
 
     render(<ScheduleHarness api={api} />)
     const section = await screen.findByLabelText('Jobright internslist schedule')
@@ -412,7 +363,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
     const deleteSchedule = vi.fn(async () => {
       throw rejectWithTypedScheduleError(canaryText)
     })
-    const api = createApi({ deleteSchedule })
+    const api = respondingScheduleApi({ deleteSchedule })
 
     render(<ScheduleHarness api={api} />)
     const section = await screen.findByLabelText('Jobright internslist schedule')
@@ -438,8 +389,8 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
       throw new Error('capabilities unavailable')
     })
     const getSchedule = vi.fn(async () => null)
-    const upsertSchedule = vi.fn(async () => createSchedule())
-    const api = createApi({
+    const upsertSchedule = vi.fn(async () => scheduleSummary())
+    const api = respondingScheduleApi({
       getCapabilities,
       getSchedule,
       upsertSchedule,
@@ -448,7 +399,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
     function CapabilityFailureHarness() {
       const { capabilityLoadError, schedulingCapability } = useConnectorInstanceSchedules({
         connectorScheduleApi: api,
-        instances: [instance],
+        instances: [schedulableInstance],
         workspaceId: 'workspace-1',
       })
 
@@ -457,8 +408,8 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
           capability={schedulingCapability}
           capabilityLoadError={capabilityLoadError}
           canonical={null}
-          connectorDisplayName={instance.displayName}
-          connectorEnabled={instance.enabled}
+          connectorDisplayName={schedulableInstance.displayName}
+          connectorEnabled={schedulableInstance.enabled}
           draft={createEmptyConnectorScheduleDraft('UTC')}
           isDirty={false}
           isLoading={false}
@@ -487,7 +438,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
   })
 
   it('pauses and resumes using returned revisions and shows last schedule outcomes', async () => {
-    const initial = createSchedule({
+    const initial = scheduleSummary({
       revision: 'rev-live',
       state: 'enabled',
       lastOccurrence: {
@@ -509,17 +460,17 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
         completedAt: '2026-07-12T11:01:00.000Z',
       },
     })
-    const pauseSchedule = vi.fn(async () => createSchedule({
+    const pauseSchedule = vi.fn(async () => scheduleSummary({
       ...initial,
       revision: 'rev-live-paused',
       state: 'paused',
     }))
-    const resumeSchedule = vi.fn(async () => createSchedule({
+    const resumeSchedule = vi.fn(async () => scheduleSummary({
       ...initial,
       revision: 'rev-live-resumed',
       state: 'enabled',
     }))
-    const api = createApi({
+    const api = respondingScheduleApi({
       getSchedule: vi.fn(async () => initial),
       pauseSchedule,
       resumeSchedule,
@@ -535,7 +486,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
     fireEvent.click(within(section).getByRole('button', { name: 'Pause schedule' }))
     await waitFor(() => {
       expect(pauseSchedule).toHaveBeenCalledWith({
-        connectorInstanceId: instance.id,
+        connectorInstanceId: schedulableInstance.id,
         expectedRevision: 'rev-live',
       })
     })
@@ -544,7 +495,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
     fireEvent.click(within(section).getByRole('button', { name: 'Resume schedule' }))
     await waitFor(() => {
       expect(resumeSchedule).toHaveBeenCalledWith({
-        connectorInstanceId: instance.id,
+        connectorInstanceId: schedulableInstance.id,
         expectedRevision: 'rev-live-paused',
       })
     })
@@ -552,8 +503,8 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
   })
 
   it('shows connector-disabled schedule state and never uses schedule dispatch helpers', async () => {
-    const api = createApi({
-      getSchedule: vi.fn(async () => createSchedule({ state: 'enabled' })),
+    const api = respondingScheduleApi({
+      getSchedule: vi.fn(async () => scheduleSummary({ state: 'enabled' })),
     })
 
     function DisabledHarness() {
@@ -563,10 +514,10 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
         schedulingCapability,
       } = useConnectorInstanceSchedules({
         connectorScheduleApi: api,
-        instances: [{ ...instance, enabled: false }],
+        instances: [{ ...schedulableInstance, enabled: false }],
         workspaceId: 'workspace-1',
       })
-      const state = scheduleStates[instance.id]
+      const state = scheduleStates[schedulableInstance.id]
       if (!state || state.isLoading) {
         return <div role="status">Loading schedule</div>
       }
@@ -576,7 +527,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
           capability={schedulingCapability}
           capabilityLoadError={capabilityLoadError}
           canonical={state.canonical}
-          connectorDisplayName={instance.displayName}
+          connectorDisplayName={schedulableInstance.displayName}
           connectorEnabled={false}
           draft={state.draft}
           isDirty={false}

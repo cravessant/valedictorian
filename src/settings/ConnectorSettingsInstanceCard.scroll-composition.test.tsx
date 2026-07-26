@@ -2,21 +2,10 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createConnectorsApiWithJobrightDescriptor, createProfileApi } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
 
 afterEach(cleanup)
-
-function unavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({ connectorScheduling: { available: false as const } })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    pauseSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    resumeSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    deleteSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-  }
-}
 
 /**
  * Structural link for the #309 real-layout fix: pins the connector details modal

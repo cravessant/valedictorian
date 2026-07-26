@@ -1,12 +1,15 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { expect, vi } from 'vitest'
 import type {
+  ConnectorOption,
   ConnectorOptionQueryResult,
+  ConnectorOptionValue,
   InstalledConnectorDescriptor,
   ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 import { createConnectorsApi, createProfileApi } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { ConnectorProviderFilters } from './connector-filters/ConnectorProviderFilters'
+import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
 
 export const INSTANCE_ID = 'fixture-provider-instance'
@@ -110,19 +113,6 @@ export async function discardFixtureConnectorEditorChangesAndReopen(card: HTMLEl
   const dialog = await screen.findByRole('dialog', { name: 'Fixture provider details' })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
   return screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
-}
-
-function unavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: { available: false as const },
-    })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    pauseSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    resumeSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    deleteSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-  }
 }
 
 export function searchResult(key: string, label: string): ConnectorOptionQueryResult {
@@ -334,38 +324,170 @@ const fixtureFilterSchema = {
   },
 }
 
+const fixtureDynamicOptions = {
+  protocolVersion: 'connector-dynamic-options@1',
+  version: 'fixture-provider-options@1',
+  sources: [{
+    id: 'fixture.skills',
+    version: 'fixture-skills@1',
+    label: 'Skill',
+    valueSchema: { type: 'string', minLength: 1, maxLength: 100 },
+    display: { kind: 'value' },
+    operations: {
+      search: {
+        minSearchLength: 1, maxSearchLength: 100, defaultLimit: 10, maxLimit: 20,
+      },
+      resolve: { maxValues: 10 },
+    },
+    dependencies: [{
+      id: 'country', filterPointer: '/country', cardinality: 'one', required: true,
+    }],
+  }],
+  bindings: [{
+    filterPointer: '/skills', sourceId: 'fixture.skills', cardinality: 'many', intent: 'include',
+  }, {
+    filterPointer: '/excludedSkills', sourceId: 'fixture.skills', cardinality: 'many', intent: 'exclude',
+  }],
+}
+
 export const fixtureDescriptor = {
   connectorId: 'fixture.provider',
   connectorVersion: '1.2.3',
   displayName: 'Fixture provider',
   configSchema: fixtureConfigSchema,
   filterSchema: fixtureFilterSchema,
-  dynamicOptions: {
-    protocolVersion: 'connector-dynamic-options@1',
-    version: 'fixture-provider-options@1',
-    sources: [{
-      id: 'fixture.skills',
-      version: 'fixture-skills@1',
-      label: 'Skill',
-      valueSchema: { type: 'string', minLength: 1, maxLength: 100 },
-      display: { kind: 'value' },
-      operations: {
-        search: {
-          minSearchLength: 1, maxSearchLength: 100, defaultLimit: 10, maxLimit: 20,
-        },
-        resolve: { maxValues: 10 },
-      },
-      dependencies: [{
-        id: 'country', filterPointer: '/country', cardinality: 'one', required: true,
-      }],
-    }],
-    bindings: [{
-      filterPointer: '/skills', sourceId: 'fixture.skills', cardinality: 'many', intent: 'include',
-    }, {
-      filterPointer: '/excludedSkills', sourceId: 'fixture.skills', cardinality: 'many', intent: 'exclude',
-    }],
-  },
+  dynamicOptions: fixtureDynamicOptions,
 } as InstalledConnectorDescriptor
+
+const extraSourceDependency = {
+  id: 'region',
+  filterPointer: '/region',
+  cardinality: 'one' as const,
+  required: false,
+}
+
+/** Same schemas and dependency declarations, new catalog and source identity. */
+export function catalogIdentityBumpedDescriptor(): InstalledConnectorDescriptor {
+  return {
+    ...fixtureDescriptor,
+    dynamicOptions: {
+      ...fixtureDynamicOptions,
+      version: 'fixture-provider-options@2',
+      sources: fixtureDynamicOptions.sources.map((source) => ({
+        ...source,
+        version: 'fixture-skills@2',
+      })),
+    },
+  } as InstalledConnectorDescriptor
+}
+
+/** Adds an optional dependency declaration without touching any filter value. */
+export function extraDependencyDescriptor(
+  base: InstalledConnectorDescriptor = fixtureDescriptor,
+): InstalledConnectorDescriptor {
+  const dynamicOptions = base.dynamicOptions ?? fixtureDynamicOptions
+  return {
+    ...base,
+    dynamicOptions: {
+      ...dynamicOptions,
+      sources: dynamicOptions.sources.map((source) => ({
+        ...source,
+        dependencies: [...(source.dependencies ?? []), extraSourceDependency],
+      })),
+    },
+  } as InstalledConnectorDescriptor
+}
+
+export function filterSchemaDescriptor(overrides: {
+  properties?: Record<string, unknown>
+  required?: string[]
+}): InstalledConnectorDescriptor {
+  return {
+    ...fixtureDescriptor,
+    filterSchema: {
+      ...fixtureFilterSchema,
+      schema: {
+        ...fixtureFilterSchema.schema,
+        ...(overrides.required ? { required: overrides.required } : {}),
+        properties: { ...fixtureFilterSchema.schema.properties, ...overrides.properties },
+      },
+    },
+  } as InstalledConnectorDescriptor
+}
+
+export function resolveReady(
+  input: PublicOptionQueryInput,
+  options: ConnectorOption[],
+  unknownValues: ConnectorOptionValue[] = [],
+): Promise<ConnectorOptionQueryResult> {
+  return Promise.resolve(boundOptionResult(input, {
+    status: 'resolve_ready',
+    options,
+    unknownValues,
+  }))
+}
+
+export function retryableUnavailableResult(): ConnectorOptionQueryResult {
+  return {
+    ...optionIdentityForFixture(),
+    status: 'error',
+    code: 'temporarily_unavailable',
+    retryable: true,
+    retryAfterMs: 25,
+  }
+}
+
+export const typescriptOption: ConnectorOption = {
+  key: 'typescript', label: 'TypeScript', value: 'typescript',
+}
+export const denverOption: ConnectorOption = {
+  key: 'denver-co', label: 'Denver, CO', value: 'denver-co',
+}
+export const alphaOption: ConnectorOption = { key: 'alpha', label: 'Alpha', value: 'alpha' }
+export const betaOption: ConnectorOption = { key: 'beta', label: 'Beta', value: 'beta' }
+
+type ProviderFiltersProps = {
+  descriptor?: InstalledConnectorDescriptor
+  filters?: Record<string, unknown>
+  onChange?: (next: Record<string, unknown>) => void
+}
+
+/**
+ * Renders the filter surface directly, bypassing the panel, so a test can drive
+ * descriptor and filter transitions the panel would never emit together.
+ */
+export function renderProviderFilters(
+  api: Awaited<ReturnType<typeof createFixtureApi>>['options'],
+  initial: ProviderFiltersProps = {},
+) {
+  const onChange = vi.fn(initial.onChange)
+  const onCompatibilityChange = vi.fn()
+  let props = {
+    descriptor: initial.descriptor ?? fixtureDescriptor,
+    filters: initial.filters ?? {},
+  }
+  const element = () => (
+    <ConnectorProviderFilters
+      api={api}
+      allowMissingRootRequired={false}
+      descriptor={props.descriptor}
+      disabled={false}
+      filters={props.filters}
+      instanceId={INSTANCE_ID}
+      onChange={onChange}
+      onCompatibilityChange={onCompatibilityChange}
+    />
+  )
+  const view = render(element())
+  return {
+    onChange,
+    onCompatibilityChange,
+    rerender(next: Partial<typeof props>) {
+      props = { ...props, ...next }
+      view.rerender(element())
+    },
+  }
+}
 
 export const missingPresentationDescriptor = {
   connectorId: fixtureDescriptor.connectorId,

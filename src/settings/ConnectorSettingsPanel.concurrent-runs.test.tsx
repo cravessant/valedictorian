@@ -1,13 +1,14 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearDestructiveToastDedupe } from '@/components/ui/use-toast'
 import {
   createConnectorsApi,
   createProfileApi,
 } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 import type { ConnectorSettingsRun } from './connector-settings.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
+import { openConnectorEditor } from './ConnectorSettingsPanel.test-helpers'
 
 const sonnerToast = vi.hoisted(() => {
   let nextId = 0
@@ -38,37 +39,6 @@ beforeEach(() => {
   sonnerToast.dismiss.mockClear()
   sonnerToast.success.mockClear()
 })
-
-function createUnavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: { available: false as const },
-    })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    pauseSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    resumeSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    deleteSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-  }
-}
-
-async function openConnectorEditor(displayName: string) {
-  fireEvent.click(await screen.findByRole('button', {
-    name: `View ${displayName} details`,
-  }))
-  const dialog = await screen.findByRole('dialog', { name: `${displayName} details` })
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
-  await within(dialog).findByRole('button', { name: 'Close details' })
-  return dialog
-}
 
 function instanceFixture(overrides: {
   displayName?: string
@@ -149,7 +119,7 @@ describe('ConnectorSettingsPanel concurrent manual runs', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
@@ -204,7 +174,7 @@ describe('ConnectorSettingsPanel concurrent manual runs', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"

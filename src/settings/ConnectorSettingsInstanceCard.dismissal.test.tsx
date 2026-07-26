@@ -6,23 +6,10 @@ import {
   createConnectorsApi,
   createProfileApi,
 } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
 
 afterEach(cleanup)
-
-function unavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    deleteSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: { available: false as const },
-    })),
-    getSchedule: vi.fn(async () => null),
-    pauseSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    resumeSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    upsertSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-  }
-}
 
 async function renderDetails(instanceId = 'dismissal-fixture') {
   const connectorsApi = createConnectorsApi()

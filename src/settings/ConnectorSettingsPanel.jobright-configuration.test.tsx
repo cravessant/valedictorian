@@ -11,9 +11,10 @@ import {
   createConnectorsApi,
   createProfileApi,
 } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 import type { ConnectorSettingsUiApi } from './connector-settings.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
+import { jobrightInstance, openConnectorEditor } from './ConnectorSettingsPanel.test-helpers'
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
@@ -21,56 +22,12 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
-function createUnavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: { available: false as const },
-    })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    pauseSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    resumeSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    deleteSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-  }
-}
-
-async function openConnectorEditor(displayName = 'Jobright internslist') {
-  fireEvent.click(await screen.findByRole('button', {
-    name: `View ${displayName} details`,
-  }))
-  const dialog = await screen.findByRole('dialog', { name: `${displayName} details` })
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
-  await within(dialog).findByRole('button', { name: 'Close details' })
-  return dialog
-}
-
 function instanceFixture(overrides: { enabled?: boolean } = {}) {
-  return {
-    id: 'jobright-default',
-    connectorId: 'jobright.resolver',
-    connectorVersion: '0.11.0',
-    displayName: 'Jobright internslist',
-    enabled: overrides.enabled ?? true,
-    auth: [{
-      id: 'jobright',
-      mode: 'username_password' as const,
-      label: 'Jobright username and password',
-      configured: true,
-    }],
+  return jobrightInstance({
     config: { discoveryCount: 100 },
     filters: { providerOwned: 'preserve-me' },
-    earliestBackfillDate: '2026-07-02',
-    createdAt: '2026-07-09T15:00:00.000Z',
-    updatedAt: '2026-07-09T15:00:00.000Z',
-  }
+    ...overrides,
+  })
 }
 
 function renderPanel(
@@ -80,7 +37,7 @@ function renderPanel(
   return render(
     <ConnectorSettingsPanel
       connectorsApi={connectorsApi}
-      connectorScheduleApi={createUnavailableScheduleApi()}
+      connectorScheduleApi={unavailableScheduleApi()}
       onRunSettled={vi.fn()}
       profileApi={profileApi}
       workspaceId="workspace-1"

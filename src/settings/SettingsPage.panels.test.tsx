@@ -11,30 +11,9 @@ import {
 import { defaultAppSettings } from './app-settings'
 import { SettingsPage, SettingsSidebar } from './SettingsPage'
 import { SETTINGS_PANELS } from '../app/types'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 
 afterEach(cleanup)
-
-function createUnavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: { available: false as const },
-    })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    pauseSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    resumeSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    deleteSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-  }
-}
 
 describe('SettingsPage developer and panel navigation', () => {
   it('exposes a labeled Developer settings Switch that persists showDebugData', async () => {
@@ -44,7 +23,7 @@ describe('SettingsPage developer and panel navigation', () => {
     const { rerender } = render(
       <SettingsPage
         connectorsApi={createConnectorsApi()}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         contentColumnClass=""
         policyApi={{ get: vi.fn(), update: vi.fn(), reset: vi.fn() }}
         profileApi={createProfileApi()}
@@ -77,7 +56,7 @@ describe('SettingsPage developer and panel navigation', () => {
     rerender(
       <SettingsPage
         connectorsApi={createConnectorsApi()}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         contentColumnClass=""
         policyApi={{ get: vi.fn(), update: vi.fn(), reset: vi.fn() }}
         profileApi={createProfileApi()}
@@ -112,7 +91,7 @@ describe('SettingsPage developer and panel navigation', () => {
 
     const baseProps = {
       connectorsApi: createConnectorsApi(),
-      connectorScheduleApi: createUnavailableScheduleApi(),
+      connectorScheduleApi: unavailableScheduleApi(),
       contentColumnClass: '',
       policyApi: { get: vi.fn(), update: vi.fn(), reset: vi.fn() },
       profileApi: createProfileApi(),
@@ -193,7 +172,7 @@ describe('SettingsPage developer and panel navigation', () => {
     render(
       <SettingsPage
         connectorsApi={createConnectorsApi()}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         contentColumnClass=""
         policyApi={{ get: vi.fn(), update: vi.fn(), reset: vi.fn() }}
         profileApi={createProfileApi()}

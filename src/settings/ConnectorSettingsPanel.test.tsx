@@ -7,40 +7,15 @@ import {
   createConnectorsApiWithJobrightDescriptor,
   createProfileApi,
 } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import {
+  availableScheduleApi,
+  scheduleSummary,
+  unavailableScheduleApi,
+} from './connector-schedule.test-helpers'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
+import { openConnectorInstanceCard } from './ConnectorSettingsPanel.test-helpers'
 
 afterEach(cleanup)
-
-function createUnavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: { available: false as const },
-    })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    pauseSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    resumeSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    deleteSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-  }
-}
-
-async function openConnectorEditor(displayName: string, instanceId: string) {
-  fireEvent.click(await screen.findByRole('button', {
-    name: `View ${displayName} details`,
-  }))
-  const dialog = await screen.findByRole('dialog', { name: `${displayName} details` })
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
-  return screen.findByTestId(`connector-instance-card-${instanceId}`)
-}
 
 describe('ConnectorSettingsPanel', () => {
   it('keeps the page compact and gates detailed editing behind a ShadCN dialog', async () => {
@@ -65,7 +40,7 @@ describe('ConnectorSettingsPanel', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
@@ -130,14 +105,14 @@ describe('ConnectorSettingsPanel', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
       />,
     )
 
-    const card = await openConnectorEditor('Jobright internslist', 'jobright-focus')
+    const card = await openConnectorInstanceCard('Jobright internslist', 'jobright-focus')
     const headingNames = within(card).getAllByRole('heading').map((node) => node.textContent)
     expect(headingNames).toEqual([
       'Jobright internslist details',
@@ -233,14 +208,14 @@ describe('ConnectorSettingsPanel', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
       />,
     )
 
-    const card = await openConnectorEditor('Jobright internslist', 'jobright-regions')
+    const card = await openConnectorInstanceCard('Jobright internslist', 'jobright-regions')
     expect(within(card).getByRole('heading', { name: 'Jobright internslist details' }))
       .toBeInTheDocument()
 
@@ -317,43 +292,9 @@ describe('ConnectorSettingsPanel', () => {
       filters: {},
       earliestBackfillDate: '2026-07-02',
     })
-    const scheduleApi = {
-      getCapabilities: vi.fn(async () => ({
-        connectorScheduling: {
-          available: true as const,
-          supportedCadences: ['interval', 'daily', 'weekly'] as const,
-          minimumIntervalMinutes: 15,
-          maximumCatchUpAgeMinutes: 24 * 60,
-          timezoneModel: 'iana' as const,
-          missedOccurrencePolicy: 'coalesce_one' as const,
-        },
-      })),
-      getSchedule: vi.fn(async () => ({
-        id: 'schedule-1',
-        connectorInstanceId: 'jobright-isolation',
-        revision: 'rev-1',
-        state: 'enabled' as const,
-        cadence: { kind: 'interval' as const, everyMinutes: 60 },
-        timezone: 'UTC',
-        nextEligibleAt: '2026-07-12T13:00:00.000Z',
-        createdAt: '2026-07-12T12:00:00.000Z',
-        updatedAt: '2026-07-12T12:00:00.000Z',
-        lastOccurrence: null,
-        lastRun: null,
-      })),
-      upsertSchedule: vi.fn(async () => {
-        throw new Error('unused')
-      }),
-      pauseSchedule: vi.fn(async () => {
-        throw new Error('unused')
-      }),
-      resumeSchedule: vi.fn(async () => {
-        throw new Error('unused')
-      }),
-      deleteSchedule: vi.fn(async () => {
-        throw new Error('unused')
-      }),
-    }
+    const scheduleApi = availableScheduleApi({
+      getSchedule: vi.fn(async () => scheduleSummary({ connectorInstanceId: 'jobright-isolation' })),
+    })
 
     render(
       <ConnectorSettingsPanel
@@ -365,7 +306,7 @@ describe('ConnectorSettingsPanel', () => {
       />,
     )
 
-    const card = await openConnectorEditor('Jobright internslist', 'jobright-isolation')
+    const card = await openConnectorInstanceCard('Jobright internslist', 'jobright-isolation')
     const discovery = await within(card).findByLabelText('Discovery count')
     fireEvent.change(discovery, { target: { value: '35' } })
     fireEvent.change(within(card).getByLabelText('Schedule mode'), {
@@ -387,7 +328,7 @@ describe('ConnectorSettingsPanel', () => {
     }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
-    const reopened = await openConnectorEditor('Jobright internslist', 'jobright-isolation')
+    const reopened = await openConnectorInstanceCard('Jobright internslist', 'jobright-isolation')
     const reopenedDiscovery = await within(reopened).findByLabelText('Discovery count')
     expect(reopenedDiscovery).toHaveValue(20)
     expect(within(reopened).getByLabelText('Schedule mode')).toHaveValue('preset')
@@ -403,7 +344,7 @@ describe('ConnectorSettingsPanel', () => {
     }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
-    const clean = await openConnectorEditor('Jobright internslist', 'jobright-isolation')
+    const clean = await openConnectorInstanceCard('Jobright internslist', 'jobright-isolation')
     expect(await within(clean).findByLabelText('Discovery count')).toHaveValue(20)
     expect(within(clean).queryByText(/Draft:/i)).not.toBeInTheDocument()
     expect(within(clean).getByRole('button', { name: 'Close details' })).toBeInTheDocument()
@@ -429,36 +370,13 @@ describe('ConnectorSettingsPanel', () => {
       ...instance,
       enabled: false,
     })
-    const savedSchedule = {
+    const savedSchedule = scheduleSummary({
       id: 'schedule-unified',
       connectorInstanceId: instance.id,
-      revision: 'rev-1',
-      state: 'enabled' as const,
-      cadence: { kind: 'interval' as const, everyMinutes: 30 },
-      timezone: 'UTC',
-      nextEligibleAt: '2026-07-12T13:00:00.000Z',
-      createdAt: '2026-07-12T12:00:00.000Z',
-      updatedAt: '2026-07-12T12:00:00.000Z',
-      lastOccurrence: null,
-      lastRun: null,
-    }
-    const scheduleApi = {
-      getCapabilities: vi.fn(async () => ({
-        connectorScheduling: {
-          available: true as const,
-          supportedCadences: ['interval', 'daily', 'weekly'] as const,
-          minimumIntervalMinutes: 15,
-          maximumCatchUpAgeMinutes: 24 * 60,
-          timezoneModel: 'iana' as const,
-          missedOccurrencePolicy: 'coalesce_one' as const,
-        },
-      })),
-      getSchedule: vi.fn(async () => null),
-      upsertSchedule: vi.fn(async () => savedSchedule),
-      pauseSchedule: vi.fn(),
-      resumeSchedule: vi.fn(),
-      deleteSchedule: vi.fn(),
-    }
+      cadence: { kind: 'interval', everyMinutes: 30 },
+    })
+    const upsertSchedule = vi.fn(async () => savedSchedule)
+    const scheduleApi = availableScheduleApi({ upsertSchedule })
 
     render(
       <ConnectorSettingsPanel
@@ -470,7 +388,7 @@ describe('ConnectorSettingsPanel', () => {
       />,
     )
 
-    const card = await openConnectorEditor('Jobright internslist', instance.id)
+    const card = await openConnectorInstanceCard('Jobright internslist', instance.id)
     fireEvent.click(within(card).getByRole('switch', { name: 'Jobright connector enabled' }))
     fireEvent.change(within(card).getByLabelText('Schedule mode'), {
       target: { value: 'preset' },
@@ -486,7 +404,7 @@ describe('ConnectorSettingsPanel', () => {
       connectorInstanceId: instance.id,
       enabled: false,
     })))
-    await waitFor(() => expect(scheduleApi.upsertSchedule).toHaveBeenCalledWith({
+    await waitFor(() => expect(upsertSchedule).toHaveBeenCalledWith({
       connectorInstanceId: instance.id,
       expectedRevision: null,
       state: 'enabled',
@@ -508,7 +426,7 @@ describe('ConnectorSettingsPanel', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
@@ -518,7 +436,7 @@ describe('ConnectorSettingsPanel', () => {
     expect(await screen.findByTestId('connector-instance-summary-fixture-connector'))
       .toBeInTheDocument()
     expect(screen.getByTestId('connector-instance-summary-fixture-backup')).toBeInTheDocument()
-    const card = await openConnectorEditor('Fixture jobs', 'fixture-connector')
+    const card = await openConnectorInstanceCard('Fixture jobs', 'fixture-connector')
     const enabled = within(card).getByRole('switch', { name: 'Fixture jobs connector enabled' })
     expect(within(card).getByRole('region', { name: 'Fixture jobs Credentials' }))
       .toBeInTheDocument()
@@ -548,14 +466,14 @@ describe('ConnectorSettingsPanel', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
       />,
     )
 
-    const card = await openConnectorEditor('Fixture jobs', 'fixture-connector')
+    const card = await openConnectorInstanceCard('Fixture jobs', 'fixture-connector')
     fireEvent.click(within(card).getByRole('button', { name: 'Remove Fixture jobs' }))
 
     const dialog = screen.getByRole('alertdialog')
@@ -587,14 +505,14 @@ describe('ConnectorSettingsPanel', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
       />,
     )
 
-    const card = await openConnectorEditor('Fixture jobs', 'fixture-connector')
+    const card = await openConnectorInstanceCard('Fixture jobs', 'fixture-connector')
     fireEvent.click(within(card).getByRole('button', { name: 'Remove Fixture jobs' }))
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', {
       name: 'Remove connector',
@@ -611,7 +529,7 @@ describe('ConnectorSettingsPanel', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={createConnectorsApi()}
-        connectorScheduleApi={createUnavailableScheduleApi()}
+        connectorScheduleApi={unavailableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"

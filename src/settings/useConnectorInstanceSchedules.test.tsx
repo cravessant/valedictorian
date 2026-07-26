@@ -2,48 +2,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { ConnectorScheduleSummary } from '@sparxie/sdk'
 import type { ConnectorScheduleUiApi } from './connector-schedule.types'
-import type { ConnectorSettingsInstance } from './connector-settings.types'
+import {
+  availableSchedulingCapability,
+  schedulableInstance,
+  scheduleSummary,
+} from './connector-schedule.test-helpers'
 import { useConnectorInstanceSchedules } from './useConnectorInstanceSchedules'
-
-const availableCapability = {
-  available: true as const,
-  supportedCadences: ['interval', 'daily', 'weekly'] as const,
-  minimumIntervalMinutes: 15,
-  maximumCatchUpAgeMinutes: 24 * 60,
-  timezoneModel: 'iana' as const,
-  missedOccurrencePolicy: 'coalesce_one' as const,
-}
-
-const instance = {
-  id: 'jobright-default',
-  connectorId: 'jobright',
-  connectorVersion: '1',
-  displayName: 'Jobright internslist',
-  enabled: true,
-  auth: [],
-  config: {},
-  filters: {},
-  earliestBackfillDate: '2026-01-01',
-  createdAt: '2026-07-12T12:00:00.000Z',
-  updatedAt: '2026-07-12T12:00:00.000Z',
-} as ConnectorSettingsInstance
-
-function createSchedule(overrides: Partial<ConnectorScheduleSummary> = {}): ConnectorScheduleSummary {
-  return {
-    id: 'schedule-1',
-    connectorInstanceId: 'jobright-default',
-    revision: 'rev-1',
-    state: 'enabled',
-    cadence: { kind: 'interval', everyMinutes: 60 },
-    timezone: 'UTC',
-    nextEligibleAt: '2026-07-12T13:00:00.000Z',
-    createdAt: '2026-07-12T12:00:00.000Z',
-    updatedAt: '2026-07-12T12:00:00.000Z',
-    lastOccurrence: null,
-    lastRun: null,
-    ...overrides,
-  }
-}
 
 describe('connector schedule load ownership', () => {
   it('refuses save/pause/resume while schedule GET is still loading', async () => {
@@ -51,12 +15,12 @@ describe('connector schedule load ownership', () => {
     const pendingSchedule = new Promise<ConnectorScheduleSummary | null>((resolve) => {
       resolveSchedule = resolve
     })
-    const upsertSchedule = vi.fn(async () => createSchedule())
-    const pauseSchedule = vi.fn(async () => createSchedule({ state: 'paused' }))
-    const resumeSchedule = vi.fn(async () => createSchedule())
+    const upsertSchedule = vi.fn(async () => scheduleSummary())
+    const pauseSchedule = vi.fn(async () => scheduleSummary({ state: 'paused' }))
+    const resumeSchedule = vi.fn(async () => scheduleSummary())
     const deleteSchedule = vi.fn(async () => undefined)
     const api: ConnectorScheduleUiApi = {
-      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableCapability })),
+      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableSchedulingCapability })),
       getSchedule: vi.fn(() => pendingSchedule),
       upsertSchedule,
       pauseSchedule,
@@ -66,18 +30,18 @@ describe('connector schedule load ownership', () => {
 
     const { result } = renderHook(() => useConnectorInstanceSchedules({
       connectorScheduleApi: api,
-      instances: [instance],
+      instances: [schedulableInstance],
       workspaceId: 'workspace-1',
     }))
 
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.isLoading).toBe(true)
+      expect(result.current.scheduleStates[schedulableInstance.id]?.isLoading).toBe(true)
     })
 
     await act(async () => {
-      await result.current.saveConnectorSchedule(instance)
-      await result.current.pauseConnectorSchedule(instance)
-      await result.current.resumeConnectorSchedule(instance)
+      await result.current.saveConnectorSchedule(schedulableInstance)
+      await result.current.pauseConnectorSchedule(schedulableInstance)
+      await result.current.resumeConnectorSchedule(schedulableInstance)
     })
 
     expect(upsertSchedule).not.toHaveBeenCalled()
@@ -90,7 +54,7 @@ describe('connector schedule load ownership', () => {
     })
 
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.isLoading).toBe(false)
+      expect(result.current.scheduleStates[schedulableInstance.id]?.isLoading).toBe(false)
     })
   })
 
@@ -100,11 +64,11 @@ describe('connector schedule load ownership', () => {
       getResolvers.push(resolve)
     }))
     const api: ConnectorScheduleUiApi = {
-      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableCapability })),
+      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableSchedulingCapability })),
       getSchedule,
-      upsertSchedule: vi.fn(async () => createSchedule()),
-      pauseSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
-      resumeSchedule: vi.fn(async () => createSchedule()),
+      upsertSchedule: vi.fn(async () => scheduleSummary()),
+      pauseSchedule: vi.fn(async () => scheduleSummary({ state: 'paused' })),
+      resumeSchedule: vi.fn(async () => scheduleSummary()),
       deleteSchedule: vi.fn(async () => undefined),
     }
 
@@ -114,28 +78,28 @@ describe('connector schedule load ownership', () => {
         instances,
         workspaceId: 'workspace-1',
       }),
-      { initialProps: { instances: [instance] } },
+      { initialProps: { instances: [schedulableInstance] } },
     )
 
     await waitFor(() => {
       expect(getSchedule).toHaveBeenCalledTimes(1)
-      expect(result.current.scheduleStates[instance.id]?.isLoading).toBe(true)
+      expect(result.current.scheduleStates[schedulableInstance.id]?.isLoading).toBe(true)
     })
 
     rerender({ instances: [] })
-    rerender({ instances: [instance] })
+    rerender({ instances: [schedulableInstance] })
 
     await waitFor(() => {
       expect(getSchedule).toHaveBeenCalledTimes(2)
-      expect(result.current.scheduleStates[instance.id]?.isLoading).toBe(true)
+      expect(result.current.scheduleStates[schedulableInstance.id]?.isLoading).toBe(true)
     })
 
-    const newer = createSchedule({
+    const newer = scheduleSummary({
       revision: 'rev-newer',
       cadence: { kind: 'interval', everyMinutes: 60 },
       timezone: 'America/New_York',
     })
-    const stale = createSchedule({
+    const stale = scheduleSummary({
       revision: 'rev-stale',
       cadence: { kind: 'interval', everyMinutes: 15 },
       timezone: 'UTC',
@@ -145,9 +109,9 @@ describe('connector schedule load ownership', () => {
       getResolvers[1]!(newer)
     })
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.canonical?.revision).toBe('rev-newer')
-      expect(result.current.scheduleStates[instance.id]?.draft.timezone).toBe('America/New_York')
-      expect(result.current.scheduleStates[instance.id]?.isLoading).toBe(false)
+      expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).toBe('rev-newer')
+      expect(result.current.scheduleStates[schedulableInstance.id]?.draft.timezone).toBe('America/New_York')
+      expect(result.current.scheduleStates[schedulableInstance.id]?.isLoading).toBe(false)
     })
 
     await act(async () => {
@@ -155,25 +119,25 @@ describe('connector schedule load ownership', () => {
     })
 
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.canonical?.revision).toBe('rev-newer')
+      expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).toBe('rev-newer')
     })
-    expect(result.current.scheduleStates[instance.id]?.canonical?.cadence).toEqual({
+    expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.cadence).toEqual({
       kind: 'interval',
       everyMinutes: 60,
     })
-    expect(result.current.scheduleStates[instance.id]?.draft.timezone).toBe('America/New_York')
-    expect(result.current.scheduleStates[instance.id]?.canonical?.revision).not.toBe('rev-stale')
+    expect(result.current.scheduleStates[schedulableInstance.id]?.draft.timezone).toBe('America/New_York')
+    expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).not.toBe('rev-stale')
   })
 
   it('does not issue schedule GET for a new workspace until that workspace capability resolves', async () => {
-    const getScheduleA = vi.fn(async () => createSchedule({ revision: 'rev-a' }))
-    const getCapabilitiesA = vi.fn(async () => ({ connectorScheduling: availableCapability }))
+    const getScheduleA = vi.fn(async () => scheduleSummary({ revision: 'rev-a' }))
+    const getCapabilitiesA = vi.fn(async () => ({ connectorScheduling: availableSchedulingCapability }))
     const apiA: ConnectorScheduleUiApi = {
       getCapabilities: getCapabilitiesA,
       getSchedule: getScheduleA,
-      upsertSchedule: vi.fn(async () => createSchedule()),
-      pauseSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
-      resumeSchedule: vi.fn(async () => createSchedule()),
+      upsertSchedule: vi.fn(async () => scheduleSummary()),
+      pauseSchedule: vi.fn(async () => scheduleSummary({ state: 'paused' })),
+      resumeSchedule: vi.fn(async () => scheduleSummary()),
       deleteSchedule: vi.fn(async () => undefined),
     }
 
@@ -182,20 +146,20 @@ describe('connector schedule load ownership', () => {
       resolveCapabilitiesB = resolve
     })
     const getCapabilitiesB = vi.fn(() => pendingCapabilitiesB)
-    const getScheduleB = vi.fn(async () => createSchedule({ revision: 'rev-b' }))
+    const getScheduleB = vi.fn(async () => scheduleSummary({ revision: 'rev-b' }))
     const apiB: ConnectorScheduleUiApi = {
       getCapabilities: getCapabilitiesB,
       getSchedule: getScheduleB,
-      upsertSchedule: vi.fn(async () => createSchedule()),
-      pauseSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
-      resumeSchedule: vi.fn(async () => createSchedule()),
+      upsertSchedule: vi.fn(async () => scheduleSummary()),
+      pauseSchedule: vi.fn(async () => scheduleSummary({ state: 'paused' })),
+      resumeSchedule: vi.fn(async () => scheduleSummary()),
       deleteSchedule: vi.fn(async () => undefined),
     }
 
     const { result, rerender } = renderHook(
       ({ connectorScheduleApi, workspaceId }) => useConnectorInstanceSchedules({
         connectorScheduleApi,
-        instances: [instance],
+        instances: [schedulableInstance],
         workspaceId,
       }),
       {
@@ -208,8 +172,8 @@ describe('connector schedule load ownership', () => {
 
     await waitFor(() => {
       expect(getScheduleA).toHaveBeenCalledTimes(1)
-      expect(result.current.schedulingCapability).toEqual(availableCapability)
-      expect(result.current.scheduleStates[instance.id]?.canonical?.revision).toBe('rev-a')
+      expect(result.current.schedulingCapability).toEqual(availableSchedulingCapability)
+      expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).toBe('rev-a')
     })
 
     rerender({
@@ -234,17 +198,17 @@ describe('connector schedule load ownership', () => {
     expect(getScheduleB).not.toHaveBeenCalled()
 
     let rejectCapabilitiesC: (reason?: unknown) => void
-    const pendingCapabilitiesC = new Promise<{ connectorScheduling: typeof availableCapability }>((_resolve, reject) => {
+    const pendingCapabilitiesC = new Promise<{ connectorScheduling: typeof availableSchedulingCapability }>((_resolve, reject) => {
       rejectCapabilitiesC = reject
     })
     const getCapabilitiesC = vi.fn(() => pendingCapabilitiesC)
-    const getScheduleC = vi.fn(async () => createSchedule({ revision: 'rev-c' }))
+    const getScheduleC = vi.fn(async () => scheduleSummary({ revision: 'rev-c' }))
     const apiC: ConnectorScheduleUiApi = {
       getCapabilities: getCapabilitiesC,
       getSchedule: getScheduleC,
-      upsertSchedule: vi.fn(async () => createSchedule()),
-      pauseSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
-      resumeSchedule: vi.fn(async () => createSchedule()),
+      upsertSchedule: vi.fn(async () => scheduleSummary()),
+      pauseSchedule: vi.fn(async () => scheduleSummary({ state: 'paused' })),
+      resumeSchedule: vi.fn(async () => scheduleSummary()),
       deleteSchedule: vi.fn(async () => undefined),
     }
 
@@ -280,11 +244,11 @@ describe('connector schedule load ownership', () => {
     })
     const upsertSchedule = vi.fn(() => pendingUpsert)
     const api: ConnectorScheduleUiApi = {
-      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableCapability })),
+      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableSchedulingCapability })),
       getSchedule,
       upsertSchedule,
-      pauseSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
-      resumeSchedule: vi.fn(async () => createSchedule()),
+      pauseSchedule: vi.fn(async () => scheduleSummary({ state: 'paused' })),
+      resumeSchedule: vi.fn(async () => scheduleSummary()),
       deleteSchedule: vi.fn(async () => undefined),
     }
 
@@ -294,38 +258,38 @@ describe('connector schedule load ownership', () => {
         instances,
         workspaceId: 'workspace-1',
       }),
-      { initialProps: { instances: [instance] } },
+      { initialProps: { instances: [schedulableInstance] } },
     )
 
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(1))
     await act(async () => {
-      getResolvers[0]!(createSchedule({
+      getResolvers[0]!(scheduleSummary({
         revision: 'rev-initial',
         cadence: { kind: 'interval', everyMinutes: 30 },
       }))
     })
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.isLoading).toBe(false)
-      expect(result.current.scheduleStates[instance.id]?.canonical?.revision).toBe('rev-initial')
+      expect(result.current.scheduleStates[schedulableInstance.id]?.isLoading).toBe(false)
+      expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).toBe('rev-initial')
     })
 
     await act(async () => {
-      result.current.updateScheduleDraft(instance.id, {
+      result.current.updateScheduleDraft(schedulableInstance.id, {
         mode: 'preset',
         presetId: 'interval-60',
       })
     })
     await act(async () => {
-      void result.current.saveConnectorSchedule(instance)
+      void result.current.saveConnectorSchedule(schedulableInstance)
     })
     await waitFor(() => expect(upsertSchedule).toHaveBeenCalledTimes(1))
-    expect(result.current.scheduleStates[instance.id]?.isSaving).toBe(true)
+    expect(result.current.scheduleStates[schedulableInstance.id]?.isSaving).toBe(true)
 
     rerender({ instances: [] })
-    rerender({ instances: [instance] })
+    rerender({ instances: [schedulableInstance] })
 
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(2))
-    const newer = createSchedule({
+    const newer = scheduleSummary({
       revision: 'rev-from-reload',
       cadence: { kind: 'daily', localTime: '09:00' },
       timezone: 'America/Chicago',
@@ -334,13 +298,13 @@ describe('connector schedule load ownership', () => {
       getResolvers[1]!(newer)
     })
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.canonical?.revision).toBe('rev-from-reload')
-      expect(result.current.scheduleStates[instance.id]?.draft.timezone).toBe('America/Chicago')
-      expect(result.current.scheduleStates[instance.id]?.isLoading).toBe(false)
+      expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).toBe('rev-from-reload')
+      expect(result.current.scheduleStates[schedulableInstance.id]?.draft.timezone).toBe('America/Chicago')
+      expect(result.current.scheduleStates[schedulableInstance.id]?.isLoading).toBe(false)
     })
 
     await act(async () => {
-      resolveUpsert!(createSchedule({
+      resolveUpsert!(scheduleSummary({
         revision: 'rev-stale-mutation',
         cadence: { kind: 'interval', everyMinutes: 60 },
         timezone: 'UTC',
@@ -348,15 +312,15 @@ describe('connector schedule load ownership', () => {
     })
 
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.canonical?.revision).toBe('rev-from-reload')
+      expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).toBe('rev-from-reload')
     })
-    expect(result.current.scheduleStates[instance.id]?.canonical?.cadence).toEqual({
+    expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.cadence).toEqual({
       kind: 'daily',
       localTime: '09:00',
     })
-    expect(result.current.scheduleStates[instance.id]?.draft.timezone).toBe('America/Chicago')
-    expect(result.current.scheduleStates[instance.id]?.statusMessage).not.toBe('Schedule saved.')
-    expect(result.current.scheduleStates[instance.id]?.canonical?.revision).not.toBe('rev-stale-mutation')
+    expect(result.current.scheduleStates[schedulableInstance.id]?.draft.timezone).toBe('America/Chicago')
+    expect(result.current.scheduleStates[schedulableInstance.id]?.statusMessage).not.toBe('Schedule saved.')
+    expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).not.toBe('rev-stale-mutation')
   })
 
   it.each([
@@ -418,9 +382,9 @@ describe('connector schedule load ownership', () => {
     })
 
     const api: ConnectorScheduleUiApi = {
-      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableCapability })),
+      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableSchedulingCapability })),
       getSchedule,
-      upsertSchedule: vi.fn(async () => createSchedule()),
+      upsertSchedule: vi.fn(async () => scheduleSummary()),
       pauseSchedule,
       resumeSchedule,
       deleteSchedule,
@@ -432,36 +396,36 @@ describe('connector schedule load ownership', () => {
         instances,
         workspaceId: 'workspace-1',
       }),
-      { initialProps: { instances: [instance] } },
+      { initialProps: { instances: [schedulableInstance] } },
     )
 
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(1))
     await act(async () => {
-      getResolvers[0]!(createSchedule({
+      getResolvers[0]!(scheduleSummary({
         revision: 'rev-initial',
         state: start === 'resume' ? 'paused' : 'enabled',
       }))
     })
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.isLoading).toBe(false)
+      expect(result.current.scheduleStates[schedulableInstance.id]?.isLoading).toBe(false)
     })
 
     await act(async () => {
       if (start === 'pause') {
-        void result.current.pauseConnectorSchedule(instance)
+        void result.current.pauseConnectorSchedule(schedulableInstance)
       } else if (start === 'resume') {
-        void result.current.resumeConnectorSchedule(instance)
+        void result.current.resumeConnectorSchedule(schedulableInstance)
       } else {
-        result.current.updateScheduleDraft(instance.id, { mode: 'manual' })
+        result.current.updateScheduleDraft(schedulableInstance.id, { mode: 'manual' })
       }
     })
 
     if (start === 'delete') {
       await waitFor(() => {
-        expect(result.current.scheduleStates[instance.id]?.draft.mode).toBe('manual')
+        expect(result.current.scheduleStates[schedulableInstance.id]?.draft.mode).toBe('manual')
       })
       await act(async () => {
-        void result.current.saveConnectorSchedule(instance)
+        void result.current.saveConnectorSchedule(schedulableInstance)
       })
     }
 
@@ -476,10 +440,10 @@ describe('connector schedule load ownership', () => {
     })
 
     rerender({ instances: [] })
-    rerender({ instances: [instance] })
+    rerender({ instances: [schedulableInstance] })
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(2))
 
-    const newer = createSchedule({
+    const newer = scheduleSummary({
       revision: 'rev-from-reload',
       cadence: { kind: 'weekly', dayOfWeek: 2, localTime: '08:00' },
       timezone: 'Europe/Paris',
@@ -489,12 +453,12 @@ describe('connector schedule load ownership', () => {
       getResolvers[1]!(newer)
     })
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.canonical?.revision).toBe('rev-from-reload')
+      expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).toBe('rev-from-reload')
     })
 
     await act(async () => {
       if (outcome === 'success') {
-        resolveMutation!(createSchedule({
+        resolveMutation!(scheduleSummary({
           revision: 'rev-stale-mutation',
           state: start === 'pause' ? 'paused' : 'enabled',
           cadence: { kind: 'interval', everyMinutes: 15 },
@@ -506,9 +470,9 @@ describe('connector schedule load ownership', () => {
     })
 
     await waitFor(() => {
-      expect(result.current.scheduleStates[instance.id]?.canonical?.revision).toBe('rev-from-reload')
+      expect(result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision).toBe('rev-from-reload')
     })
-    const state = result.current.scheduleStates[instance.id]!
+    const state = result.current.scheduleStates[schedulableInstance.id]!
     expect(state.draft.timezone).toBe('Europe/Paris')
     expect(state.statusTone).not.toBe('error')
     if (successMessage) {
@@ -523,32 +487,32 @@ describe('connector schedule load ownership', () => {
     const firstCapabilities = new Promise<{ connectorScheduling: { available: false } }>((resolve) => {
       resolveFirstCapabilities = resolve
     })
-    const getScheduleA = vi.fn(async () => createSchedule({ revision: 'rev-a' }))
+    const getScheduleA = vi.fn(async () => scheduleSummary({ revision: 'rev-a' }))
     const getCapabilitiesA = vi.fn(() => firstCapabilities)
     const apiA: ConnectorScheduleUiApi = {
       getCapabilities: getCapabilitiesA,
       getSchedule: getScheduleA,
-      upsertSchedule: vi.fn(async () => createSchedule()),
-      pauseSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
-      resumeSchedule: vi.fn(async () => createSchedule()),
+      upsertSchedule: vi.fn(async () => scheduleSummary()),
+      pauseSchedule: vi.fn(async () => scheduleSummary({ state: 'paused' })),
+      resumeSchedule: vi.fn(async () => scheduleSummary()),
       deleteSchedule: vi.fn(async () => undefined),
     }
 
-    const getScheduleB = vi.fn(async () => createSchedule({ revision: 'rev-b' }))
-    const getCapabilitiesB = vi.fn(async () => ({ connectorScheduling: availableCapability }))
+    const getScheduleB = vi.fn(async () => scheduleSummary({ revision: 'rev-b' }))
+    const getCapabilitiesB = vi.fn(async () => ({ connectorScheduling: availableSchedulingCapability }))
     const apiB: ConnectorScheduleUiApi = {
       getCapabilities: getCapabilitiesB,
       getSchedule: getScheduleB,
-      upsertSchedule: vi.fn(async () => createSchedule()),
-      pauseSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
-      resumeSchedule: vi.fn(async () => createSchedule()),
+      upsertSchedule: vi.fn(async () => scheduleSummary()),
+      pauseSchedule: vi.fn(async () => scheduleSummary({ state: 'paused' })),
+      resumeSchedule: vi.fn(async () => scheduleSummary()),
       deleteSchedule: vi.fn(async () => undefined),
     }
 
     const { result, rerender } = renderHook(
       ({ connectorScheduleApi, workspaceId }) => useConnectorInstanceSchedules({
         connectorScheduleApi,
-        instances: [instance],
+        instances: [schedulableInstance],
         workspaceId,
       }),
       {
@@ -570,7 +534,7 @@ describe('connector schedule load ownership', () => {
 
     await waitFor(() => {
       expect(getCapabilitiesB).toHaveBeenCalled()
-      expect(result.current.schedulingCapability).toEqual(availableCapability)
+      expect(result.current.schedulingCapability).toEqual(availableSchedulingCapability)
     })
     expect(getScheduleB).toHaveBeenCalled()
 
@@ -579,14 +543,14 @@ describe('connector schedule load ownership', () => {
     })
 
     await waitFor(() => {
-      expect(result.current.schedulingCapability).toEqual(availableCapability)
+      expect(result.current.schedulingCapability).toEqual(availableSchedulingCapability)
     })
     expect(getScheduleA).not.toHaveBeenCalled()
     expect(result.current.schedulingCapability).not.toEqual({ available: false })
   })
 
   it('saves a preset schedule and reloads the persisted cadence after instance remount', async () => {
-    const saved = createSchedule({
+    const saved = scheduleSummary({
       revision: 'rev-saved',
       cadence: { kind: 'interval', everyMinutes: 60 },
       timezone: 'UTC',
@@ -596,26 +560,26 @@ describe('connector schedule load ownership', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValue(saved)
     const api: ConnectorScheduleUiApi = {
-      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableCapability })),
+      getCapabilities: vi.fn(async () => ({ connectorScheduling: availableSchedulingCapability })),
       getSchedule,
       upsertSchedule,
-      pauseSchedule: vi.fn(async () => createSchedule({ state: 'paused' })),
-      resumeSchedule: vi.fn(async () => createSchedule()),
+      pauseSchedule: vi.fn(async () => scheduleSummary({ state: 'paused' })),
+      resumeSchedule: vi.fn(async () => scheduleSummary()),
       deleteSchedule: vi.fn(async () => undefined),
     }
 
     const first = renderHook(() => useConnectorInstanceSchedules({
       connectorScheduleApi: api,
-      instances: [instance],
+      instances: [schedulableInstance],
       workspaceId: 'workspace-1',
     }))
 
     await waitFor(() => {
-      expect(first.result.current.scheduleStates[instance.id]?.isLoading).toBe(false)
+      expect(first.result.current.scheduleStates[schedulableInstance.id]?.isLoading).toBe(false)
     })
 
     await act(async () => {
-      first.result.current.updateScheduleDraft(instance.id, {
+      first.result.current.updateScheduleDraft(schedulableInstance.id, {
         mode: 'preset',
         presetId: 'interval-60',
         timezone: 'UTC',
@@ -623,17 +587,17 @@ describe('connector schedule load ownership', () => {
       })
     })
     await act(async () => {
-      await first.result.current.saveConnectorSchedule(instance)
+      await first.result.current.saveConnectorSchedule(schedulableInstance)
     })
 
     expect(upsertSchedule).toHaveBeenCalledWith({
-      connectorInstanceId: instance.id,
+      connectorInstanceId: schedulableInstance.id,
       expectedRevision: null,
       state: 'enabled',
       cadence: { kind: 'interval', everyMinutes: 60 },
       timezone: 'UTC',
     })
-    expect(first.result.current.scheduleStates[instance.id]?.canonical?.cadence).toEqual({
+    expect(first.result.current.scheduleStates[schedulableInstance.id]?.canonical?.cadence).toEqual({
       kind: 'interval',
       everyMinutes: 60,
     })
@@ -641,16 +605,16 @@ describe('connector schedule load ownership', () => {
     first.unmount()
     const remounted = renderHook(() => useConnectorInstanceSchedules({
       connectorScheduleApi: api,
-      instances: [instance],
+      instances: [schedulableInstance],
       workspaceId: 'workspace-1',
     }))
 
     await waitFor(() => {
-      expect(remounted.result.current.scheduleStates[instance.id]?.canonical?.revision)
+      expect(remounted.result.current.scheduleStates[schedulableInstance.id]?.canonical?.revision)
         .toBe('rev-saved')
     })
-    expect(remounted.result.current.scheduleStates[instance.id]?.canonical?.state).toBe('enabled')
-    expect(remounted.result.current.scheduleStates[instance.id]?.canonical?.cadence).toEqual({
+    expect(remounted.result.current.scheduleStates[schedulableInstance.id]?.canonical?.state).toBe('enabled')
+    expect(remounted.result.current.scheduleStates[schedulableInstance.id]?.canonical?.cadence).toEqual({
       kind: 'interval',
       everyMinutes: 60,
     })

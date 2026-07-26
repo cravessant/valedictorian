@@ -1,25 +1,16 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ConnectorSchedulingCapability } from '@sparxie/sdk'
 import { ConnectorScheduleControls } from './ConnectorScheduleControls'
 import { createEmptyConnectorScheduleDraft } from './connector-schedule.helpers'
+import { availableSchedulingCapability } from './connector-schedule.test-helpers'
 import type { ConnectorScheduleDraft } from './connector-schedule.types'
 
 afterEach(cleanup)
 
-const availableCapability: Extract<ConnectorSchedulingCapability, { available: true }> = {
-  available: true,
-  supportedCadences: ['interval', 'daily', 'weekly'],
-  minimumIntervalMinutes: 15,
-  maximumCatchUpAgeMinutes: 24 * 60,
-  timezoneModel: 'iana',
-  missedOccurrencePolicy: 'coalesce_one',
-}
-
 function renderWeeklyValidation(draft: ConnectorScheduleDraft, field: 'dayOfWeek' | 'localTime') {
   return render(
     <ConnectorScheduleControls
-      capability={availableCapability}
+      capability={availableSchedulingCapability}
       capabilityLoadError={null}
       loadFailure={null}
       validationField={field}

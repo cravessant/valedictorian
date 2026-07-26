@@ -11,38 +11,11 @@ import {
   createConnectorsApiWithJobrightDescriptor,
   createProfileApi,
 } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { availableScheduleApi } from './connector-schedule.test-helpers'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
 import { ApiTokenSettingsControls } from './ApiTokenSettingsControls'
 
 afterEach(cleanup)
-
-function createScheduleApi(overrides: Partial<ConnectorScheduleUiApi> = {}): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: {
-        available: true as const,
-        minimumIntervalMinutes: 15,
-        supportedCadences: ['interval', 'daily', 'weekly'] as const,
-        supportedTimezones: ['UTC'],
-      },
-    })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    pauseSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    resumeSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    deleteSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    ...overrides,
-  }
-}
 
 describe('ConnectorSettingsPanel list LoadFailureView surfaces', () => {
   it('settles an initial AbortError to empty non-error UI without a truthy load failure', async () => {
@@ -54,7 +27,7 @@ describe('ConnectorSettingsPanel list LoadFailureView surfaces', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
@@ -81,7 +54,7 @@ describe('ConnectorSettingsPanel list LoadFailureView surfaces', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
@@ -106,7 +79,7 @@ describe('ConnectorSettingsPanel list LoadFailureView surfaces', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
@@ -126,7 +99,7 @@ describe('ConnectorSettingsPanel list LoadFailureView surfaces', () => {
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
@@ -160,7 +133,7 @@ describe('ConnectorSettingsPanel list LoadFailureView surfaces', () => {
     const { rerender } = render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
@@ -174,7 +147,7 @@ describe('ConnectorSettingsPanel list LoadFailureView surfaces', () => {
     rerender(
       <ConnectorSettingsPanel
         connectorsApi={failingApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-1"
@@ -230,7 +203,7 @@ describe('ConnectorSettingsPanel list LoadFailureView surfaces', () => {
     const { rerender } = render(
       <ConnectorSettingsPanel
         connectorsApi={stableApi as typeof connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-a"
@@ -242,7 +215,7 @@ describe('ConnectorSettingsPanel list LoadFailureView surfaces', () => {
     rerender(
       <ConnectorSettingsPanel
         connectorsApi={stableApi as typeof connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
         workspaceId="workspace-b"

@@ -1,44 +1,22 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createConnectorsApi, createProfileApi } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
+import { jobrightInstance } from './ConnectorSettingsPanel.test-helpers'
 
 const instanceId = 'jobright-run-action'
 const displayName = 'Jobright run action'
 
 afterEach(cleanup)
 
-function unavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({ connectorScheduling: { available: false as const } })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    pauseSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    resumeSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-    deleteSchedule: vi.fn(async () => { throw new Error('unavailable') }),
-  }
-}
-
 function instanceFixture(enabled = true) {
-  return {
-    id: instanceId,
-    connectorId: 'jobright.resolver',
-    connectorVersion: '0.11.0',
+  return jobrightInstance({
     displayName,
     enabled,
-    auth: [{
-      id: 'jobright',
-      mode: 'username_password' as const,
-      label: 'Jobright username and password',
-      configured: true,
-    }],
-    config: {},
     filters: { country: 'US' },
-    earliestBackfillDate: '2026-07-02',
-    createdAt: '2026-07-09T15:00:00.000Z',
-    updatedAt: '2026-07-09T15:00:00.000Z',
-  }
+    id: instanceId,
+  })
 }
 
 function completedRun() {

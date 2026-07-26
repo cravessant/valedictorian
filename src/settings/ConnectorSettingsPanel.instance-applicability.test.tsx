@@ -13,53 +13,16 @@ import {
   lastCreatedConnectorInstanceId,
 } from '../App.test-helpers'
 import { JOBRIGHT_CONNECTOR_VERSION } from '../modules/connectors/jobright.constants'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 import type { ConnectorSettingsUiApi } from './connector-settings.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
+import { openConnectorEditor } from './ConnectorSettingsPanel.test-helpers'
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 })
 
 afterEach(cleanup)
-
-function createUnavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: { available: false as const },
-    })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    pauseSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    resumeSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    deleteSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-  }
-}
-
-async function openConnectorDetails(displayName: string) {
-  const existing = screen.queryByRole('dialog', { name: `${displayName} details` })
-  if (existing) return existing
-  fireEvent.click(await screen.findByRole('button', {
-    name: `View ${displayName} details`,
-  }))
-  return screen.findByRole('dialog', { name: `${displayName} details` })
-}
-
-async function openConnectorEditor(displayName: string) {
-  const dialog = await openConnectorDetails(displayName)
-  const edit = within(dialog).queryByRole('button', { name: 'Edit connector' })
-  if (edit) fireEvent.click(edit)
-  await within(dialog).findByRole('button', { name: 'Close details' })
-  return dialog
-}
 
 function renderPanel(
   connectorsApi: ConnectorSettingsUiApi,
@@ -68,7 +31,7 @@ function renderPanel(
   return render(
     <ConnectorSettingsPanel
       connectorsApi={connectorsApi}
-      connectorScheduleApi={createUnavailableScheduleApi()}
+      connectorScheduleApi={unavailableScheduleApi()}
       onRunSettled={vi.fn()}
       profileApi={profileApi}
       workspaceId="workspace-1"

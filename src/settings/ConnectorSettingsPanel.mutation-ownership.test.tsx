@@ -6,9 +6,10 @@ import {
   createConnectorsApiWithJobrightDescriptor,
   createProfileApi,
 } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { availableScheduleApi } from './connector-schedule.test-helpers'
 import type { ConnectorSettingsInstance, ConnectorSettingsRun } from './connector-settings.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
+import { jobrightInstance } from './ConnectorSettingsPanel.test-helpers'
 
 const sonnerToast = vi.hoisted(() => {
   let nextId = 0
@@ -40,53 +41,6 @@ beforeEach(() => {
   sonnerToast.success.mockClear()
 })
 
-function createScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: {
-        available: true as const,
-        minimumIntervalMinutes: 15,
-        supportedCadences: ['interval', 'daily', 'weekly'] as const,
-        supportedTimezones: ['UTC'],
-      },
-    })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    pauseSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    resumeSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    deleteSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-  }
-}
-
-function instanceFixture(id = 'jobright-1'): ConnectorSettingsInstance {
-  return {
-    id,
-    connectorId: 'jobright.resolver',
-    connectorVersion: '0.11.0',
-    displayName: 'Jobright internslist',
-    enabled: true,
-    auth: [{
-      id: 'jobright',
-      mode: 'username_password',
-      label: 'Jobright username and password',
-      configured: true,
-    }],
-    config: { discoveryCount: 100 },
-    filters: { country: 'US' },
-    earliestBackfillDate: '2026-07-02',
-    createdAt: '2026-07-09T15:00:00.000Z',
-    updatedAt: '2026-07-09T15:00:00.000Z',
-  }
-}
-
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason?: unknown) => void
@@ -106,6 +60,14 @@ async function openEditor(instanceId: string, displayName = 'Jobright internslis
   return screen.findByTestId(`connector-instance-card-${instanceId}`)
 }
 
+function instanceFixture(id = 'jobright-1'): ConnectorSettingsInstance {
+  return jobrightInstance({
+    config: { discoveryCount: 100 },
+    filters: { country: 'US' },
+    id,
+  })
+}
+
 describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
   it('ignores a deferred save success after workspaceId switches', async () => {
     const pending = deferred<ConnectorSettingsInstance>()
@@ -118,7 +80,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
     const { rerender } = render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onConnectorChanged={onConnectorChanged}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
@@ -137,7 +99,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
     rerender(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onConnectorChanged={onConnectorChanged}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
@@ -172,7 +134,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
     const { rerender } = render(
       <ConnectorSettingsPanel
         connectorsApi={oldApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onConnectorChanged={onConnectorChanged}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
@@ -188,7 +150,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
     rerender(
       <ConnectorSettingsPanel
         connectorsApi={newApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onConnectorChanged={onConnectorChanged}
         onRunSettled={vi.fn()}
         profileApi={createProfileApi()}
@@ -223,7 +185,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
     const { unmount } = render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={onRunSettled}
         profileApi={createProfileApi()}
         workspaceId="workspace-a"
@@ -288,7 +250,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
     const { rerender } = render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={onRunSettled}
         profileApi={createProfileApi()}
         workspaceId="workspace-a"
@@ -308,7 +270,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
     rerender(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
-        connectorScheduleApi={createScheduleApi()}
+        connectorScheduleApi={availableScheduleApi()}
         onRunSettled={onRunSettled}
         profileApi={createProfileApi()}
         workspaceId="workspace-b"

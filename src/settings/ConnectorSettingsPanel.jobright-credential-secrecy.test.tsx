@@ -4,79 +4,26 @@ import {
   fireEvent,
   render,
   screen,
-  within,
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createConnectorsApi,
   createProfileApi,
 } from '../App.test-helpers'
-import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 import type { ConnectorSettingsUiApi } from './connector-settings.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
+import {
+  jobrightInstance,
+  openConnectorDetails,
+  openConnectorEditor,
+} from './ConnectorSettingsPanel.test-helpers'
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 })
 
 afterEach(cleanup)
-
-function createUnavailableScheduleApi(): ConnectorScheduleUiApi {
-  return {
-    getCapabilities: vi.fn(async () => ({
-      connectorScheduling: { available: false as const },
-    })),
-    getSchedule: vi.fn(async () => null),
-    upsertSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    pauseSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    resumeSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-    deleteSchedule: vi.fn(async () => {
-      throw new Error('unavailable')
-    }),
-  }
-}
-
-const configuredJobrightInstance = {
-  id: 'jobright-default',
-  connectorId: 'jobright.resolver',
-  connectorVersion: '0.11.0',
-  displayName: 'Jobright internslist',
-  enabled: true,
-  auth: [{
-    id: 'jobright',
-    mode: 'username_password' as const,
-    label: 'Jobright username and password',
-    configured: true,
-  }],
-  config: {},
-  filters: {},
-  earliestBackfillDate: '2026-07-02',
-  createdAt: '2026-07-09T15:00:00.000Z',
-  updatedAt: '2026-07-09T15:00:00.000Z',
-}
-
-async function openConnectorDetails(displayName = 'Jobright internslist') {
-  const existing = screen.queryByRole('dialog', { name: `${displayName} details` })
-  if (existing) return existing
-  fireEvent.click(await screen.findByRole('button', {
-    name: `View ${displayName} details`,
-  }))
-  return screen.findByRole('dialog', { name: `${displayName} details` })
-}
-
-async function openConnectorEditor(displayName = 'Jobright internslist') {
-  const dialog = await openConnectorDetails(displayName)
-  const edit = within(dialog).queryByRole('button', { name: 'Edit connector' })
-  if (edit) fireEvent.click(edit)
-  await within(dialog).findByRole('button', { name: 'Close details' })
-  return dialog
-}
 
 function renderPanel(
   connectorsApi: ConnectorSettingsUiApi,
@@ -85,7 +32,7 @@ function renderPanel(
   return render(
     <ConnectorSettingsPanel
       connectorsApi={connectorsApi}
-      connectorScheduleApi={createUnavailableScheduleApi()}
+      connectorScheduleApi={unavailableScheduleApi()}
       onRunSettled={vi.fn()}
       profileApi={profileApi}
       workspaceId="workspace-1"
@@ -124,7 +71,7 @@ describe('ConnectorSettingsPanel Jobright credential secrecy', () => {
     const connectorsApi = createConnectorsApi()
     const profileApi = createProfileApi()
     vi.mocked(connectorsApi.list).mockResolvedValue({
-      items: [configuredJobrightInstance],
+      items: [jobrightInstance()],
     })
     vi.mocked(connectorsApi.status.reconnect).mockResolvedValue({
       action: 'reconnect',
@@ -264,7 +211,7 @@ describe('ConnectorSettingsPanel Jobright credential secrecy', () => {
       resolveReconnect = resolve
     })
     vi.mocked(connectorsApi.list).mockResolvedValue({
-      items: [configuredJobrightInstance],
+      items: [jobrightInstance()],
     })
     vi.mocked(connectorsApi.status.reconnect).mockReturnValueOnce(pendingReconnect)
 
@@ -308,7 +255,7 @@ describe('ConnectorSettingsPanel Jobright credential secrecy', () => {
       resolveNewer = resolve
     })
     vi.mocked(connectorsApi.list).mockResolvedValue({
-      items: [configuredJobrightInstance],
+      items: [jobrightInstance()],
     })
     vi.mocked(connectorsApi.status.reconnect)
       .mockReturnValueOnce(olderReconnect)
@@ -372,7 +319,7 @@ describe('ConnectorSettingsPanel Jobright credential secrecy', () => {
       resolveAutoValidate = resolve
     })
     vi.mocked(connectorsApi.list).mockResolvedValue({
-      items: [configuredJobrightInstance],
+      items: [jobrightInstance()],
     })
     vi.mocked(connectorsApi.status.reconnect).mockReturnValueOnce(autoValidate)
 
@@ -408,7 +355,7 @@ describe('ConnectorSettingsPanel Jobright credential secrecy', () => {
   it('shows sanitized secure-storage failure when revalidation returns it', async () => {
     const connectorsApi = createConnectorsApi()
     vi.mocked(connectorsApi.list).mockResolvedValue({
-      items: [configuredJobrightInstance],
+      items: [jobrightInstance()],
     })
     vi.mocked(connectorsApi.status.reconnect).mockResolvedValue({
       action: 'reconnect',
