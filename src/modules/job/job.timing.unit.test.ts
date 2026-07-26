@@ -75,11 +75,6 @@ describe('jobFactsTiming', () => {
     expect(jobFactsTiming(UNKNOWN).term).toBeNull()
   })
 
-  it('rejects a retired term input instead of ignoring it', () => {
-    expect(() => jobFactsTiming({ ...UNKNOWN, term: 'Fall 2026 internship' } as never))
-      .toThrow(/does not accept term/)
-  })
-
   it('composes a contract-valid timing block for a Job facts write', () => {
     const facts = {
       companyName: 'Acme',

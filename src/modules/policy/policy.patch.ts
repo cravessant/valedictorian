@@ -4,10 +4,9 @@
  * The SDK ships no schema for `PolicyConfig` — only `defaultPolicyConfig` (the canonical key
  * shape) and `normalizePolicyConfig`, which rebuilds a config from known keys and silently
  * substitutes the default for any value it cannot read. Both halves of that leniency are
- * failures at an authoritative write boundary: a retired or misspelled section (notably the
- * pre-cutover `queue`, replaced by `actionQueue`) and a malformed known value alike merge,
- * get dropped, and are reported back as a successful update that changed nothing — or worse,
- * reset a valid non-default setting to the default.
+ * failures at an authoritative write boundary: an unknown or misspelled section and a malformed
+ * known value alike merge, get dropped, and are reported back as a successful update that
+ * changed nothing — or worse, reset a valid non-default setting to the default.
  *
  * Admission rejects both instead, and derives the rule from the contract rather than
  * restating it:

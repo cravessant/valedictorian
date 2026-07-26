@@ -43,7 +43,7 @@ export function createPglitePolicyRepository(database: PgliteDatabase) {
       return writePolicyConfig(database, defaultPolicyConfig)
     },
     async updateConfig(patch: PolicyConfigPatch): Promise<PolicyConfig> {
-      // IPC-path backstop for the authoritative HTTP admission: reject retired keys and values
+      // IPC-path backstop for the authoritative HTTP admission: reject unsupported keys and values
       // the merge below would normalize away BEFORE opening the transaction, so a rejected
       // patch can never reset a stored setting or report an unchanged config as updated (#396).
       const admitted = admitPolicyConfigPatch(patch)

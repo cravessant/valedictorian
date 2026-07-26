@@ -3,9 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { defaultAppSettings } from './app-settings'
-import type { AppSecretStore } from './app-secret'
 import { createApplicationFileSecretStore } from './app-secret.composition'
-import { createApplicationSecretScope } from '../modules/secrets/secret.scope'
 import {
   defaultAtomicDocumentFileOperations,
   type AtomicDocumentFileOperations,
@@ -34,44 +32,6 @@ function createTempSettingsPath() {
 const testCodec = {
   decrypt: (value: string) => Buffer.from(value.replace(/^encrypted:/, ''), 'base64').toString(),
   encrypt: (value: string) => `encrypted:${Buffer.from(value).toString('base64')}`,
-}
-
-function createRecordingSecretStore(operations: string[]): AppSecretStore {
-  return {
-    scope: createApplicationSecretScope(),
-    async delete(reference) {
-      operations.push(`delete:${reference}`)
-    },
-    async get(reference) {
-      operations.push(`get:${reference}`)
-      return null
-    },
-    async has(reference) {
-      operations.push(`has:${reference}`)
-      return false
-    },
-    async set(reference) {
-      operations.push(`set:${reference}`)
-    },
-  }
-}
-
-function createWriteRecordingFileOps(writes: string[]): AtomicDocumentFileOperations {
-  return {
-    ...defaultAtomicDocumentFileOperations,
-    openSync(filePath, flags, mode) {
-      writes.push(`open:${flags}`)
-      return defaultAtomicDocumentFileOperations.openSync(filePath, flags, mode)
-    },
-    renameSync(from, to) {
-      writes.push('rename')
-      defaultAtomicDocumentFileOperations.renameSync(from, to)
-    },
-    writeSync(fd, data, offset, length) {
-      writes.push('write')
-      return defaultAtomicDocumentFileOperations.writeSync(fd, data, offset, length)
-    },
-  }
 }
 
 function createSecretBackedSettingsStore(settingsPath: string, codec = testCodec) {
@@ -217,34 +177,6 @@ describe('file app settings store', () => {
     expect(publicSettings).not.toHaveProperty('apiToken')
     expect(publicSettings).not.toHaveProperty('apiTokenSecretRef')
     expect(JSON.stringify(publicSettings)).not.toContain(TOKEN_CANARY)
-  })
-
-  it('ignores a retired plaintext apiToken field without touching the secret store or rewriting settings', async () => {
-    const settingsPath = createTempSettingsPath()
-    fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
-    const retiredDocument = `${JSON.stringify({
-      apiToken: TOKEN_CANARY,
-      runtimeMode: 'remote',
-    }, null, 2)}\n`
-    fs.writeFileSync(settingsPath, retiredDocument, 'utf8')
-
-    const secretOperations: string[] = []
-    const settingsWrites: string[] = []
-    const store = createFileAppSettingsStore(settingsPath, {
-      fileOps: createWriteRecordingFileOps(settingsWrites),
-      secretStore: createRecordingSecretStore(secretOperations),
-    })
-
-    const publicSettings = await store.get()
-    expect(publicSettings).toMatchObject({ apiTokenConfigured: false, runtimeMode: 'remote' })
-    expect(publicSettings).not.toHaveProperty('apiToken')
-    expect(JSON.stringify(publicSettings)).not.toContain(TOKEN_CANARY)
-    await expect(store.resolveApiToken()).resolves.toBeNull()
-    await expect(store.get()).resolves.toMatchObject({ apiTokenConfigured: false })
-
-    expect(secretOperations).toEqual([])
-    expect(settingsWrites).toEqual([])
-    expect(fs.readFileSync(settingsPath, 'utf8')).toBe(retiredDocument)
   })
 
   it('reports configured from ciphertext presence without decrypting', async () => {

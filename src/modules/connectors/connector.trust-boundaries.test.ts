@@ -162,7 +162,7 @@ describe('persisted settings revalidation boundary', () => {
     .descriptor
   const incomplete = { config: {}, filters: {} }
   const unsupported = {
-    config: { batchSize: 20, legacyPrivate: true },
+    config: { batchSize: 20, undeclaredSetting: true },
     filters: { category: 'engineering' },
   }
 
@@ -170,7 +170,7 @@ describe('persisted settings revalidation boundary', () => {
     expect(() => revalidatePersistedConnectorSettings(descriptor, incomplete))
       .toThrow(/batchSize.*required/i)
     expect(() => revalidatePersistedConnectorSettings(descriptor, unsupported))
-      .toThrow(/legacyPrivate|not declared/i)
+      .toThrow(/undeclaredSetting|not declared/i)
     expect(() => revalidatePersistedConnectorSettings(descriptor, {
       config: { batchSize: 20 },
       filters: { category: 'engineering' },

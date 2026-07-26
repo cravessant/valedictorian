@@ -177,7 +177,7 @@ describe('shared claimed connector run executor', () => {
       connectorVersion: '1.0.0',
       displayName: 'Required settings fixture',
       enabled: true,
-      config: { batchSize: 20, legacyPrivate: 'must-not-reach-the-connector' },
+      config: { batchSize: 20, undeclaredSetting: 'must-not-reach-the-connector' },
       filters: {},
       createdAt: '2026-07-11T12:00:00.000Z',
     })
@@ -199,7 +199,7 @@ describe('shared claimed connector run executor', () => {
       mode: 'scheduled',
       now,
       startedAt: '2026-07-11T13:00:00.000Z',
-    })).rejects.toThrow(/legacyPrivate|not declared/i)
+    })).rejects.toThrow(/undeclaredSetting|not declared/i)
 
     expect(refreshCalls).toBe(0)
     await expect(connectorRepository.getRun(queued.id))

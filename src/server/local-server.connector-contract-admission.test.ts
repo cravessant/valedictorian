@@ -7,11 +7,9 @@ import {
 
 const VALIDATION_ERROR_BODY = { message: 'The request is invalid.' }
 
-// Retired auth vocabulary is assembled at runtime so the stale-contract absence policy still
-// forbids these tokens as literals everywhere outside its own allowance.
-const retiredAuthField = ['session', 'Key'].join('')
-const retiredAuthMode = ['browser', '_session'].join('')
-const retiredSecretCanary = 'retired-session-canary'
+const undeclaredAuthField = 'undeclaredSecretField'
+const unsupportedAuthMode = 'unsupported_mode'
+const authSecretCanary = 'undeclared-auth-canary'
 
 const canonicalCreateBody = {
   id: 'connector one',
@@ -107,13 +105,13 @@ describe('connector instance contract admission', () => {
 
   it.each([
     ['an unknown top-level create key', { ...canonicalCreateBody, lifecycle: 'enabled' }],
-    ['the retired auth reference field', {
+    ['an undeclared auth field', {
       ...canonicalCreateBody,
-      auth: [{ id: 'jobright-session', mode: 'api_key', [retiredAuthField]: retiredSecretCanary }],
+      auth: [{ id: 'jobright-session', mode: 'api_key', [undeclaredAuthField]: authSecretCanary }],
     }],
-    ['the retired auth mode', {
+    ['an unsupported auth mode', {
       ...canonicalCreateBody,
-      auth: [{ id: 'jobright-session', mode: retiredAuthMode }],
+      auth: [{ id: 'jobright-session', mode: unsupportedAuthMode }],
     }],
   ])('rejects %s with the fixed client error and never reaches the connector module', async (_label, body) => {
     const connectorsUrl = await startWorkspaceScoped()
@@ -129,15 +127,15 @@ describe('connector instance contract admission', () => {
     const connectorsUrl = await startWorkspaceScoped()
     const body = {
       ...canonicalCreateBody,
-      auth: [{ id: 'jobright-session', mode: 'api_key', [retiredAuthField]: retiredSecretCanary }],
+      auth: [{ id: 'jobright-session', mode: 'api_key', [undeclaredAuthField]: authSecretCanary }],
     }
 
     const response = await fetch(connectorsUrl, jsonRequest('POST', body))
     const text = await response.text()
 
     expect(response.status).toBe(400)
-    expect(text).not.toContain(retiredSecretCanary)
-    expect(text).not.toContain(retiredAuthField)
+    expect(text).not.toContain(authSecretCanary)
+    expect(text).not.toContain(undeclaredAuthField)
     expect(text).not.toContain('workspace-session')
   })
 

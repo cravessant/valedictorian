@@ -23,13 +23,14 @@ describe('policy config patch admission', () => {
     }
   })
 
-  it('rejects the retired queue section instead of silently dropping it', () => {
-    expect(unsupportedPolicyConfigField({ queue: { staleLockHours: 3 } })).toBe('queue')
-    expect(() => admitPolicyConfigPatch({ queue: { staleLockHours: 3 } }))
-      .toThrow('Unsupported policy config field: queue')
+  it('rejects an unknown top-level section instead of silently dropping it', () => {
+    expect(unsupportedPolicyConfigField({ unknownSection: { staleLockHours: 3 } }))
+      .toBe('unknownSection')
+    expect(() => admitPolicyConfigPatch({ unknownSection: { staleLockHours: 3 } }))
+      .toThrow('Unsupported policy config field: unknownSection')
   })
 
-  it('reports the dotted path of a retired nested field', () => {
+  it('reports the dotted path of an unknown nested field', () => {
     expect(unsupportedPolicyConfigField({ manualReview: { daytimeWindow: { start: '09:00', tz: 'UTC' } } }))
       .toBe('manualReview.daytimeWindow.tz')
   })

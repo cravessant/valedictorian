@@ -115,14 +115,14 @@ describe('policy config patch parsing', () => {
     expect(parsePolicyConfigPatch(patch)).toEqual(patch)
   })
 
-  it('rejects a retired queue patch as a validation error rather than ignoring it', () => {
-    expect(() => parsePolicyConfigPatch({ queue: { staleLockHours: 3 } }))
-      .toThrow(new LocalHttpValidationError('Unsupported policy config field: queue'))
+  it('rejects an unknown config field as a validation error rather than ignoring it', () => {
+    expect(() => parsePolicyConfigPatch({ unknownSection: { staleLockHours: 3 } }))
+      .toThrow(new LocalHttpValidationError('Unsupported policy config field: unknownSection'))
   })
 
   it('rejects malformed known values as validation errors rather than admitting a default reset', () => {
-    // Each of these parsed cleanly before #396 and then normalized away, so the caller was told
-    // the update succeeded while the stored value stayed default (or was reset back to it).
+    // Normalization would substitute the default for each of these, reporting a successful update
+    // that changed nothing — or reset a stored non-default value back to the default.
     for (const [path, patch] of [
       ['actionQueue', { actionQueue: 3 }],
       ['actionQueue.staleLockHours', { actionQueue: { staleLockHours: 'bad' } }],

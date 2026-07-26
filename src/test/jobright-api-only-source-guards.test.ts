@@ -5,10 +5,9 @@ import { describe, expect, it } from 'vitest'
 const productionExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs'])
 
 describe('Jobright API-only source guards', () => {
-  it('removes Electron connector-port wiring and browser-session host paths', () => {
+  it('removes Electron connector-port wiring', () => {
     const mainSource = read('electron/main.ts')
     const runtimePortsSource = read('src/modules/connectors/connector.runtime-ports.ts')
-    const runnerSource = read('src/modules/connectors/connector.runner.ts')
     const localClientSource = read('src/runtime/local-valedictorian-client.ts')
     const runtimeSource = read('src/runtime/valedictorian-runtime.ts')
     const workspaceSource = read('src/server/local-workspaces.ts')
@@ -22,14 +21,7 @@ describe('Jobright API-only source guards', () => {
     expect(mainSource).not.toContain('jobright-link-resolver')
     expect(mainSource).not.toContain('resolveJobrightLink')
     expect(runtimePortsSource).not.toContain('connectorAuth')
-    expect(runtimePortsSource).not.toContain(['browser', 'Session'].join(''))
-    expect(runtimePortsSource).not.toContain(['createUnavailable', 'BrowserSessionRuntime'].join(''))
-    expect(runnerSource).not.toContain(['createRun', 'BrowserSessionRuntime'].join(''))
-    expect(runnerSource).not.toContain(['preflight', 'BrowserSessionAuth'].join(''))
-    expect(runnerSource).not.toContain(['browser', 'Sessions'].join(''))
-    expect(localClientSource).not.toContain(['browser', 'Sessions'].join(''))
     expect(localClientSource).not.toContain('connectorAuth?:')
-    expect(localClientSource).not.toContain(['legacy', 'BrowserSessionReferences'].join(''))
     expect(runtimeSource).not.toContain('connectorAuth:')
     expect(workspaceSource).not.toContain('connectorAuth:')
   })

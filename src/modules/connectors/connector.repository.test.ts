@@ -5,9 +5,6 @@ import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './connector.repository.pglite-test-helpers'
 
-const obsoleteBrowserMode = ['browser', '_session'].join('')
-const obsoleteSessionField = ['session', 'Key'].join('')
-
 describe.sequential('PGlite connector repository', () => {
   const createConnectorRepositoryTestContext
     = useResettablePgliteTestConnectorRepositoryContext()
@@ -390,20 +387,6 @@ describe.sequential('PGlite connector repository', () => {
     })
   })
 
-  it('rejects browser-session auth references at the persistence boundary', async () => {
-    const { repository } = await createConnectorRepositoryTestContext()
-
-    await expect(repository.upsertInstance({
-      id: 'connector-instance-browser-auth',
-      connectorId: 'fixture.jobs',
-      connectorVersion: '0.0.0-fixture',
-      displayName: 'Browser auth fixture jobs',
-      enabled: true,
-      auth: [{ id: 'fixture-auth', mode: obsoleteBrowserMode } as never],
-      createdAt: '2026-07-08T15:00:00.000Z',
-    })).rejects.toThrow(`Invalid connector auth mode: ${obsoleteBrowserMode}`)
-  })
-
   it('normalizes connector auth references before persisting instance state', async () => {
     const { repository } = await createConnectorRepositoryTestContext()
 
@@ -419,7 +402,6 @@ describe.sequential('PGlite connector repository', () => {
           mode: 'api_key',
           label: ' Fixture API key ',
           secretKey: ' fixture_api_key ',
-          [obsoleteSessionField]: 'wrong_session_key',
           value: 'fixture-secret',
         } as never,
         {
@@ -427,7 +409,6 @@ describe.sequential('PGlite connector repository', () => {
           mode: 'username_password',
           label: ' Jobright credentials ',
           secretKey: ' connector.jobright.credentials.fixture ',
-          [obsoleteSessionField]: 'wrong_session_key',
           value: 'plaintext-password-json',
         } as never,
       ],
@@ -454,7 +435,6 @@ describe.sequential('PGlite connector repository', () => {
     })
     expect(JSON.stringify(instance)).not.toContain('fixture-secret')
     expect(JSON.stringify(instance)).not.toContain('wrong_secret_key')
-    expect(JSON.stringify(instance)).not.toContain('wrong_session_key')
     expect(JSON.stringify(instance)).not.toContain('plaintext-password-json')
   })
 

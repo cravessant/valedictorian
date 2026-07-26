@@ -39,8 +39,8 @@ describe('Electron profile secret codec', () => {
       },
       {
         code: 'secure_storage_unsupported_version',
-        label: 'retired version',
-        value: `electron-safe-storage:v2:${protectedCiphertext('retired-value')}`,
+        label: 'unsupported version',
+        value: `electron-safe-storage:v2:${protectedCiphertext('unsupported-value')}`,
       },
       {
         code: 'secure_storage_unavailable',

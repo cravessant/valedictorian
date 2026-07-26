@@ -32,7 +32,7 @@ export function createElectronSecretCodec(safeStorage: ElectronSafeStorage): Sec
     },
     decrypt(value) {
       // Classify before consulting the platform so an unavailable safe storage
-      // cannot mask a retired or malformed ciphertext as a transient failure.
+      // cannot mask an unsupported or malformed ciphertext as a transient failure.
       if (!value.startsWith(safeStorageVersionPrefix)) {
         throw value.startsWith(safeStoragePrefix)
           ? new ElectronSecretCodecError(

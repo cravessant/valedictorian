@@ -75,8 +75,8 @@ describe('local connector settings completeness and version-drift edges', () => 
       pgliteDataPath,
     })
     await legacy.connectors.create(createInput({
-      config: { legacyPrivate: true },
-      filters: { legacyCategory: 'old' },
+      config: { undeclaredSetting: true },
+      filters: { undeclaredFilter: 'old' },
     }))
     const current = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([requiredSettingsConnector('1.0.0')]),
@@ -87,7 +87,7 @@ describe('local connector settings completeness and version-drift edges', () => 
     await expect(current.connectors.update({
       connectorInstanceId: INSTANCE_ID,
       displayName: 'Destructive invalid edit',
-    })).rejects.toThrow(/config|filter|legacyPrivate|legacyCategory|declared/i)
+    })).rejects.toThrow(/config|filter|undeclaredSetting|undeclaredFilter|declared/i)
 
     await expect(current.connectors.update({
       connectorInstanceId: INSTANCE_ID,
@@ -95,15 +95,15 @@ describe('local connector settings completeness and version-drift edges', () => 
     })).resolves.toMatchObject({
       id: INSTANCE_ID,
       enabled: false,
-      config: { legacyPrivate: true },
-      filters: { legacyCategory: 'old' },
+      config: { undeclaredSetting: true },
+      filters: { undeclaredFilter: 'old' },
     })
     await expect(current.connectors.list()).resolves.toMatchObject({
       items: [{
         id: INSTANCE_ID,
         enabled: false,
-        config: { legacyPrivate: true },
-        filters: { legacyCategory: 'old' },
+        config: { undeclaredSetting: true },
+        filters: { undeclaredFilter: 'old' },
       }],
     })
   })
