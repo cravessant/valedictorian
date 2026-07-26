@@ -55,7 +55,7 @@
     "@radix-ui/react-toggle": "^1.1.14",
     "@radix-ui/react-toggle-group": "^1.1.15",
     "@radix-ui/react-tooltip": "^1.2.12",
-    "@sparxie/sdk": "0.30.0",
+    "@sparxie/sdk": "0.31.0",
     "@sparxie/valedictorian-connectors-jobright": "0.18.2",
     "@tailwindcss/vite": "^4.3.0",
     "class-variance-authority": "^0.7.1",

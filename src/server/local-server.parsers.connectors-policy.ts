@@ -2,9 +2,10 @@ import {
   isPolicyEvidenceTag,
   isPolicySubjectType,
   isActionQueueBucket,
-  canonicalDateOnlySchema,
   connectorOverviewListQuerySchema,
+  createConnectorInstanceInputSchema,
   triggerConnectorRunInputSchema,
+  updateConnectorInstanceInputSchema,
   type CreateConnectorInstanceInput,
   type ConnectorOverviewListQuery,
   type EvaluateApplicationPolicyInput,
@@ -18,7 +19,6 @@ import {
   type UpdateConnectorInstanceInput
 } from '@sparxie/sdk'
 import {
-  readOptionalBooleanField,
   readOptionalNullableStringField,
   readOptionalStringField,
   readRecord,
@@ -26,13 +26,6 @@ import {
   localHttpValidationError,
   parseLocalHttpInput,
 } from './local-server.http'
-
-
-import {
-  readBooleanField,
-  readOptionalConnectorAuthReferences,
-  readOptionalRecordField,
-} from './local-server.parsers.connector-body-primitives'
 import {
   setNumberQuery,
   setStringQuery,
@@ -59,81 +52,20 @@ export interface ConnectorRunsListQuery {
 }
 
 export function parseCreateConnectorInstanceInput(body: unknown): CreateConnectorInstanceInput {
-  const record = readRecord(body)
-  const input: CreateConnectorInstanceInput = {
-    id: readStringField(record, 'id'),
-    connectorId: readStringField(record, 'connectorId'),
-    connectorVersion: readStringField(record, 'connectorVersion'),
-    displayName: readStringField(record, 'displayName'),
-    enabled: readBooleanField(record, 'enabled'),
-  }
-  const auth = readOptionalConnectorAuthReferences(record)
-  const config = readOptionalRecordField(record, 'config')
-  const filters = readOptionalRecordField(record, 'filters')
-
-  if (auth !== undefined) {
-    input.auth = auth
-  }
-
-  if (config !== undefined) {
-    input.config = config
-  }
-
-  if (filters !== undefined) {
-    input.filters = filters
-  }
-
-  const earliestBackfillDate = readOptionalCanonicalDateOnlyField(record, 'earliestBackfillDate')
-  if (earliestBackfillDate !== undefined) {
-    input.earliestBackfillDate = earliestBackfillDate
-  }
-
-  return input
+  return parseLocalHttpInput(() => createConnectorInstanceInputSchema.parse(body))
 }
 
 export function parseUpdateConnectorInstanceInput(
   connectorInstanceId: string,
   body: unknown,
 ): UpdateConnectorInstanceInput {
-  const record = readRecord(body)
-  const input: UpdateConnectorInstanceInput = { connectorInstanceId }
-  const connectorVersion = readOptionalStringField(record, 'connectorVersion')
-  const displayName = readOptionalStringField(record, 'displayName')
-  const enabled = readOptionalBooleanField(record, 'enabled')
-  const auth = readOptionalConnectorAuthReferences(record)
-  const config = readOptionalRecordField(record, 'config')
-  const filters = readOptionalRecordField(record, 'filters')
-
-  if (connectorVersion !== undefined) {
-    input.connectorVersion = connectorVersion
-  }
-
-  if (displayName !== undefined) {
-    input.displayName = displayName
-  }
-
-  if (enabled !== undefined) {
-    input.enabled = enabled
-  }
-
-  if (auth !== undefined) {
-    input.auth = auth
-  }
-
-  if (config !== undefined) {
-    input.config = config
-  }
-
-  if (filters !== undefined) {
-    input.filters = filters
-  }
-
-  const earliestBackfillDate = readOptionalCanonicalDateOnlyField(record, 'earliestBackfillDate')
-  if (earliestBackfillDate !== undefined) {
-    input.earliestBackfillDate = earliestBackfillDate
-  }
-
-  return input
+  // Path identity is applied last so a body-supplied connectorInstanceId cannot redirect the update.
+  // Non-object bodies reach the schema unchanged: coercing them to `{}` would turn `null` into a
+  // connectorInstanceId-only no-op update that still rewrites the instance timestamp.
+  const hasObjectBody = typeof body === 'object' && body !== null && !Array.isArray(body)
+  return parseLocalHttpInput(() => updateConnectorInstanceInputSchema.parse(
+    hasObjectBody ? { ...body, connectorInstanceId } : body,
+  ))
 }
 
 export interface ConnectorCheckpointsListQuery {
@@ -343,18 +275,4 @@ export function parseEvaluateRunWindowPolicyInput(
     previousRunCompletedAt: readOptionalNullableStringField(record, 'previousRunCompletedAt'),
     timezone: readOptionalNullableStringField(record, 'timezone'),
   }
-}
-
-function readOptionalCanonicalDateOnlyField(
-  record: Record<string, unknown>,
-  field: string,
-): string | undefined {
-  if (!Object.prototype.hasOwnProperty.call(record, field) || record[field] === undefined) {
-    return undefined
-  }
-  const parsed = canonicalDateOnlySchema.safeParse(record[field])
-  if (!parsed.success) {
-    throw localHttpValidationError(`Invalid ${field}`)
-  }
-  return parsed.data
 }

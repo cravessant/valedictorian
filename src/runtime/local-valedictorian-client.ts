@@ -974,7 +974,7 @@ function mapConnectorAuthReferenceInputs(
 ): ConnectorAuthReference[] | undefined {
   return references?.map((reference) => {
     if (!isLocalConnectorAuthMode(reference.mode)) {
-      throw new Error(`Invalid connector auth mode: ${reference.mode}`)
+      throw new Error(`Invalid connector auth mode: ${String(reference.mode)}`)
     }
     return {
       id: reference.id,
