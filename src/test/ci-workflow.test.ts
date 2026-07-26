@@ -18,6 +18,7 @@ describe('CI workflow', () => {
     const runTestsStep = sectionBetween(workflow, '- name: Run tests', 'env:')
     const beforeRunTests = workflow.slice(0, workflow.indexOf('- name: Run tests'))
     const packageSmoke = workflow.slice(workflow.indexOf('package-smoke:'))
+    const devProof = sectionBetween(workflow, '\n  dev-proof:\n', '\n  package-smoke:')
     const topLevelEnv = sectionBetween(workflow, '\nenv:\n', '\njobs:')
     const testJobHeader = sectionBetween(workflow, '\n  test:\n', '\n    steps:')
     const installStep = sectionBetween(
@@ -28,7 +29,7 @@ describe('CI workflow', () => {
 
     expect(workflow).toContain('- converted_to_draft')
     expect(workflow).toContain('- ready_for_review')
-    expect(workflow).toContain('- main')
+    expect(workflow).not.toMatch(/^  push:/m)
     expect(workflow).toContain('group: ${{ github.workflow }}-${{ github.ref }}')
     expect(workflow).toContain('cancel-in-progress: true')
     expect(workflow).toMatch(/test:\n[\s\S]*?timeout-minutes: 7/)
@@ -86,6 +87,8 @@ describe('CI workflow', () => {
 
     expect(workflow).toMatch(/package-smoke:[\s\S]*?timeout-minutes: 5/)
     expect(workflow).toContain('name: Run macOS package checks')
+    expect(devProof).toContain('run: pnpm lint')
+    expect(packageSmoke).not.toContain('pnpm lint')
     expect(workflow).toMatch(
       /- name: Build Windows application bundles\n\s+if: runner\.os == 'Windows'/,
     )
@@ -95,11 +98,11 @@ describe('CI workflow', () => {
   it('runs lint alone for drafts without spending package or test runner minutes', () => {
     const workflow = fs.readFileSync(workflowPath, 'utf8')
     const draftOnly = "if: github.event_name == 'pull_request' && github.event.pull_request.draft"
-    const readyOrMain = "if: github.event_name == 'push' || !github.event.pull_request.draft"
+    const readyOnly = 'if: github.event.pull_request.draft == false'
 
     expect(workflow).toMatch(/quality:\n[\s\S]*?name: Draft Quality/)
     expect(workflow).toContain(draftOnly)
-    expect(workflow.match(new RegExp(readyOrMain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')))
+    expect(workflow.match(new RegExp(readyOnly.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')))
       .toHaveLength(3)
   })
 

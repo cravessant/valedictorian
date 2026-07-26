@@ -135,24 +135,15 @@ describe('Mac release workflow', () => {
     expect(buildMacJob).not.toContain('name: Validate update feed publishing secrets')
   })
 
-  it('reuses an exact-SHA successful CI run on tags and fails safe into full verification', () => {
+  it('always verifies the release on Linux before allocating macOS', () => {
     const workflow = readReleaseWorkflow()
     const verifyJob = sectionBetween(workflow, 'verify:', 'build-mac:')
 
-    expect(verifyJob).toContain('actions: read')
-    expect(verifyJob).toContain('id: prior-ci')
-    expect(verifyJob).toContain('Reuse prior successful CI when safe')
-    expect(verifyJob).toContain('actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}')
-    expect(verifyJob).toContain(
-      'select(.head_sha == \\"${GITHUB_SHA}\\" and .conclusion == \\"success\\" and .event == \\"push\\" and .head_branch == \\"main\\")',
-    )
-    expect(verifyJob).toContain('workflow_dispatch always runs full verification')
-    expect(verifyJob).toContain('falling back to full verification')
-    expect(verifyJob).toContain('No eligible successful main push CI')
-    expect(verifyJob).toContain('run_full_verification=${run_full_verification}')
-    expect(verifyJob.indexOf('Verify release tag')).toBeLessThan(
-      verifyJob.indexOf('Reuse prior successful CI when safe'),
-    )
+    expect(verifyJob).not.toContain('actions: read')
+    expect(verifyJob).not.toContain('GH_TOKEN')
+    expect(verifyJob).not.toContain('prior-ci')
+    expect(verifyJob).not.toContain('gh api')
+    expect(verifyJob).not.toContain('run_full_verification')
     expect(verifyJob.indexOf('Verify release tag')).toBeLessThan(verifyJob.indexOf('Set up pnpm'))
 
     for (const stepName of [
@@ -162,34 +153,13 @@ describe('Mac release workflow', () => {
       'Run tests',
       'Lint and typecheck',
     ]) {
-      expect(verifyJob).toMatch(
-        new RegExp(
-          `- name: ${stepName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n\\s+if: steps\\.prior-ci\\.outputs\\.run_full_verification == 'true'`,
-        ),
-      )
+      expect(verifyJob).toContain(`- name: ${stepName}`)
     }
 
     expect(verifyJob).toContain('cache: pnpm')
     expect(verifyJob).toContain('cache-dependency-path: valedictorian-app/pnpm-lock.yaml')
-  })
-
-  it('rejects pull_request, workflow_dispatch, and non-main CI runs for release reuse', () => {
-    const workflow = readReleaseWorkflow()
-    const verifyJob = sectionBetween(workflow, 'verify:', 'build-mac:')
-    const eligibilitySelect =
-      'select(.head_sha == \\"${GITHUB_SHA}\\" and .conclusion == \\"success\\" and .event == \\"push\\" and .head_branch == \\"main\\")'
-
-    expect(verifyJob).toContain(eligibilitySelect)
-    expect(verifyJob).toContain('.event == \\"push\\"')
-    expect(verifyJob).toContain('.head_branch == \\"main\\"')
-    expect(verifyJob).not.toContain('.event == \\"pull_request\\"')
-    expect(verifyJob).toContain('workflow_dispatch always runs full verification')
-    expect(verifyJob).toMatch(
-      /if \[ "\$\{GITHUB_EVENT_NAME\}" = "workflow_dispatch" \]; then\n\s+echo "workflow_dispatch always runs full verification"/,
-    )
-    expect(eligibilitySelect).toContain('.event == \\"push\\"')
-    expect(eligibilitySelect).toContain('.head_branch == \\"main\\"')
-    expect(eligibilitySelect).not.toMatch(/pull_request/)
+    expect(workflow.indexOf('Run tests')).toBeLessThan(workflow.indexOf('build-mac:'))
+    expect(workflow.indexOf('Lint and typecheck')).toBeLessThan(workflow.indexOf('build-mac:'))
   })
 
   it('disables setup-node pnpm caching on macOS while keeping Linux verify caching', () => {

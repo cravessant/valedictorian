@@ -14,6 +14,7 @@ describe('CLI/UI development proof workflow contract', () => {
     expect(proofJob).toContain('runs-on: blacksmith-2vcpu-ubuntu-2404')
     expect(proofJob).toContain('run: command -v xvfb-run')
     expect(proofJob).toContain('run: pnpm install --frozen-lockfile')
+    expect(proofJob).toContain('run: pnpm lint')
     expect(proofJob).toContain('run: pnpm run proof:dev')
     expect(aggregate).toContain('- dev-proof')
     expect(aggregate).toContain('DEV_PROOF_RESULT: ${{ needs.dev-proof.result }}')

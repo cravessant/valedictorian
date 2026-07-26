@@ -8,9 +8,6 @@ on:
       - ready_for_review
       - reopened
       - synchronize
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -56,7 +53,7 @@ jobs:
 
   test:
     name: Test App (shard ${{ matrix.shard }}/2)
-    if: github.event_name == 'push' || !github.event.pull_request.draft
+    if: github.event.pull_request.draft == false
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 7
     strategy:
@@ -142,7 +139,7 @@ jobs:
 
   dev-proof:
     name: CLI/UI Development Proof
-    if: github.event_name == 'push' || !github.event.pull_request.draft
+    if: github.event.pull_request.draft == false
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:
@@ -167,6 +164,10 @@ jobs:
         working-directory: valedictorian-app
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        working-directory: valedictorian-app
+        run: pnpm lint
+
       - name: Verify virtual display support
         run: command -v xvfb-run
 
@@ -183,7 +184,7 @@ jobs:
 
   package-smoke:
     name: Package Smoke (${{ matrix.name }})
-    if: github.event_name == 'push' || !github.event.pull_request.draft
+    if: github.event.pull_request.draft == false
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 5
     strategy:
@@ -228,7 +229,6 @@ jobs:
         working-directory: valedictorian-app
         shell: bash
         run: |
-          pnpm lint
           pnpm exec vite build
           CSC_IDENTITY_AUTO_DISCOVERY=false ${{ matrix.package_command }}
           pnpm run smoke:pglite-package

@@ -31,7 +31,6 @@ jobs:
       publish_update_feed: ${{ steps.release-mode.outputs.publish_update_feed }}
     permissions:
       contents: read
-      actions: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -141,45 +140,12 @@ jobs:
             exit 1
           fi
 
-      - name: Reuse prior successful CI when safe
-        id: prior-ci
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          run_full_verification=true
-
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            echo "workflow_dispatch always runs full verification"
-          elif [ "${GITHUB_EVENT_NAME}" != "push" ] || [[ "${GITHUB_REF}" != refs/tags/* ]]; then
-            echo "Full verification required for event=${GITHUB_EVENT_NAME} ref=${GITHUB_REF}"
-          else
-            api_path="/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=10"
-            match_count="$(
-              gh api -H "Accept: application/vnd.github+json" "$api_path" \
-                --jq "[.workflow_runs[] | select(.head_sha == \"${GITHUB_SHA}\" and .conclusion == \"success\" and .event == \"push\" and .head_branch == \"main\")] | length" \
-              || true
-            )"
-
-            if [ -z "${match_count}" ] || ! [[ "${match_count}" =~ ^[0-9]+$ ]]; then
-              echo "CI run lookup failed or returned invalid data; falling back to full verification"
-            elif [ "${match_count}" -gt 0 ]; then
-              echo "Found successful main push CI for ${GITHUB_SHA}; skipping duplicate Linux verification"
-              run_full_verification=false
-            else
-              echo "No eligible successful main push CI for ${GITHUB_SHA}; running full verification"
-            fi
-          fi
-
-          echo "run_full_verification=${run_full_verification}" >> "$GITHUB_OUTPUT"
-
       - name: Set up pnpm
-        if: steps.prior-ci.outputs.run_full_verification == 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 11.3.0
 
       - name: Set up Node.js
-        if: steps.prior-ci.outputs.run_full_verification == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 26.5.0
@@ -187,7 +153,6 @@ jobs:
           cache-dependency-path: valedictorian-app/pnpm-lock.yaml
 
       - name: Install dependencies
-        if: steps.prior-ci.outputs.run_full_verification == 'true'
         working-directory: valedictorian-app
         run: |
           for attempt in 1 2 3; do
@@ -206,12 +171,10 @@ jobs:
           done
 
       - name: Run tests
-        if: steps.prior-ci.outputs.run_full_verification == 'true'
         working-directory: valedictorian-app
         run: pnpm test
 
       - name: Lint and typecheck
-        if: steps.prior-ci.outputs.run_full_verification == 'true'
         working-directory: valedictorian-app
         run: pnpm lint
 
