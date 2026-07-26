@@ -53,6 +53,10 @@ import {
   updatePursuitLinks,
 } from './application.aggregate.repository'
 import {
+  type AdmittedCommandActor,
+  type BoundedJson,
+  type LifecycleId,
+  requireId,
   type ApplicationActor,
   type ApplicationActorType,
   type ApplicationFailure,
@@ -554,8 +558,8 @@ export function createPgliteApplicationAggregateService(
     applicationId: string,
     revision: number,
     kind: ApplicationHistoryKind,
-    snapshot: JsonValue,
-    actor: ApplicationActor,
+    snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>,
+    actor: AdmittedCommandActor,
     createdAt: string,
     override?: ReturnType<typeof validateApplicationOverride>,
   ) {
@@ -568,10 +572,14 @@ export function createPgliteApplicationAggregateService(
       applicationId,
       revision,
       kind,
-      snapshotJson: boundedJson(snapshot, 'snapshot', SNAPSHOT_MAX),
+      snapshotJson,
       auditJson: auditValue,
       createdAt,
     })
+  }
+
+  function historySnapshot(value: JsonValue): BoundedJson<typeof SNAPSHOT_MAX> {
+    return boundedJson(value, 'snapshot', SNAPSHOT_MAX)
   }
 
   // Composable commit core: conditional head update + history append on the caller's
@@ -580,9 +588,9 @@ export function createPgliteApplicationAggregateService(
   async function commitOn(
     exec: ApplicationExec,
     row: ApplicationRow,
-    actor: ApplicationActor,
+    actor: AdmittedCommandActor,
     kind: ApplicationHistoryKind,
-    snapshot: JsonValue,
+    snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>,
     headUpdate: HeadUpdate,
     guard: SQL,
   ): Promise<MutateApplicationResult> {
@@ -593,21 +601,21 @@ export function createPgliteApplicationAggregateService(
       .where(and(eq(applications.id, row.id), guard))
       .returning({ id: applications.id })
     if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
-    await appendHistory(exec, row.id, nextRevision, kind, snapshot, actor, createdAt)
+    await appendHistory(exec, row.id, nextRevision, kind, snapshotJson, actor, createdAt)
     return { ok: true as const, application: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
   }
 
   async function commit(
     row: ApplicationRow,
-    actor: ApplicationActor,
+    actor: AdmittedCommandActor,
     kind: ApplicationHistoryKind,
-    snapshot: JsonValue,
+    snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>,
     headUpdate: HeadUpdate,
     guard: SQL,
     onUnique: 'revision_conflict' | 'deterministic_duplicate',
   ): Promise<MutateApplicationResult> {
     try {
-      return await database.transaction((tx) => commitOn(tx, row, actor, kind, snapshot, headUpdate, guard))
+      return await database.transaction((tx) => commitOn(tx, row, actor, kind, snapshotJson, headUpdate, guard))
     } catch (error) {
       if (isUniqueViolation(error)) {
         return onUnique === 'deterministic_duplicate'
@@ -633,7 +641,7 @@ export function createPgliteApplicationAggregateService(
   // Composable tombstone/restore cores for the removal orchestration. removeOn needs a
   // delete-capable executor for the 'cascade' dependent choice.
   async function removeOn(exec: ApplicationDeleteExec, input: RemoveApplicationInput): Promise<MutateApplicationResult> {
-    let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+    let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
     try {
       resolved = await ids(input)
     } catch (error) {
@@ -654,12 +662,12 @@ export function createPgliteApplicationAggregateService(
       await deleteApplicationEventRecords(exec).where(eq(applicationEventRecords.applicationId, typed.id))
       await deleteApplicationAttemptRecords(exec).where(eq(applicationAttemptRecords.applicationId, typed.id))
     }
-    return commitOn(exec, typed, resolved.actor, 'removed', { dependents: input.dependents ?? 'none' },
+    return commitOn(exec, typed, resolved.actor, 'removed', historySnapshot({ dependents: input.dependents ?? 'none' }),
       { removedAt: nowIso() }, isNull(applications.removedAt))
   }
 
   async function restoreOn(exec: ApplicationExec, input: ApplicationMutationInput): Promise<MutateApplicationResult> {
-    let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+    let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
     try {
       resolved = await ids(input)
     } catch (error) {
@@ -671,14 +679,14 @@ export function createPgliteApplicationAggregateService(
     const typed = (row as ApplicationRow | undefined) ?? null
     if (!typed) return fail('not_found', 'application not found in this workspace')
     if (typed.removedAt === null) return { ok: true, application: toRecord(typed) }
-    return commitOn(exec, typed, resolved.actor, 'restored', { kind: 'restored', priorRevision: typed.revision },
+    return commitOn(exec, typed, resolved.actor, 'restored', historySnapshot({ kind: 'restored', priorRevision: typed.revision }),
       { removedAt: null }, sql`${applications.removedAt} is not null`)
   }
 
   async function ids(input: { workspaceId: unknown; applicationId: unknown; actor: unknown }) {
     return {
-      workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-      applicationId: requireText(input.applicationId, 'applicationId', 1, WORKSPACE_MAX),
+      workspaceId: requireId(input.workspaceId, 'workspaceId'),
+      applicationId: requireId(input.applicationId, 'applicationId'),
       actor: requireActor(input.actor),
     }
   }
@@ -696,7 +704,7 @@ export function createPgliteApplicationAggregateService(
     async createOn(exec, input) {
       let workspaceId: string
       let opportunityId: string
-      let actor: ApplicationActor
+      let actor: AdmittedCommandActor
       let status: ApplicationStatus
       let companyOverride: string | null
       let sourceOverride: string | null
@@ -704,7 +712,7 @@ export function createPgliteApplicationAggregateService(
       let idempotencyKey: string | null
       let override: ReturnType<typeof validateApplicationOverride>
       try {
-        workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
+        workspaceId = requireId(input.workspaceId, 'workspaceId')
         opportunityId = requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX)
         actor = requireActor(input.actor)
         status = input.status === undefined ? 'active' : requireOneOf(input.status, pursuitApplicationStatuses, 'status')
@@ -747,7 +755,7 @@ export function createPgliteApplicationAggregateService(
         return fail('deterministic_duplicate', 'an active application already exists for this opportunity')
       }
       const createdAt = nowIso()
-      let snapshotJson: string
+      let snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>
       try {
         snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, createdAt, scores, input.initialLinks), 'snapshot', SNAPSHOT_MAX)
       } catch (error) {
@@ -771,7 +779,7 @@ export function createPgliteApplicationAggregateService(
         idempotencyKey,
       }
       await insertApplications(exec).values(row)
-      await appendHistory(exec, row.id, 1, 'created', { status, opportunityId, jobId: lineage.jobId }, actor, createdAt, override)
+      await appendHistory(exec, row.id, 1, 'created', historySnapshot({ status, opportunityId, jobId: lineage.jobId }), actor, createdAt, override)
       return { ok: true, application: toRecord(row), created: true }
     },
 
@@ -804,7 +812,7 @@ export function createPgliteApplicationAggregateService(
     },
 
     async editCompany(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
       let companyName: string
       try {
         resolved = await ids(input)
@@ -816,11 +824,11 @@ export function createPgliteApplicationAggregateService(
       const row = await selectById(resolved.workspaceId, resolved.applicationId)
       if (!row) return fail('not_found', 'application not found in this workspace')
       if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
-      return commit(row, resolved.actor, 'company_edited', { companyName }, { companyName }, eq(applications.revision, row.revision), 'revision_conflict')
+      return commit(row, resolved.actor, 'company_edited', historySnapshot({ companyName }), { companyName }, eq(applications.revision, row.revision), 'revision_conflict')
     },
 
     async editSource(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
       let sourceName: string
       try {
         resolved = await ids(input)
@@ -832,11 +840,11 @@ export function createPgliteApplicationAggregateService(
       const row = await selectById(resolved.workspaceId, resolved.applicationId)
       if (!row) return fail('not_found', 'application not found in this workspace')
       if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
-      return commit(row, resolved.actor, 'source_edited', { sourceName }, { sourceName }, eq(applications.revision, row.revision), 'revision_conflict')
+      return commit(row, resolved.actor, 'source_edited', historySnapshot({ sourceName }), { sourceName }, eq(applications.revision, row.revision), 'revision_conflict')
     },
 
     async transitionStatus(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
       let status: ApplicationStatus
       try {
         resolved = await ids(input)
@@ -848,11 +856,11 @@ export function createPgliteApplicationAggregateService(
       const row = await selectById(resolved.workspaceId, resolved.applicationId)
       if (!row) return fail('not_found', 'application not found in this workspace')
       if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
-      return commit(row, resolved.actor, 'status_changed', { status, priorStatus: row.status }, { status }, eq(applications.revision, row.revision), 'revision_conflict')
+      return commit(row, resolved.actor, 'status_changed', historySnapshot({ status, priorStatus: row.status }), { status }, eq(applications.revision, row.revision), 'revision_conflict')
     },
 
     async refreshSnapshot(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
       try {
         resolved = await ids(input)
       } catch (error) {
@@ -875,7 +883,7 @@ export function createPgliteApplicationAggregateService(
       // The creation-time initialLinks are carried forward unchanged (they freeze the
       // create, not the current mutable link set).
       const capturedAt = nowIso()
-      let snapshotJson: string
+      let snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>
       try {
         snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, capturedAt, priorScores, priorInitialLinks(row.snapshotJson)), 'snapshot', SNAPSHOT_MAX)
       } catch (error) {
@@ -894,13 +902,13 @@ export function createPgliteApplicationAggregateService(
         row,
         resolved.actor,
         'snapshot_refreshed',
-        {
+        historySnapshot({
           jobFactsRevision: lineage.jobFactsRevision,
           priorJobFactsRevision: row.jobFactsRevision,
           preserveCompanyEdit: input.preserveCompanyEdit ?? true,
           preserveSourceEdit: input.preserveSourceEdit ?? true,
           preserveLinkEdits: input.preserveLinkEdits ?? true,
-        },
+        }),
         headUpdate,
         eq(applications.revision, row.revision),
         'revision_conflict',
@@ -908,7 +916,7 @@ export function createPgliteApplicationAggregateService(
     },
 
     async addLinkOn(exec, input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
       let link: ApplicationLinkInput
       try {
         resolved = await ids(input)
@@ -945,7 +953,7 @@ export function createPgliteApplicationAggregateService(
         .where(and(eq(applications.id, resolved.applicationId), eq(applications.revision, (row as ApplicationRow).revision)))
         .returning({ id: applications.id })
       if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
-      await appendHistory(exec, resolved.applicationId, nextRevision, 'link_created', { linkId, kind: link.kind, isPrimary: link.isPrimary }, resolved.actor, createdAt)
+      await appendHistory(exec, resolved.applicationId, nextRevision, 'link_created', historySnapshot({ linkId, kind: link.kind, isPrimary: link.isPrimary }), resolved.actor, createdAt)
       const record: ApplicationLinkRecord = { id: linkId, applicationId: resolved.applicationId, kind: link.kind, label: link.label, url: link.url, isPrimary: link.isPrimary, createdAt }
       return { ok: true, link: record, application: toRecord({ ...(row as ApplicationRow), revision: nextRevision, updatedAt: createdAt }) }
     },
@@ -960,7 +968,7 @@ export function createPgliteApplicationAggregateService(
     },
 
     async updateLink(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
       let linkId: string
       try {
         resolved = await ids(input)
@@ -995,7 +1003,7 @@ export function createPgliteApplicationAggregateService(
           await updatePursuitLinks(tx).set(patch).where(eq(pursuitLinks.id, linkId))
           const updated = await updateApplications(tx).set({ revision: nextRevision, updatedAt: createdAt }).where(and(eq(applications.id, row.id), eq(applications.revision, row.revision))).returning({ id: applications.id })
           if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
-          await appendHistory(tx, row.id, nextRevision, 'link_updated', { linkId }, resolved.actor, createdAt)
+          await appendHistory(tx, row.id, nextRevision, 'link_updated', historySnapshot({ linkId }), resolved.actor, createdAt)
           return { ok: true as const, application: toRecord({ ...row, revision: nextRevision, updatedAt: createdAt }) }
         })
       } catch (error) {
@@ -1005,7 +1013,7 @@ export function createPgliteApplicationAggregateService(
     },
 
     async removeLink(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
       let linkId: string
       try {
         resolved = await ids(input)
@@ -1024,7 +1032,7 @@ export function createPgliteApplicationAggregateService(
         await deletePursuitLinks(tx).where(eq(pursuitLinks.id, linkId))
         const updated = await updateApplications(tx).set({ revision: nextRevision, updatedAt: createdAt }).where(and(eq(applications.id, row.id), eq(applications.revision, row.revision))).returning({ id: applications.id })
         if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
-        await appendHistory(tx, row.id, nextRevision, 'link_removed', { linkId }, resolved.actor, createdAt)
+        await appendHistory(tx, row.id, nextRevision, 'link_removed', historySnapshot({ linkId }), resolved.actor, createdAt)
         return { ok: true as const, application: toRecord({ ...row, revision: nextRevision, updatedAt: createdAt }) }
       })
     },
@@ -1037,7 +1045,7 @@ export function createPgliteApplicationAggregateService(
     },
 
     async recordEventOn(exec, input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
       let type: string
       let summary: string
       let occurredAt: string
@@ -1085,7 +1093,7 @@ export function createPgliteApplicationAggregateService(
     },
 
     async recordAttempt(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let resolved: { workspaceId: LifecycleId; applicationId: LifecycleId; actor: AdmittedCommandActor }
       let state: ApplicationAttemptState
       let startedAt: string
       let completedAt: string | null

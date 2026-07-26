@@ -49,6 +49,7 @@ import {
 } from '../job/job.schema'
 import type { JobIdentityService } from '../job/job.identity'
 import type { JobService } from '../job/job.service'
+import { requireActor } from '../job/job.validation'
 import type { JobPromotionService } from '../lifecycle/capture-to-job.promotion'
 import { validateDestinationUrl } from './destination-url-safety'
 
@@ -804,7 +805,11 @@ function promotionInput(
     workspaceId,
     captureId: request.captureId,
     jobId,
-    actor: request.actor,
+    // The Job module owns actor admission for the promotion core. `request.actor` was
+    // already parsed by the SDK's lifecycleActorSchema (vocabulary type, trimmed id
+    // 1..200), so this re-admission is total for any parsed request and cannot move a
+    // rejection ahead of the evidence/cardinality guards above.
+    actor: requireActor(request.actor),
     evidenceReferences: request.evidenceReferences,
     externalIdentities,
   }

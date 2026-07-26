@@ -19,7 +19,7 @@
 import { and, eq, isNotNull } from 'drizzle-orm'
 import type { FieldResolutionOutcome } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
-import { SENSITIVE_KEY_SUBSTRINGS } from '../../db/sensitive-keys'
+import { containsSensitiveJsonKey, safeParseJson } from '../lifecycle/lifecycle-representation'
 import { captureFieldOutcomes, captureRevisions, captures } from './capture.schema'
 import { insertCaptureFieldOutcomes } from './capture.repository'
 
@@ -27,7 +27,6 @@ import { insertCaptureFieldOutcomes } from './capture.repository'
 export type CaptureFieldOutcomeExec = Pick<PgliteDatabase, 'select' | 'insert'>
 
 const OUTCOME_MAX = 16_384
-const FORBIDDEN_KEY_REGEX = new RegExp(`"[^"]*(?:${SENSITIVE_KEY_SUBSTRINGS})[^"]*"[\\t\\n\\r ]*:`, 'i')
 
 export interface PersistFieldOutcomesInput {
   readonly captureId: string
@@ -86,13 +85,6 @@ function safeStringify(value: unknown): string | null {
   }
 }
 
-function safeParse(text: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -113,7 +105,7 @@ function sanitizeOutcomeJson(outcome: FieldResolutionOutcome): string | null {
   for (const optionalKey of [null, 'evidence', 'values', 'value', 'confidence', 'reason'] as const) {
     if (optionalKey !== null) delete projection[optionalKey]
     const serialized = safeStringify(projection)
-    if (serialized !== null && !FORBIDDEN_KEY_REGEX.test(serialized) && serialized.length <= OUTCOME_MAX) {
+    if (serialized !== null && !containsSensitiveJsonKey(serialized) && serialized.length <= OUTCOME_MAX) {
       return serialized
     }
   }
@@ -162,7 +154,7 @@ export function createCaptureFieldOutcomeStore(database: PgliteDatabase): Captur
         .where(and(eq(captureRevisions.captureId, captureId), eq(captureRevisions.revision, captureRevision)))
         .limit(1)
       if (!row || row.payloadJson === null || row.contentHash === null) return null
-      const payload = safeParse(row.payloadJson)
+      const payload = safeParseJson(row.payloadJson)
       if (!isRecord(payload)) return null
       return {
         captureId,
@@ -225,7 +217,7 @@ export function createCaptureFieldOutcomeStore(database: PgliteDatabase): Captur
         ))
         .limit(1)
       if (!row) return null
-      const outcome = safeParse(row.outcomeJson)
+      const outcome = safeParseJson(row.outcomeJson)
       if (!isRecord(outcome) || outcome.status !== 'resolved') return null
       const value = outcome.value
       if (!isRecord(value)) return null

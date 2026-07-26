@@ -20,6 +20,11 @@ import { jobAvailabilityStates } from '../../db/lifecycle-vocabulary'
 import { jobHistory, jobs } from './job.schema'
 import { insertJobHistory, insertJobs, updateJobs } from './job.repository'
 import {
+  type AdmittedCommandActor,
+  type BoundedJson,
+  type LifecycleId,
+  SNAPSHOT_MAX,
+  requireId,
   type JobActor,
   type JobActorType,
   type JobFailure,
@@ -197,6 +202,13 @@ function requireAvailabilityState(value: unknown, field: string): JobAvailabilit
   return value as JobAvailabilityState
 }
 
+/** The admitted command envelope every Job mutation shares. */
+interface JobMutationIds { readonly workspaceId: LifecycleId; readonly jobId: LifecycleId; readonly actor: AdmittedCommandActor }
+
+function mutationIds(input: { workspaceId: unknown; jobId: unknown; actor: unknown }): JobMutationIds {
+  return { workspaceId: requireId(input.workspaceId, 'workspaceId'), jobId: requireId(input.jobId, 'jobId'), actor: requireActor(input.actor) }
+}
+
 interface JobRow {
   id: string
   workspaceId: string
@@ -257,14 +269,10 @@ export function createPgliteJobService(
   // atomically with the write's supporting evidence-reference links. May THROW a
   // unique-violation (history-sequence race) for the caller's boundary to map.
   async function correctFactsOn(exec: JobExec, input: CorrectJobFactsInput): Promise<MutateJobResult> {
-    let ids: { workspaceId: string; jobId: string; actor: JobActor }
-    let factsJson: string
+    let ids: JobMutationIds
+    let factsJson: BoundedJson<typeof FACTS_MAX>
     try {
-      ids = {
-        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-        actor: requireActor(input.actor),
-      }
+      ids = mutationIds(input)
       factsJson = boundedJson(input.facts, 'facts', FACTS_MAX)
     } catch (error) {
       if (error instanceof JobInputError) return fail(error.code, error.message)
@@ -287,15 +295,11 @@ export function createPgliteJobService(
   }
 
   async function updateAvailabilityOn(exec: JobExec, input: UpdateJobAvailabilityInput): Promise<MutateJobResult> {
-    let ids: { workspaceId: string; jobId: string; actor: JobActor }
+    let ids: JobMutationIds
     let state: JobAvailabilityState
     let observedAt: string
     try {
-      ids = {
-        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-        actor: requireActor(input.actor),
-      }
+      ids = mutationIds(input)
       state = requireAvailabilityState(input.state, 'state')
       observedAt = requireText(input.observedAt, 'observedAt', 1, TIMESTAMP_MAX)
     } catch (error) {
@@ -312,7 +316,7 @@ export function createPgliteJobService(
       row,
       ids.actor,
       'availability_changed',
-      JSON.stringify({ state, observedAt }),
+      boundedJson({ state, observedAt }, 'snapshot', SNAPSHOT_MAX),
       { availabilityState: state, availabilityObservedAt: observedAt, availabilityRevision: row.availabilityRevision + 1 },
       eq(jobs.availabilityRevision, row.availabilityRevision),
     )
@@ -336,9 +340,9 @@ export function createPgliteJobService(
   async function commitOn(
     exec: JobExec,
     row: JobRow,
-    actor: JobActor,
+    actor: AdmittedCommandActor,
     kind: JobHistoryKind,
-    snapshotJson: string,
+    snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>,
     headUpdate: HeadUpdate,
     guard: SQL,
   ): Promise<MutateJobResult> {
@@ -372,13 +376,9 @@ export function createPgliteJobService(
   // Composable tombstone/restore cores: single attempt on the caller's executor so the
   // removal orchestration composes a Job tombstone atomically with its dependents.
   async function removeOn(exec: JobExec, input: JobMutationInput): Promise<MutateJobResult> {
-    let ids: { workspaceId: string; jobId: string; actor: JobActor }
+    let ids: JobMutationIds
     try {
-      ids = {
-        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-        actor: requireActor(input.actor),
-      }
+      ids = mutationIds(input)
     } catch (error) {
       if (error instanceof JobInputError) return fail(error.code, error.message)
       throw error
@@ -389,18 +389,14 @@ export function createPgliteJobService(
     if (!typed) return fail('not_found', 'job not found in this workspace')
     if (typed.removedAt !== null) return { ok: true, job: toRecord(typed) }
     return commitOn(exec, typed, ids.actor, 'removed',
-      JSON.stringify({ kind: 'removed', priorFactsRevision: typed.factsRevision }),
+      boundedJson({ kind: 'removed', priorFactsRevision: typed.factsRevision }, 'snapshot', SNAPSHOT_MAX),
       { removedAt: nowIso() }, sql`${jobs.removedAt} is null`)
   }
 
   async function restoreOn(exec: JobExec, input: JobMutationInput): Promise<MutateJobResult> {
-    let ids: { workspaceId: string; jobId: string; actor: JobActor }
+    let ids: JobMutationIds
     try {
-      ids = {
-        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-        actor: requireActor(input.actor),
-      }
+      ids = mutationIds(input)
     } catch (error) {
       if (error instanceof JobInputError) return fail(error.code, error.message)
       throw error
@@ -411,7 +407,7 @@ export function createPgliteJobService(
     if (!typed) return fail('not_found', 'job not found in this workspace')
     if (typed.removedAt === null) return { ok: true, job: toRecord(typed) }
     return commitOn(exec, typed, ids.actor, 'restored',
-      JSON.stringify({ kind: 'restored', priorFactsRevision: typed.factsRevision }),
+      boundedJson({ kind: 'restored', priorFactsRevision: typed.factsRevision }, 'snapshot', SNAPSHOT_MAX),
       { removedAt: null }, sql`${jobs.removedAt} is not null`)
   }
 
@@ -424,13 +420,13 @@ export function createPgliteJobService(
     establishCoverage: boolean,
   ): Promise<CreateJobResult> {
     let workspaceId: string
-    let factsJson: string
-    let actor: JobActor
+    let factsJson: BoundedJson<typeof FACTS_MAX>
+    let actor: AdmittedCommandActor
     let availabilityState: JobAvailabilityState
     let availabilityObservedAt: string
     let idempotencyKey: string | null
     try {
-      workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
+      workspaceId = requireId(input.workspaceId, 'workspaceId')
       factsJson = boundedJson(input.facts, 'facts', FACTS_MAX)
       actor = requireActor(input.actor)
       idempotencyKey = input.idempotencyKey === undefined

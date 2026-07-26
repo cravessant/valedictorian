@@ -42,6 +42,9 @@ import type { CaptureEvidenceInput, CaptureFailure, CaptureService, JsonValue } 
 import type { JobActor, JobActorType, JobService } from '../job/job.service'
 import {
   AUDIT_MAX,
+  type AdmittedCommandActor,
+  type BoundedJson,
+  SNAPSHOT_MAX,
   type JobFailure,
   type JobFailureCode,
   JobInputError,
@@ -146,7 +149,8 @@ export interface CanonicalPromotionOnInput {
   readonly workspaceId: string
   readonly captureId: string
   readonly jobId: string
-  readonly actor: JobActor
+  /** Already admitted by the caller's owning boundary; this core performs no actor parsing. */
+  readonly actor: AdmittedCommandActor
   readonly evidenceReferences: readonly {
     readonly captureId: string
     readonly captureRevision: number
@@ -386,7 +390,7 @@ export function createPgliteJobPromotion(
     }
   }
 
-  async function appendHistory(tx: Tx, jobId: string, kind: string, snapshotJson: string, actor: JobActor, createdAt: string) {
+  async function appendHistory(tx: Tx, jobId: string, kind: string, snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>, actor: AdmittedCommandActor, createdAt: string) {
     const [seqRow] = await tx
       .select({ maxSeq: jobHistory.sequence })
       .from(jobHistory)
@@ -526,7 +530,7 @@ export function createPgliteJobPromotion(
         evidenceJson: JSON.stringify({ captureId: input.captureId, evidenceReferences: input.evidenceReferences }),
         createdAt: timestamp,
       })
-      await appendHistory(tx, input.jobId, 'identity_added', JSON.stringify(identity), input.actor, timestamp)
+      await appendHistory(tx, input.jobId, 'identity_added', boundedJson(identity as unknown as JsonValue, 'snapshot', SNAPSHOT_MAX), input.actor, timestamp)
     }
     for (const reference of input.evidenceReferences) {
       await insertJobCaptureEvidenceReferences(tx).values({
@@ -543,7 +547,7 @@ export function createPgliteJobPromotion(
     async promoteCapture(input) {
       let workspaceId: string
       let captureId: string
-      let actor: JobActor
+      let actor: AdmittedCommandActor
       let idempotencyKey: string | undefined
       let dedup: JobDuplicateResolutionInput | undefined
       try {
@@ -720,7 +724,7 @@ export function createPgliteJobPromotion(
 
     async createManualJob(input) {
       let workspaceId: string
-      let actor: JobActor
+      let actor: AdmittedCommandActor
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         actor = requireActor(input.actor)

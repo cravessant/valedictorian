@@ -28,7 +28,7 @@ import { and, asc, eq, isNotNull, lte } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type { PgliteDatabase } from '../../db/pglite'
-import { SENSITIVE_KEY_SUBSTRINGS } from '../../db/sensitive-keys'
+import { containsSensitiveJsonKey } from '../lifecycle/lifecycle-representation'
 import {
   captureDestinationResolutionWork,
   connectorCaptureWork,
@@ -53,7 +53,6 @@ export type ScheduledWorkRetryableReason = (typeof scheduledWorkRetryableReasons
 export type ScheduledWorkDeterministicReason = (typeof scheduledWorkDeterministicReasons)[number]
 
 const FAILURE_DETAIL_MAX = 2_000
-const FORBIDDEN_KEY_REGEX = new RegExp(`"[^"]*(?:${SENSITIVE_KEY_SUBSTRINGS})[^"]*"[\\t\\n\\r ]*:`, 'i')
 
 /** A read+write executor — the workspace database OR an open transaction. */
 export type ScheduledExecutor = Pick<PgliteDatabase, 'select' | 'insert' | 'update'>
@@ -407,7 +406,7 @@ function sanitizeDetail(detail: string | undefined): string | null {
   const bounded = trimmed.slice(0, FAILURE_DETAIL_MAX)
   // The failureDetail CHECK forbids sensitive JSON keys; drop the detail rather than
   // persist a value the constraint would reject mid-transaction.
-  return FORBIDDEN_KEY_REGEX.test(bounded) ? null : bounded
+  return containsSensitiveJsonKey(bounded) ? null : bounded
 }
 
 export function createScheduledWorkRepository<Subject, Claim>(

@@ -37,6 +37,10 @@ import {
   updateOpportunities,
 } from './opportunity.repository'
 import {
+  type AdmittedCommandActor,
+  type BoundedJson,
+  type LifecycleId,
+  requireId,
   type JsonValue,
   type OpportunityActor,
   type OpportunityActorType,
@@ -45,6 +49,7 @@ import {
   type OpportunityFailure,
   type OpportunityFit,
   OpportunityInputError,
+  SNAPSHOT_MAX,
   WORKSPACE_MAX,
   OVERRIDE_MAX,
   RATIONALE_MAX,
@@ -226,6 +231,13 @@ export interface OpportunityServiceOptions {
   readonly newId?: UuidV7Generator
 }
 
+/** The admitted command envelope every Opportunity mutation shares. */
+interface OpportunityMutationIds { readonly workspaceId: LifecycleId; readonly opportunityId: LifecycleId; readonly actor: AdmittedCommandActor }
+
+function mutationIds(input: { workspaceId: unknown; opportunityId: unknown; actor: unknown }): OpportunityMutationIds {
+  return { workspaceId: requireId(input.workspaceId, 'workspaceId'), opportunityId: requireId(input.opportunityId, 'opportunityId'), actor: requireActor(input.actor) }
+}
+
 interface OpportunityRow {
   id: string
   workspaceId: string
@@ -366,18 +378,22 @@ export function createPgliteOpportunityService(
     opportunityId: string,
     revision: number,
     kind: OpportunityHistoryKind,
-    snapshot: JsonValue,
-    actor: OpportunityActor,
+    snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>,
+    actor: AdmittedCommandActor,
     createdAt: string,
   ) {
     await insertOpportunityHistory(tx).values({
       opportunityId,
       revision,
       kind,
-      snapshotJson: boundedJson(snapshot, 'snapshot', 262_144),
+      snapshotJson,
       auditJson: auditJson(actor),
       createdAt,
     })
+  }
+
+  function historySnapshot(value: JsonValue): BoundedJson<typeof SNAPSHOT_MAX> {
+    return boundedJson(value, 'snapshot', SNAPSHOT_MAX)
   }
 
   // Composable commit core: conditional head update + history append on the caller's
@@ -387,9 +403,9 @@ export function createPgliteOpportunityService(
   async function commitOn(
     exec: OpportunityExec,
     row: OpportunityRow,
-    actor: OpportunityActor,
+    actor: AdmittedCommandActor,
     kind: OpportunityHistoryKind,
-    snapshot: JsonValue,
+    snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>,
     headUpdate: HeadUpdate,
     guard: SQL,
   ): Promise<MutateOpportunityResult> {
@@ -400,21 +416,21 @@ export function createPgliteOpportunityService(
       .where(and(eq(opportunities.id, row.id), guard))
       .returning({ id: opportunities.id })
     if (updated.length === 0) return fail('revision_conflict', 'opportunity was modified concurrently')
-    await appendHistory(exec, row.id, nextRevision, kind, snapshot, actor, createdAt)
+    await appendHistory(exec, row.id, nextRevision, kind, snapshotJson, actor, createdAt)
     return { ok: true as const, opportunity: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
   }
 
   async function commit(
     row: OpportunityRow,
-    actor: OpportunityActor,
+    actor: AdmittedCommandActor,
     kind: OpportunityHistoryKind,
-    snapshot: JsonValue,
+    snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>,
     headUpdate: HeadUpdate,
     guard: SQL,
     onUnique: 'revision_conflict' | 'deterministic_duplicate',
   ): Promise<MutateOpportunityResult> {
     try {
-      return await database.transaction((tx) => commitOn(tx, row, actor, kind, snapshot, headUpdate, guard))
+      return await database.transaction((tx) => commitOn(tx, row, actor, kind, snapshotJson, headUpdate, guard))
     } catch (error) {
       if (isUniqueViolation(error)) {
         return onUnique === 'deterministic_duplicate'
@@ -427,13 +443,9 @@ export function createPgliteOpportunityService(
 
   // Composable tombstone/restore cores for the removal orchestration.
   async function removeOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult> {
-    let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
+    let ids: OpportunityMutationIds
     try {
-      ids = {
-        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-        opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
-        actor: requireActor(input.actor),
-      }
+      ids = mutationIds(input)
     } catch (error) {
       if (error instanceof OpportunityInputError) return fail(error.code, error.message)
       throw error
@@ -443,18 +455,14 @@ export function createPgliteOpportunityService(
     const typed = (row as OpportunityRow | undefined) ?? null
     if (!typed) return fail('not_found', 'opportunity not found in this workspace')
     if (typed.removedAt !== null) return { ok: true, opportunity: toRecord(typed) }
-    return commitOn(exec, typed, ids.actor, 'removed', { kind: 'removed', priorRevision: typed.revision },
+    return commitOn(exec, typed, ids.actor, 'removed', historySnapshot({ kind: 'removed', priorRevision: typed.revision }),
       { removedAt: nowIso() }, sql`${opportunities.removedAt} is null`)
   }
 
   async function restoreOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult> {
-    let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
+    let ids: OpportunityMutationIds
     try {
-      ids = {
-        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-        opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
-        actor: requireActor(input.actor),
-      }
+      ids = mutationIds(input)
     } catch (error) {
       if (error instanceof OpportunityInputError) return fail(error.code, error.message)
       throw error
@@ -465,19 +473,15 @@ export function createPgliteOpportunityService(
     if (!typed) return fail('not_found', 'opportunity not found in this workspace')
     if (typed.removedAt === null) return { ok: true, opportunity: toRecord(typed) }
     // The (workspace, job) partial unique index is the deterministic-duplicate guard on restore.
-    return commitOn(exec, typed, ids.actor, 'restored', { kind: 'restored', priorRevision: typed.revision },
+    return commitOn(exec, typed, ids.actor, 'restored', historySnapshot({ kind: 'restored', priorRevision: typed.revision }),
       { removedAt: null }, sql`${opportunities.removedAt} is not null`)
   }
 
   async function changeEvaluation(input: ChangeEvaluationInput): Promise<MutateOpportunityResult> {
-    let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
+    let ids: OpportunityMutationIds
     let resolved: { update: HeadUpdate; snapshot: Record<string, JsonValue> }
     try {
-      ids = {
-        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-        opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
-        actor: requireActor(input.actor),
-      }
+      ids = mutationIds(input)
       resolved = evaluationUpdate(input)
       // #304: an evaluation change may carry a warning override for the resource.
       if (input.override !== undefined) resolved.update.overrideJson = serializeOverride(input.override)
@@ -494,7 +498,7 @@ export function createPgliteOpportunityService(
       row,
       ids.actor,
       'evaluation_changed',
-      resolved.snapshot,
+      historySnapshot(resolved.snapshot),
       resolved.update,
       eq(opportunities.revision, row.revision),
       'revision_conflict',
@@ -505,7 +509,7 @@ export function createPgliteOpportunityService(
     async createOn(exec, input) {
       let workspaceId: string
       let jobId: string
-      let actor: OpportunityActor
+      let actor: AdmittedCommandActor
       let fit: OpportunityFit
       let cutoff: OpportunityCutoff
       let rank: number | null
@@ -513,7 +517,7 @@ export function createPgliteOpportunityService(
       let idempotencyKey: string | null
       let overrideJson: string | null
       try {
-        workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
+        workspaceId = requireId(input.workspaceId, 'workspaceId')
         jobId = requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX)
         actor = requireActor(input.actor)
         fit = input.evaluation?.fit === undefined ? DEFAULT_FIT : requireOneOf(input.evaluation.fit, opportunityFitStates, 'fit')
@@ -570,7 +574,7 @@ export function createPgliteOpportunityService(
       // A (workspace, job) unique violation still PROPAGATES (the promotion retries and
       // attaches the winner); the pre-check only handles the non-racing common path.
       await insertOpportunities(exec).values(row)
-      await appendHistory(exec, row.id, 1, 'created', { fit, rank, cutoff, disposition }, actor, createdAt)
+      await appendHistory(exec, row.id, 1, 'created', historySnapshot({ fit, rank, cutoff, disposition }), actor, createdAt)
       return { ok: true, opportunity: toRecord(row), created: true }
     },
 
@@ -614,15 +618,11 @@ export function createPgliteOpportunityService(
     },
 
     async setDisposition(input) {
-      let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
+      let ids: OpportunityMutationIds
       let disposition: OpportunityDisposition
       let rationale: string | null
       try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
+        ids = mutationIds(input)
         disposition = requireOneOf(input.disposition, opportunityDispositions, 'disposition')
         rationale = input.rationale === undefined || input.rationale === null
           ? null
@@ -650,7 +650,7 @@ export function createPgliteOpportunityService(
         row,
         ids.actor,
         'disposition_changed',
-        { disposition, priorDisposition: row.disposition, rationale },
+        historySnapshot({ disposition, priorDisposition: row.disposition, rationale }),
         { disposition, ...overrideUpdate },
         eq(opportunities.revision, row.revision),
         'revision_conflict',

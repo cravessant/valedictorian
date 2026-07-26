@@ -43,6 +43,7 @@ import type {
   WarningOverrideInput,
 } from '../opportunity/opportunity.service'
 import {
+  type AdmittedCommandActor,
   WORKSPACE_MAX,
   fail,
   isUniqueViolation,
@@ -213,7 +214,7 @@ export function createPgliteJobToOpportunityPromotion(
     async promoteJob(input) {
       let workspaceId: string
       let jobId: string
-      let actor: OpportunityActor
+      let actor: AdmittedCommandActor
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         jobId = requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX)

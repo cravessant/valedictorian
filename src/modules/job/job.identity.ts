@@ -32,6 +32,9 @@ import {
   updateJobs,
 } from './job.repository'
 import {
+  type AdmittedCommandActor,
+  type BoundedJson,
+  SNAPSHOT_MAX,
   type JobActor,
   type JobFailure,
   type JsonValue,
@@ -248,7 +251,7 @@ export function createPgliteJobIdentityService(
 
   const strongOwner = resolveStrongIdentityOwner
 
-  async function appendHistory(exec: JobIdentityExecutor, jobId: string, kind: string, snapshotJson: string, actor: JobActor, createdAt: string) {
+  async function appendHistory(exec: JobIdentityExecutor, jobId: string, kind: string, snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>, actor: AdmittedCommandActor, createdAt: string) {
     const [seqRow] = await exec
       .select({ maxSeq: sql<number>`coalesce(max(${jobHistory.sequence}), 0)` })
       .from(jobHistory)
@@ -264,8 +267,8 @@ export function createPgliteJobIdentityService(
     })
   }
 
-  function identitySnapshot(identity: ValidatedIdentity): string {
-    return JSON.stringify({ kind: identity.kind, provider: identity.provider, account: identity.account, value: identity.value, strength: identity.strength })
+  function identitySnapshot(identity: ValidatedIdentity): BoundedJson<typeof SNAPSHOT_MAX> {
+    return boundedJson({ kind: identity.kind, provider: identity.provider, account: identity.account, value: identity.value, strength: identity.strength }, 'snapshot', SNAPSHOT_MAX)
   }
 
   async function insertIdentity(tx: Tx, jobId: string, identity: ValidatedIdentity, createdAt: string): Promise<string> {
@@ -290,7 +293,7 @@ export function createPgliteJobIdentityService(
     let workspaceId: string
     let jobIdA: string
     let jobIdB: string
-    let actor: JobActor
+    let actor: AdmittedCommandActor
     try {
       workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
       jobIdA = requireText(input.jobIdA, 'jobIdA', 1, WORKSPACE_MAX)
@@ -330,7 +333,7 @@ export function createPgliteJobIdentityService(
       .where(and(eq(jobExternalIdentities.jobId, loser.id), isNull(jobExternalIdentities.removedAt)))
     for (const identity of identities) {
       await updateJobExternalIdentities(exec).set({ removedAt: createdAt }).where(eq(jobExternalIdentities.id, identity.id))
-      await appendHistory(exec, loser.id, 'identity_removed', JSON.stringify({ kind: identity.kind, value: identity.value }), actor, createdAt)
+      await appendHistory(exec, loser.id, 'identity_removed', boundedJson({ kind: identity.kind, value: identity.value }, 'snapshot', SNAPSHOT_MAX), actor, createdAt)
       const inserted = await insertJobExternalIdentities(exec)
         .values({
           id: newId(), jobId: winner.id, kind: identity.kind, provider: identity.provider,
@@ -341,7 +344,7 @@ export function createPgliteJobIdentityService(
         .onConflictDoNothing()
         .returning({ id: jobExternalIdentities.id })
       if (inserted.length > 0) {
-        await appendHistory(exec, winner.id, 'identity_added', JSON.stringify({ kind: identity.kind, value: identity.value, mergedFrom: loser.id }), actor, createdAt)
+        await appendHistory(exec, winner.id, 'identity_added', boundedJson({ kind: identity.kind, value: identity.value, mergedFrom: loser.id }, 'snapshot', SNAPSHOT_MAX), actor, createdAt)
       }
     }
 
@@ -357,7 +360,7 @@ export function createPgliteJobIdentityService(
     }
 
     await updateJobs(exec).set({ removedAt: createdAt, updatedAt: createdAt }).where(eq(jobs.id, loser.id))
-    await appendHistory(exec, loser.id, 'removed', JSON.stringify({ kind: 'merged', into: winner.id }), actor, createdAt)
+    await appendHistory(exec, loser.id, 'removed', boundedJson({ kind: 'merged', into: winner.id }, 'snapshot', SNAPSHOT_MAX), actor, createdAt)
     return { ok: true, winnerJobId: winner.id, loserJobId: loser.id }
   }
 
@@ -365,7 +368,7 @@ export function createPgliteJobIdentityService(
     async establish(input) {
       let workspaceId: string
       let jobId: string
-      let actor: JobActor
+      let actor: AdmittedCommandActor
       let identity: ValidatedIdentity
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
@@ -410,7 +413,7 @@ export function createPgliteJobIdentityService(
       let jobId: string
       let identityId: string
       let account: string
-      let actor: JobActor
+      let actor: AdmittedCommandActor
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         jobId = requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX)
@@ -508,7 +511,7 @@ export function createPgliteJobIdentityService(
     async remove(input) {
       let workspaceId: string
       let jobId: string
-      let actor: JobActor
+      let actor: AdmittedCommandActor
       let kind: JobIdentityKind
       let provider: string
       let account: string | null
@@ -547,7 +550,7 @@ export function createPgliteJobIdentityService(
         await updateJobExternalIdentities(tx)
           .set({ removedAt: createdAt })
           .where(eq(jobExternalIdentities.id, active.id))
-        await appendHistory(tx, jobId, 'identity_removed', JSON.stringify({ kind, provider, account, value }), actor, createdAt)
+        await appendHistory(tx, jobId, 'identity_removed', boundedJson({ kind, provider, account, value }, 'snapshot', SNAPSHOT_MAX), actor, createdAt)
         return { ok: true as const, jobId, identityId: active.id }
       })
     },

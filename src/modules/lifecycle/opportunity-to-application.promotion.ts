@@ -50,6 +50,7 @@ import type {
   JsonValue,
 } from '../applications/application.aggregate.service'
 import {
+  type AdmittedCommandActor,
   WORKSPACE_MAX,
   fail,
   isUniqueViolation,
@@ -225,7 +226,7 @@ export function createPgliteOpportunityToApplicationPromotion(
     tx: Tx,
     workspaceId: string,
     applicationId: string,
-    actor: ApplicationActor,
+    actor: AdmittedCommandActor,
     links: readonly ApplicationLinkInput[] | undefined,
     event: PromotionEventInput | undefined,
   ) {
@@ -244,7 +245,7 @@ export function createPgliteOpportunityToApplicationPromotion(
     async promoteOpportunity(input) {
       let workspaceId: string
       let opportunityId: string
-      let actor: ApplicationActor
+      let actor: AdmittedCommandActor
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         opportunityId = requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX)
@@ -302,7 +303,7 @@ export function createPgliteOpportunityToApplicationPromotion(
 
     async createManualApplication(input) {
       let workspaceId: string
-      let actor: ApplicationActor
+      let actor: AdmittedCommandActor
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         actor = requireActor(input.actor)

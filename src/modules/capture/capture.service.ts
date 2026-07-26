@@ -39,12 +39,8 @@ import {
   type CaptureConnectorProvenance,
 } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
-import {
-  captureEvidenceModes,
-  captureSourceAdapterKinds,
-  lifecycleActorTypes,
-} from '../../db/lifecycle-vocabulary'
-import { SENSITIVE_KEY_SUBSTRINGS } from '../../db/sensitive-keys'
+import { captureEvidenceModes, captureSourceAdapterKinds } from '../../db/lifecycle-vocabulary'
+import { LIFECYCLE_ID_MAX as WORKSPACE_MAX, type AdmittedCommandActor, type BoundedJson, type LifecycleActorInput, type LifecycleActorType, actorAuditJson as auditJson, admitBoundedJson, admitCommandActor, admitLifecycleId, isUniqueViolation, owning, safeParseJson } from '../lifecycle/lifecycle-representation'
 import {
   captureEvidenceItems,
   captureRevisions,
@@ -58,17 +54,16 @@ import {
   updateCaptures,
 } from './capture.repository'
 
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+export type { JsonValue } from '../lifecycle/lifecycle-representation'
+import type { JsonValue } from '../lifecycle/lifecycle-representation'
 
 export type CaptureEvidenceMode = (typeof captureEvidenceModes)[number]
 export type CaptureAdapterKind = (typeof captureSourceAdapterKinds)[number]
-export type CaptureActorType = (typeof lifecycleActorTypes)[number]
+export type CaptureActorType = LifecycleActorType
 export type CaptureRevisionKind = 'created' | 'corrected' | 'removed' | 'restored'
 
-export interface CaptureActor {
-  readonly type: CaptureActorType
-  readonly id?: string | null
-}
+/** Untrusted actor as it arrives on a Capture command. */
+export type CaptureActor = LifecycleActorInput
 
 export interface CaptureProvenance {
   readonly adapterId: string
@@ -211,18 +206,14 @@ export interface CaptureServiceOptions {
 }
 
 // --- Bounds (mirror the schema CHECK constraints so the DB never rejects). ---
-const WORKSPACE_MAX = 200
 const ADAPTER_VERSION_MAX = 100
 const PROVIDER_FIELD_MAX = 500
 const PAYLOAD_MAX = 262_144
 const SNAPSHOT_MAX = 262_144
-const AUDIT_MAX = 16_384
 const EVIDENCE_VALUE_MAX = 16_384
 const EVIDENCE_KIND_MAX = 100
 const EVIDENCE_LABEL_MAX = 200
 const EVIDENCE_MAX_ITEMS = 50
-
-const FORBIDDEN_KEY_REGEX = new RegExp(`"[^"]*(?:${SENSITIVE_KEY_SUBSTRINGS})[^"]*"[\\t\\n\\r ]*:`, 'i')
 
 class CaptureInputError extends Error {
   constructor(
@@ -238,50 +229,22 @@ function fail(code: CaptureFailureCode, message: string): CaptureFailure {
   return { ok: false, code, message }
 }
 
+const requireId = owning(admitLifecycleId, CaptureInputError)
+const boundedJson = owning(admitBoundedJson, CaptureInputError)
+const requireActor = owning(admitCommandActor, CaptureInputError)
+
+/** Capture-owned free text: adapter/provider fields, evidence kind/label, instants. */
 function requireText(value: unknown, field: string, min: number, max: number): string {
   if (typeof value !== 'string') throw new CaptureInputError('invalid_input', `${field} must be a string`)
   const trimmed = value.trim()
   if (trimmed.length < min) throw new CaptureInputError('invalid_input', `${field} must not be empty`)
-  if (trimmed.length > max) {
-    throw new CaptureInputError('bounded_data_violation', `${field} exceeds ${max} characters`)
-  }
+  if (trimmed.length > max) throw new CaptureInputError('bounded_data_violation', `${field} exceeds ${max} characters`)
   return trimmed
 }
 
 function optionalText(value: unknown, field: string, max: number): string | null {
   if (value === undefined || value === null) return null
   return requireText(value, field, 1, max)
-}
-
-function boundedJson(value: JsonValue, field: string, max: number): string {
-  let serialized: string
-  try {
-    serialized = JSON.stringify(value ?? null)
-  } catch {
-    throw new CaptureInputError('invalid_input', `${field} is not serializable JSON`)
-  }
-  if (serialized.length > max) throw new CaptureInputError('bounded_data_violation', `${field} exceeds ${max} bytes`)
-  if (FORBIDDEN_KEY_REGEX.test(serialized)) {
-    throw new CaptureInputError('security_violation', `${field} contains a forbidden sensitive key`)
-  }
-  return serialized
-}
-
-function requireActor(actor: unknown): CaptureActor {
-  if (typeof actor !== 'object' || actor === null) {
-    throw new CaptureInputError('invalid_input', 'actor is required')
-  }
-  const type = (actor as { type?: unknown }).type
-  if (typeof type !== 'string' || !(lifecycleActorTypes as readonly string[]).includes(type)) {
-    throw new CaptureInputError('invalid_input', 'actor.type is invalid')
-  }
-  const id = optionalText((actor as { id?: unknown }).id, 'actor.id', WORKSPACE_MAX)
-  const resolved: CaptureActor = { type: type as CaptureActorType, id }
-  // audit_json carries a forbidden-key + bound CHECK. Validate the exact payload
-  // auditJson() will persist here, up front, so a crafted actor.id returns a typed
-  // security_violation/bounded_data_violation instead of a raw DB error mid-tx.
-  boundedJson({ actor: { type: resolved.type, id: resolved.id ?? null } }, 'actor', AUDIT_MAX)
-  return resolved
 }
 
 function validateProvenance(provenance: CaptureProvenance) {
@@ -358,14 +321,6 @@ function connectorContentHash(
     reportedOrigin: connectorProvenance.reportedOrigin ?? null,
   })
   return `sha256:${createHash('sha256').update(canonical).digest('hex')}`
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false
-  const record = error as { code?: unknown; cause?: { code?: unknown }; message?: unknown }
-  if (record.code === '23505' || record.cause?.code === '23505') return true
-  const message = typeof record.message === 'string' ? record.message : ''
-  return /duplicate key value|unique constraint/i.test(message)
 }
 
 interface CaptureRow {
@@ -487,15 +442,11 @@ export function createPgliteCaptureService(
     return occurrenceId
   }
 
-  function auditJson(actor: CaptureActor): string {
-    return JSON.stringify({ actor: { type: actor.type, id: actor.id ?? null } })
-  }
-
   function observedSnapshot(
     provenance: ReturnType<typeof validateProvenance>,
     evidenceMode: CaptureEvidenceMode,
     revision: number,
-  ): string {
+  ): BoundedJson<typeof SNAPSHOT_MAX> {
     return boundedJson(
       {
         evidenceMode,
@@ -518,7 +469,7 @@ export function createPgliteCaptureService(
     provenance: ReturnType<typeof validateProvenance>,
     evidenceMode: CaptureEvidenceMode,
     evidence: ReturnType<typeof validateEvidence>,
-    actor: CaptureActor,
+    actor: AdmittedCommandActor,
     connectorProvenance: CaptureConnectorProvenance | null,
     contentHash: string | null,
     payloadJson: string | null,
@@ -567,7 +518,7 @@ export function createPgliteCaptureService(
     input: AcceptCaptureInput,
     provenance: ReturnType<typeof validateProvenance>,
     evidence: ReturnType<typeof validateEvidence>,
-    actor: CaptureActor,
+    actor: AdmittedCommandActor,
     connectorProvenance: CaptureConnectorProvenance | null,
     contentHash: string | null,
     createdAt: string,
@@ -628,10 +579,10 @@ export function createPgliteCaptureService(
   }
 
   type LoadedMutation =
-    | { readonly ok: true; readonly row: CaptureRow; readonly workspaceId: string; readonly captureId: string; readonly actor: CaptureActor }
+    | { readonly ok: true; readonly row: CaptureRow; readonly workspaceId: string; readonly captureId: string; readonly actor: AdmittedCommandActor }
     | { readonly ok: false; readonly failure: CaptureFailure }
 
-  function loadForMutation(input: CaptureMutationInput, row: CaptureRow | null, ids: { workspaceId: string; captureId: string; actor: CaptureActor }): LoadedMutation {
+  function loadForMutation(input: CaptureMutationInput, row: CaptureRow | null, ids: { workspaceId: string; captureId: string; actor: AdmittedCommandActor }): LoadedMutation {
     if (!row) return { ok: false, failure: fail('not_found', 'capture not found in this workspace') }
     if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) {
       return { ok: false, failure: fail('revision_conflict', 'capture was modified concurrently') }
@@ -639,10 +590,10 @@ export function createPgliteCaptureService(
     return { ok: true, row, workspaceId: ids.workspaceId, captureId: ids.captureId, actor: ids.actor }
   }
 
-  function validateMutationIds(input: CaptureMutationInput): { workspaceId: string; captureId: string; actor: CaptureActor } {
+  function validateMutationIds(input: CaptureMutationInput): { workspaceId: string; captureId: string; actor: AdmittedCommandActor } {
     return {
-      workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-      captureId: requireText(input.captureId, 'captureId', 1, WORKSPACE_MAX),
+      workspaceId: requireId(input.workspaceId, 'workspaceId'),
+      captureId: requireId(input.captureId, 'captureId'),
       actor: requireActor(input.actor),
     }
   }
@@ -654,7 +605,7 @@ export function createPgliteCaptureService(
     exec: CaptureExec,
     loaded: Extract<LoadedMutation, { ok: true }>,
     kind: CaptureRevisionKind,
-    snapshotJson: string,
+    snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>,
     removedAt: 'set' | 'clear' | 'keep',
   ): Promise<MutateCaptureResult> {
     const createdAt = nowIso()
@@ -686,7 +637,7 @@ export function createPgliteCaptureService(
   async function acceptOn(exec: CaptureExec, input: AcceptCaptureInput): Promise<AcceptCaptureResult> {
     let provenance: ReturnType<typeof validateProvenance>
     let evidence: ReturnType<typeof validateEvidence>
-    let actor: CaptureActor
+    let actor: AdmittedCommandActor
     let connectorProvenance: CaptureConnectorProvenance | null
     let workspaceId: string
     let evidenceMode: CaptureEvidenceMode
@@ -818,8 +769,8 @@ export function createPgliteCaptureService(
   }
 
   async function correctOn(exec: CaptureExec, input: CorrectCaptureInput): Promise<MutateCaptureResult> {
-    let ids: { workspaceId: string; captureId: string; actor: CaptureActor }
-    let correctionJson: string
+    let ids: { workspaceId: string; captureId: string; actor: AdmittedCommandActor }
+    let correctionJson: BoundedJson<typeof SNAPSHOT_MAX>
     try {
       ids = validateMutationIds(input)
       correctionJson = boundedJson(input.correction, 'correction', SNAPSHOT_MAX)
@@ -836,7 +787,7 @@ export function createPgliteCaptureService(
   // Composable tombstone/restore cores: single attempt on the caller's executor so the
   // removal orchestration composes a Capture tombstone atomically with its dependents.
   async function removeOn(exec: CaptureExec, input: CaptureMutationInput): Promise<MutateCaptureResult> {
-    let ids: { workspaceId: string; captureId: string; actor: CaptureActor }
+    let ids: { workspaceId: string; captureId: string; actor: AdmittedCommandActor }
     try {
       ids = validateMutationIds(input)
     } catch (error) {
@@ -846,12 +797,12 @@ export function createPgliteCaptureService(
     const loaded = loadForMutation(input, await selectById(exec, ids.workspaceId, ids.captureId), ids)
     if (!loaded.ok) return loaded.failure
     if (loaded.row.removedAt !== null) return { ok: true, capture: toRecord(loaded.row) }
-    const snapshot = JSON.stringify({ kind: 'removed', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 })
+    const snapshot = boundedJson({ kind: 'removed', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 }, 'snapshot', SNAPSHOT_MAX)
     return commitRevisionOn(exec, loaded, 'removed', snapshot, 'set')
   }
 
   async function restoreOn(exec: CaptureExec, input: CaptureMutationInput): Promise<MutateCaptureResult> {
-    let ids: { workspaceId: string; captureId: string; actor: CaptureActor }
+    let ids: { workspaceId: string; captureId: string; actor: AdmittedCommandActor }
     try {
       ids = validateMutationIds(input)
     } catch (error) {
@@ -861,7 +812,7 @@ export function createPgliteCaptureService(
     const loaded = loadForMutation(input, await selectById(exec, ids.workspaceId, ids.captureId), ids)
     if (!loaded.ok) return loaded.failure
     if (loaded.row.removedAt === null) return { ok: true, capture: toRecord(loaded.row) }
-    const snapshot = JSON.stringify({ kind: 'restored', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 })
+    const snapshot = boundedJson({ kind: 'restored', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 }, 'snapshot', SNAPSHOT_MAX)
     return commitRevisionOn(exec, loaded, 'restored', snapshot, 'clear')
   }
 
@@ -931,7 +882,7 @@ export function createPgliteCaptureService(
         .where(eq(captureRevisions.captureId, captureId))
         .orderBy(asc(captureRevisions.revision))
       return rows.map((row) => {
-        const audit = safeParse(row.auditJson)
+        const audit = safeParseJson(row.auditJson)
         const actor = (audit as { actor?: { type?: string; id?: string | null } }).actor
         return {
           revision: row.revision,
@@ -961,17 +912,9 @@ export function createPgliteCaptureService(
           index: row.evidenceIndex,
           kind: row.kind,
           label: row.label,
-          value: safeParse(row.valueJson) as JsonValue,
+          value: safeParseJson(row.valueJson) as JsonValue,
         })),
       }
     },
-  }
-}
-
-function safeParse(text: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
   }
 }

@@ -50,11 +50,15 @@ import {
 } from '../job/job.repository'
 import { resolveStrongIdentityOwner, type JobIdentityService } from '../job/job.identity'
 import {
+  type AdmittedCommandActor,
+  type BoundedJson,
+  SNAPSHOT_MAX,
   type JobActor,
   type JobFailure,
   JobInputError,
   WORKSPACE_MAX,
   auditJson,
+  boundedJson,
   isUniqueViolation,
   requireActor,
   requireText,
@@ -224,8 +228,8 @@ export function createLifecycleJobOrchestration(
     tx: Tx,
     jobId: string,
     kind: string,
-    snapshotJson: string,
-    actor: JobActor,
+    snapshotJson: BoundedJson<typeof SNAPSHOT_MAX>,
+    actor: AdmittedCommandActor,
     createdAt: string,
   ): Promise<void> {
     const [seqRow] = await tx
@@ -249,7 +253,7 @@ export function createLifecycleJobOrchestration(
     workspaceId: string,
     jobId: string,
     identity: JobExternalIdentityInput,
-    actor: JobActor,
+    actor: AdmittedCommandActor,
     createdAt: string,
   ): Promise<void> {
     const [existing] = await tx
@@ -284,7 +288,7 @@ export function createLifecycleJobOrchestration(
       evidenceJson: JSON.stringify({ source: 'user_provided' }),
       createdAt,
     })
-    await appendHistory(tx, jobId, 'identity_added', JSON.stringify({ kind: identity.kind, value: identity.value }), actor, createdAt)
+    await appendHistory(tx, jobId, 'identity_added', boundedJson({ kind: identity.kind, value: identity.value }, 'snapshot', SNAPSHOT_MAX), actor, createdAt)
   }
 
   async function loadActiveJob(tx: Tx, workspaceId: string, jobId: string): Promise<{ id: string } | null> {
@@ -314,7 +318,7 @@ export function createLifecycleJobOrchestration(
   return {
     async createJob(input) {
       let workspaceId: string
-      let actor: JobActor
+      let actor: AdmittedCommandActor
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         actor = requireActor(input.actor)

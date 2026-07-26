@@ -1,31 +1,25 @@
 /**
- * Shared input validation + result primitives for the Opportunity module (issue #301).
+ * Opportunity module input validation + result primitives (issue #301, consolidated #389).
  *
  * Used by opportunity.service.ts (user-controlled CRUD, correction, re-evaluation,
- * disposition) and composed by the Job→Opportunity promotion orchestration, so both
- * paths share ONE implementation of bounds, forbidden-key, evaluation-vocabulary, and
- * audit-payload validation — no forked semantics. Mirrors the Job module's validation
- * seam (src/modules/job/job.validation.ts).
+ * disposition) and composed by the Job→Opportunity promotion orchestration. Lifecycle
+ * ids, bounded JSON and command actors are admitted by the shared representation
+ * constructors, rebound here onto `OpportunityInputError`. The evaluation vocabulary,
+ * rank bound and override rationale bound are Opportunity-owned and stay local.
  */
-import {
-  lifecycleActorTypes,
-  opportunityCutoffStates,
-  opportunityDispositions,
-  opportunityFitStates,
-} from '../../db/lifecycle-vocabulary'
-import { SENSITIVE_KEY_SUBSTRINGS } from '../../db/sensitive-keys'
+import { type LifecycleActorInput, type LifecycleActorType, admitBoundedJson, admitCommandActor, admitLifecycleId, owning } from '../lifecycle/lifecycle-representation'
+import { opportunityCutoffStates, opportunityDispositions, opportunityFitStates } from '../../db/lifecycle-vocabulary'
 
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+export { LIFECYCLE_AUDIT_MAX as AUDIT_MAX, LIFECYCLE_ID_MAX as WORKSPACE_MAX, LIFECYCLE_SNAPSHOT_MAX as SNAPSHOT_MAX, actorAuditJson as auditJson, isUniqueViolation, safeParseJson as safeParse } from '../lifecycle/lifecycle-representation'
+export type { AdmittedCommandActor, BoundedJson, JsonValue, LifecycleId } from '../lifecycle/lifecycle-representation'
 
-export type OpportunityActorType = (typeof lifecycleActorTypes)[number]
+export type OpportunityActorType = LifecycleActorType
 export type OpportunityFit = (typeof opportunityFitStates)[number]
 export type OpportunityCutoff = (typeof opportunityCutoffStates)[number]
 export type OpportunityDisposition = (typeof opportunityDispositions)[number]
 
-export interface OpportunityActor {
-  readonly type: OpportunityActorType
-  readonly id?: string | null
-}
+/** Untrusted actor as it arrives on an Opportunity command. */
+export type OpportunityActor = LifecycleActorInput
 
 export type OpportunityFailureCode =
   | 'invalid_input'
@@ -42,13 +36,10 @@ export interface OpportunityFailure {
   readonly message: string
 }
 
-export const WORKSPACE_MAX = 200
-export const AUDIT_MAX = 16_384
 export const OVERRIDE_MAX = 16_384
+/** Opportunity-owned: the app's warning-override rationale bound and CHECK are 2,000. */
 export const RATIONALE_MAX = 2_000
 export const RANK_MAX = 1_000_000
-
-const FORBIDDEN_KEY_REGEX = new RegExp(`"[^"]*(?:${SENSITIVE_KEY_SUBSTRINGS})[^"]*"[\\t\\n\\r ]*:`, 'i')
 
 export class OpportunityInputError extends Error {
   constructor(
@@ -64,11 +55,18 @@ export function fail(code: OpportunityFailureCode, message: string): Opportunity
   return { ok: false, code, message }
 }
 
+export const requireId = owning(admitLifecycleId, OpportunityInputError)
+export const boundedJson = owning(admitBoundedJson, OpportunityInputError)
+export const requireActor = owning(admitCommandActor, OpportunityInputError)
+
+/** Opportunity-owned free text: the override rationale and actor display fields. */
 export function requireText(value: unknown, field: string, min: number, max: number): string {
   if (typeof value !== 'string') throw new OpportunityInputError('invalid_input', `${field} must be a string`)
   const trimmed = value.trim()
   if (trimmed.length < min) throw new OpportunityInputError('invalid_input', `${field} must not be empty`)
-  if (trimmed.length > max) throw new OpportunityInputError('bounded_data_violation', `${field} exceeds ${max} characters`)
+  if (trimmed.length > max) {
+    throw new OpportunityInputError('bounded_data_violation', `${field} exceeds ${max} characters`)
+  }
   return trimmed
 }
 
@@ -77,6 +75,7 @@ export function optionalText(value: unknown, field: string, max: number): string
   return requireText(value, field, 1, max)
 }
 
+/** Opportunity-owned evaluation vocabulary (fit / cutoff / disposition). */
 export function requireOneOf<T extends string>(value: unknown, allowed: readonly T[], field: string): T {
   if (typeof value !== 'string' || !(allowed as readonly string[]).includes(value)) {
     throw new OpportunityInputError('invalid_input', `${field} is invalid`)
@@ -84,6 +83,7 @@ export function requireOneOf<T extends string>(value: unknown, allowed: readonly
   return value as T
 }
 
+/** Opportunity-only: no other aggregate carries a ranked shortlist position. */
 export function optionalRank(value: unknown, field: string): number | null {
   if (value === undefined || value === null) return null
   if (typeof value !== 'number' || !Number.isInteger(value)) {
@@ -92,53 +92,4 @@ export function optionalRank(value: unknown, field: string): number | null {
   if (value < 1) throw new OpportunityInputError('invalid_input', `${field} must be positive`)
   if (value > RANK_MAX) throw new OpportunityInputError('bounded_data_violation', `${field} exceeds ${RANK_MAX}`)
   return value
-}
-
-export function boundedJson(value: JsonValue, field: string, max: number): string {
-  let serialized: string
-  try {
-    serialized = JSON.stringify(value ?? null)
-  } catch {
-    throw new OpportunityInputError('invalid_input', `${field} is not serializable JSON`)
-  }
-  if (serialized.length > max) throw new OpportunityInputError('bounded_data_violation', `${field} exceeds ${max} bytes`)
-  if (FORBIDDEN_KEY_REGEX.test(serialized)) {
-    throw new OpportunityInputError('security_violation', `${field} contains a forbidden sensitive key`)
-  }
-  return serialized
-}
-
-export function requireActor(actor: unknown): OpportunityActor {
-  if (typeof actor !== 'object' || actor === null) throw new OpportunityInputError('invalid_input', 'actor is required')
-  const type = (actor as { type?: unknown }).type
-  if (typeof type !== 'string' || !(lifecycleActorTypes as readonly string[]).includes(type)) {
-    throw new OpportunityInputError('invalid_input', 'actor.type is invalid')
-  }
-  const id = optionalText((actor as { id?: unknown }).id, 'actor.id', WORKSPACE_MAX)
-  const resolved: OpportunityActor = { type: type as OpportunityActorType, id }
-  // audit_json carries a forbidden-key + bound CHECK: validate the exact payload up
-  // front so a crafted actor.id returns a typed failure, never a raw DB error mid-tx.
-  boundedJson({ actor: { type: resolved.type, id: resolved.id ?? null } }, 'actor', AUDIT_MAX)
-  return resolved
-}
-
-export function auditJson(actor: OpportunityActor): string {
-  return JSON.stringify({ actor: { type: actor.type, id: actor.id ?? null } })
-}
-
-export function isUniqueViolation(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false
-  const record = error as { code?: unknown; cause?: { code?: unknown }; message?: unknown }
-  if (record.code === '23505' || record.cause?.code === '23505') return true
-  const message = typeof record.message === 'string' ? record.message : ''
-  return /duplicate key value|unique constraint/i.test(message)
-}
-
-export function safeParse(text: string | null): JsonValue {
-  if (text === null) return null
-  try {
-    return JSON.parse(text) as JsonValue
-  } catch {
-    return null
-  }
 }

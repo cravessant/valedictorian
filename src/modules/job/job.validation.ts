@@ -1,21 +1,22 @@
 /**
- * Shared input validation + result primitives for the Job module (issue #300).
+ * Job module input validation + result primitives (issue #300, consolidated #389).
  *
  * Used by job.service.ts (core CRUD/versioning) and job.identity.ts (external
- * identities, conflicts, attach/merge) so both paths share ONE implementation of
- * bounds, forbidden-key, and audit-payload validation — no forked semantics.
+ * identities, conflicts, attach/merge). Lifecycle ids, bounded JSON and command
+ * actors are admitted by the shared representation constructors, rebound here so a
+ * representation failure is reported as a `JobInputError` with its existing code and
+ * message. Job-owned free text (instants, identity values, provider fields) keeps its
+ * own bounds and stays local.
  */
-import { lifecycleActorTypes } from '../../db/lifecycle-vocabulary'
-import { SENSITIVE_KEY_SUBSTRINGS } from '../../db/sensitive-keys'
+import { type LifecycleActorInput, type LifecycleActorType, admitBoundedJson, admitCommandActor, admitLifecycleId, owning } from '../lifecycle/lifecycle-representation'
 
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+export { LIFECYCLE_AUDIT_MAX as AUDIT_MAX, LIFECYCLE_ID_MAX as WORKSPACE_MAX, LIFECYCLE_SNAPSHOT_MAX as SNAPSHOT_MAX, actorAuditJson as auditJson, isUniqueViolation, safeParseJson as safeParse } from '../lifecycle/lifecycle-representation'
+export type { AdmittedCommandActor, BoundedJson, JsonValue, LifecycleId } from '../lifecycle/lifecycle-representation'
 
-export type JobActorType = (typeof lifecycleActorTypes)[number]
+export type JobActorType = LifecycleActorType
 
-export interface JobActor {
-  readonly type: JobActorType
-  readonly id?: string | null
-}
+/** Untrusted actor as it arrives on a Job command; admitted values are `AdmittedCommandActor`. */
+export type JobActor = LifecycleActorInput
 
 export type JobFailureCode =
   | 'invalid_input'
@@ -31,11 +32,6 @@ export interface JobFailure {
   readonly message: string
 }
 
-export const WORKSPACE_MAX = 200
-export const AUDIT_MAX = 16_384
-
-const FORBIDDEN_KEY_REGEX = new RegExp(`"[^"]*(?:${SENSITIVE_KEY_SUBSTRINGS})[^"]*"[\\t\\n\\r ]*:`, 'i')
-
 export class JobInputError extends Error {
   constructor(
     readonly code: JobFailureCode,
@@ -50,6 +46,11 @@ export function fail(code: JobFailureCode, message: string): JobFailure {
   return { ok: false, code, message }
 }
 
+export const requireId = owning(admitLifecycleId, JobInputError)
+export const boundedJson = owning(admitBoundedJson, JobInputError)
+export const requireActor = owning(admitCommandActor, JobInputError)
+
+/** Job-owned free text: instants, identity values, provider/account fields. */
 export function requireText(value: unknown, field: string, min: number, max: number): string {
   if (typeof value !== 'string') throw new JobInputError('invalid_input', `${field} must be a string`)
   const trimmed = value.trim()
@@ -61,52 +62,4 @@ export function requireText(value: unknown, field: string, min: number, max: num
 export function optionalText(value: unknown, field: string, max: number): string | null {
   if (value === undefined || value === null) return null
   return requireText(value, field, 1, max)
-}
-
-export function boundedJson(value: JsonValue, field: string, max: number): string {
-  let serialized: string
-  try {
-    serialized = JSON.stringify(value ?? null)
-  } catch {
-    throw new JobInputError('invalid_input', `${field} is not serializable JSON`)
-  }
-  if (serialized.length > max) throw new JobInputError('bounded_data_violation', `${field} exceeds ${max} bytes`)
-  if (FORBIDDEN_KEY_REGEX.test(serialized)) {
-    throw new JobInputError('security_violation', `${field} contains a forbidden sensitive key`)
-  }
-  return serialized
-}
-
-export function requireActor(actor: unknown): JobActor {
-  if (typeof actor !== 'object' || actor === null) throw new JobInputError('invalid_input', 'actor is required')
-  const type = (actor as { type?: unknown }).type
-  if (typeof type !== 'string' || !(lifecycleActorTypes as readonly string[]).includes(type)) {
-    throw new JobInputError('invalid_input', 'actor.type is invalid')
-  }
-  const id = optionalText((actor as { id?: unknown }).id, 'actor.id', WORKSPACE_MAX)
-  const resolved: JobActor = { type: type as JobActorType, id }
-  // audit_json carries a forbidden-key + bound CHECK: validate the exact payload up
-  // front so a crafted actor.id returns a typed failure, never a raw DB error mid-tx.
-  boundedJson({ actor: { type: resolved.type, id: resolved.id ?? null } }, 'actor', AUDIT_MAX)
-  return resolved
-}
-
-export function auditJson(actor: JobActor): string {
-  return JSON.stringify({ actor: { type: actor.type, id: actor.id ?? null } })
-}
-
-export function isUniqueViolation(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false
-  const record = error as { code?: unknown; cause?: { code?: unknown }; message?: unknown }
-  if (record.code === '23505' || record.cause?.code === '23505') return true
-  const message = typeof record.message === 'string' ? record.message : ''
-  return /duplicate key value|unique constraint/i.test(message)
-}
-
-export function safeParse(text: string): JsonValue {
-  try {
-    return JSON.parse(text) as JsonValue
-  } catch {
-    return null
-  }
 }
