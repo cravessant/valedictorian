@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { renderWithQueryClient } from './test/query-client'
 import { createConnectorsApi } from './App.test-helpers'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
@@ -106,7 +107,7 @@ describe('App Capture navigation', () => {
       getCurrent: vi.fn(async () => null),
     } as unknown as WorkspacePreloadApi
 
-    render(<App settingsApi={settingsApi} workspaceApi={workspaceApi} connectorsApi={connectorsApi} />)
+    renderWithQueryClient(<App settingsApi={settingsApi} workspaceApi={workspaceApi} connectorsApi={connectorsApi} />)
     await screen.findByRole('table', { name: 'Captures' })
 
     await user.click(screen.getByRole('button', { name: 'Connector runs' }))

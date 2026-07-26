@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type {
   Application,
   CaptureListPresentation,
@@ -13,6 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   getRendererHttpWorkspaceClient,
   onRendererBackendStateChanged,
+  workspaceConnectionId,
 } from '@/app/renderer-http-client'
 import { createCaptureConfig, type CaptureCompletionIntent } from './configs/capture-config'
 import { jobConfig } from './configs/job-config'
@@ -23,12 +25,16 @@ import { useJobController } from './configs/job-controller'
 import { useJobCompanyAssignmentController } from './job-company-assignment-controller'
 import { useOpportunityController } from './configs/opportunity-controller'
 import { useApplicationController } from './configs/application-controller'
+import { LifecycleTable, type LifecycleTableConfig } from './lifecycle-table'
 import {
-  LifecycleTable,
-  type LifecycleLoadState,
-  type LifecycleTableConfig,
-} from './lifecycle-table'
-import { afterPage } from './load-history'
+  applicationProjectionQuery,
+  capturePageQuery,
+  jobPageQuery,
+  jobProjectionQuery,
+  lifecycleLoadState,
+  opportunityProjectionQuery,
+  type LifecycleScope,
+} from './lifecycle-queries'
 import { useLifecycleInvalidation } from './use-lifecycle-invalidation'
 import { useActionQueue } from './use-action-queue'
 import { ActionQueueMode } from './action-queue-mode'
@@ -41,7 +47,7 @@ import {
   type WorkspaceLocation,
 } from '@/app/workspace-location'
 import { WorkspaceCursorPagination } from '@/app/WorkspaceCursorPagination'
-import { workspacePageRequest, type WorkspacePageInfo } from '@/app/workspace-page'
+import type { WorkspacePageInfo } from '@/app/workspace-page'
 import {
   LifecycleRail,
   RefreshToolbar,
@@ -52,16 +58,19 @@ export type LifecyclePhase = 'captures' | 'jobs' | 'opportunities' | 'applicatio
 type ApplicationMode = 'all' | 'action-queue'
 type CaptureFilter = 'all' | 'needs_attention' | 'removed'
 
-interface PhaseState<Row> {
-  readonly data: ReadonlyArray<Row> | null
-  readonly load: LifecycleLoadState
+/** The view address the workbench owns when no workspace location controls it. */
+interface WorkbenchView {
+  readonly phase: LifecyclePhase
+  readonly applicationMode: ApplicationMode
+  readonly captureFilter: CaptureFilter
+  readonly showRemoved: boolean
 }
 
-interface WorkbenchState {
-  readonly captures: PhaseState<CaptureListPresentation>
-  readonly jobs: PhaseState<Job>
-  readonly opportunities: PhaseState<Opportunity>
-  readonly applications: PhaseState<Application>
+const initialView: WorkbenchView = {
+  phase: 'captures',
+  applicationMode: 'all',
+  captureFilter: 'all',
+  showRemoved: false,
 }
 
 interface WorkbenchProps {
@@ -76,16 +85,71 @@ interface WorkbenchProps {
   readonly onWorkspaceNavigate?: (location: WorkspaceLocation) => void
 }
 
-const initial: WorkbenchState = {
-  captures: { data: null, load: { status: 'loading' } },
-  jobs: { data: null, load: { status: 'loading' } },
-  opportunities: { data: null, load: { status: 'loading' } },
-  applications: { data: null, load: { status: 'loading' } },
-}
-
+/**
+ * Resolves the workspace connection and owns the view address, then hands both to
+ * a session keyed by workspace and connection.
+ *
+ * Everything a command can still be holding when the workspace or the backend
+ * changes — modal targets, drafts, the stored blocker/duplicate/warning
+ * resolution callbacks, an in-flight mutation, the Action Queue page — lives
+ * inside that session. Re-keying unmounts it, so a delayed completion from the
+ * previous session has nothing left to publish into and cannot address the new
+ * one. The view address survives, because it is navigation state rather than
+ * anything the previous workspace owned.
+ */
 export function LifecycleWorkbench({
   client: suppliedClient,
   workspaceId = null,
+  ...props
+}: WorkbenchProps): ReactElement {
+  // A supplied client is the client for this very render, so a replacement moves
+  // the scope in the commit that delivers it rather than in a later effect. Only
+  // the renderer-managed client needs state, and it resolves once in the
+  // initializer: resolving again below would hand back a fresh client object,
+  // bump the scope, and make every lifecycle list fetch twice on startup.
+  const [rendererClient, setRendererClient] = useState<ValedictorianWorkspaceClientV2 | null>(
+    () => suppliedClient === undefined ? getRendererHttpWorkspaceClient() : null)
+  const [view, setView] = useState<WorkbenchView>(initialView)
+  const client = suppliedClient === undefined ? rendererClient : suppliedClient
+
+  useEffect(() => {
+    if (suppliedClient !== undefined) return
+    return onRendererBackendStateChanged(
+      () => setRendererClient(getRendererHttpWorkspaceClient()),
+    )
+  }, [suppliedClient])
+
+  const scope = useMemo<LifecycleScope>(
+    () => ({ workspaceId, connectionId: workspaceConnectionId(client) }),
+    [client, workspaceId],
+  )
+  return (
+    <LifecycleWorkbenchSession
+      key={`${scope.workspaceId ?? 'unscoped'}#${scope.connectionId}`}
+      {...props}
+      client={client}
+      scope={scope}
+      view={view}
+      workspaceId={workspaceId}
+      onViewChange={(patch) => setView((current) => ({ ...current, ...patch }))}
+    />
+  )
+}
+
+interface SessionProps extends Omit<WorkbenchProps, 'client' | 'workspaceId'> {
+  readonly client: ValedictorianWorkspaceClientV2 | null
+  readonly scope: LifecycleScope
+  readonly view: WorkbenchView
+  readonly workspaceId: string | null
+  readonly onViewChange: (patch: Partial<WorkbenchView>) => void
+}
+
+function LifecycleWorkbenchSession({
+  client,
+  scope,
+  view,
+  workspaceId,
+  onViewChange,
   onSelectedPhaseChange,
   selectedPhase,
   selectedResourceId,
@@ -93,51 +157,25 @@ export function LifecycleWorkbench({
   onBackFromResource,
   workspaceEntry,
   onWorkspaceNavigate,
-}: WorkbenchProps): ReactElement {
-  const [client, setClient] = useState<ValedictorianWorkspaceClientV2 | null>(() =>
-    suppliedClient === undefined ? getRendererHttpWorkspaceClient() : suppliedClient)
-  const [uncontrolledSelected, setUncontrolledSelected] = useState<LifecyclePhase>('captures')
-  const selected = selectedPhase ?? uncontrolledSelected
-  const [uncontrolledApplicationMode, setUncontrolledApplicationMode] =
-    useState<ApplicationMode>('all')
-  const [uncontrolledCaptureFilter, setUncontrolledCaptureFilter] =
-    useState<CaptureFilter>('all')
-  const [showRemoved, setShowRemoved] = useState(false)
-  const [captures, setCaptures] =
-    useState<PhaseState<CaptureListPresentation>>(initial.captures)
-  const [capturePageInfo, setCapturePageInfo] = useState<WorkspacePageInfo>(emptyPageInfo)
-  const [captureTotalCount, setCaptureTotalCount] = useState(0)
+}: SessionProps): ReactElement {
+  const selected = selectedPhase ?? view.phase
+  const showRemoved = view.showRemoved
   // A null intent opens the Capture detail read-only for destination outcomes
   // the server exposes no supported completion intent for.
   const [completion, setCompletion] = useState<{
     readonly row: CaptureListPresentation
     readonly intent: CaptureCompletionIntent | null
   } | null>(null)
-  const [jobs, setJobs] = useState<PhaseState<Job>>(initial.jobs)
-  const [jobAssignments, setJobAssignments] = useState<
-    ReadonlyMap<string, JobCompanyAssignmentPresentation>
-  >(new Map())
-  const [allJobs, setAllJobs] = useState<PhaseState<Job>>(initial.jobs)
-  const [jobPageInfo, setJobPageInfo] = useState<WorkspacePageInfo>(emptyPageInfo)
-  const [opportunities, setOpportunities] = useState<PhaseState<Opportunity>>(initial.opportunities)
-  const [applications, setApplications] = useState<PhaseState<Application>>(initial.applications)
-  const phaseGenerations = useRef<Record<LifecyclePhase, number>>({
-    captures: 0,
-    jobs: 0,
-    opportunities: 0,
-    applications: 0,
-  })
-  const allJobsGeneration = useRef(0)
   const addressedApplicationMode = workspaceEntry?.location.view === 'applications'
     ? (workspaceEntry.location.mode ?? 'all') as ApplicationMode
     : undefined
-  const applicationMode = addressedApplicationMode ?? uncontrolledApplicationMode
+  const applicationMode = addressedApplicationMode ?? view.applicationMode
   const capturesLocation = workspaceEntry?.location.view === 'captures'
     ? workspaceEntry.location
     : { view: 'captures' as const }
   const captureFilter = workspaceEntry?.location.view === 'captures'
     ? (capturesLocation.filter ?? 'all') as CaptureFilter
-    : uncontrolledCaptureFilter
+    : view.captureFilter
   const jobsLocation = workspaceEntry?.location.view === 'jobs'
     ? workspaceEntry.location
     : { view: 'jobs' as const }
@@ -145,282 +183,88 @@ export function LifecycleWorkbench({
     ? jobsLocation.filter === 'include_removed'
     : showRemoved
 
-  const selectPhase = useCallback((phase: LifecyclePhase) => {
-    if (selectedPhase === undefined) {
-      setUncontrolledSelected(phase)
-    }
+  const selectPhase = (phase: LifecyclePhase) => {
+    if (selectedPhase === undefined) onViewChange({ phase })
     onSelectedPhaseChange?.(phase)
-  }, [onSelectedPhaseChange, selectedPhase])
+  }
+  const invalidate = useLifecycleInvalidation(scope)
 
-  useEffect(() => {
-    if (suppliedClient !== undefined) {
-      setClient(suppliedClient)
-      return
-    }
-    const resolveClient = () => setClient(getRendererHttpWorkspaceClient())
-    resolveClient()
-    return onRendererBackendStateChanged(resolveClient)
-  }, [suppliedClient])
-
+  const captures = useQuery(capturePageQuery(client, scope, {
+    filter: captureFilter,
+    sort: 'observed_desc',
+    cursor: capturesLocation.cursor,
+    cursorDirection: capturesLocation.cursorDirection,
+  }))
+  const jobsPage = useQuery(jobPageQuery(client, scope, {
+    includeRemoved: jobsShowRemoved,
+    cursor: jobsLocation.cursor,
+    cursorDirection: jobsLocation.cursorDirection,
+  }))
+  const allJobs = useQuery(jobProjectionQuery(client, scope, { includeRemoved: jobsShowRemoved }))
+  const opportunities = useQuery(
+    opportunityProjectionQuery(client, scope, { includeRemoved: showRemoved }),
+  )
+  const applications = useQuery(
+    applicationProjectionQuery(client, scope, { includeRemoved: showRemoved }),
+  )
   const actionQueue = useActionQueue({
     client,
+    scope,
     active: selected === 'applications' && applicationMode === 'action-queue',
   })
 
-  const load = useCallback(async function loadAllPhases() {
-    const generations: Record<LifecyclePhase, number> = {
-      captures: phaseGenerations.current.captures,
-      jobs: phaseGenerations.current.jobs,
-      opportunities: ++phaseGenerations.current.opportunities,
-      applications: ++phaseGenerations.current.applications,
-    }
-    const isCurrent = (phase: LifecyclePhase) => generations[phase] === phaseGenerations.current[phase]
-    if (!client) {
-      const unavailable: LifecycleLoadState = {
-        status: 'failure',
-        message: 'Workspace HTTP client is unavailable.',
-      }
-      setCaptures({ data: null, load: unavailable })
-      setOpportunities({ data: null, load: unavailable })
-      setApplications({ data: null, load: unavailable })
-      return
-    }
-    setOpportunities((prev) => ({ data: prev.data, load: { status: 'loading' } }))
-    setApplications((prev) => ({ data: prev.data, load: { status: 'loading' } }))
-    await Promise.all([
-      loadAll((after) => opportunityConfig.list(client, {
-        ...afterPage(after),
-        includeRemoved: showRemoved,
-        limit: 100,
-      })).then(
-        (items) => { if (isCurrent('opportunities')) setOpportunities({ data: items, load: { status: 'loaded' } }) },
-        (error: unknown) => { if (isCurrent('opportunities')) setOpportunities((prev) => ({
-          data: prev.data,
-          load: loadFailure(error, () => void loadAllPhases()),
-        })) },
-      ),
-      loadAll((after) => applicationConfig.list(client, {
-        ...afterPage(after),
-        includeRemoved: showRemoved,
-        limit: 100,
-      })).then(
-        (items) => { if (isCurrent('applications')) setApplications({ data: items, load: { status: 'loaded' } }) },
-        (error: unknown) => { if (isCurrent('applications')) setApplications((prev) => ({
-          data: prev.data,
-          load: loadFailure(error, () => void loadAllPhases()),
-        })) },
-      ),
-    ])
-  }, [client, showRemoved])
+  const jobAssignments = jobsPage.data?.assignments ?? emptyAssignments
+  const captureTotalCount = captures.data?.totalCount ?? 0
+  const capturesLoad = lifecycleLoadState(captures, 'Captures could not be loaded.')
+  const jobsLoad = lifecycleLoadState(jobsPage, 'Jobs could not be loaded.')
+  const opportunitiesLoad = lifecycleLoadState(opportunities, 'Opportunities could not be loaded.')
+  const applicationsLoad = lifecycleLoadState(applications, 'Applications could not be loaded.')
 
-  const loadCapturesPage = useCallback(async function loadVisibleCapturesPage() {
-    const generation = ++phaseGenerations.current.captures
-    if (!client) {
-      setCaptures({
-        data: null,
-        load: { status: 'failure', message: 'Workspace HTTP client is unavailable.' },
-      })
-      setCaptureTotalCount(0)
-      setCapturePageInfo(emptyPageInfo)
-      return
+  const refreshSelected = useCallback(() => {
+    if (selected === 'applications' && applicationMode === 'action-queue') {
+      return invalidate.actionQueue()
     }
-    setCaptures((previous) => ({ data: previous.data, load: { status: 'loading' } }))
-    try {
-      const page = await client.captureResolutionV2.list({
-        filter: captureFilter,
-        sort: 'observed_desc',
-        limit: 50,
-        ...workspacePageRequest(capturesLocation.cursor, capturesLocation.cursorDirection),
-      })
-      if (generation !== phaseGenerations.current.captures) return
-      setCaptures({ data: page.items, load: { status: 'loaded' } })
-      setCapturePageInfo(page.pageInfo)
-      setCaptureTotalCount(page.totalCount)
-    } catch (error) {
-      if (generation !== phaseGenerations.current.captures) return
-      setCaptures((previous) => ({
-        data: previous.data,
-        load: loadFailure(error, () => { void loadCapturesPage().catch(() => {}) }),
-      }))
-      setCaptureTotalCount(0)
-      throw error
-    }
-  }, [
-    captureFilter,
-    capturesLocation.cursor,
-    capturesLocation.cursorDirection,
-    client,
-  ])
-
-  const loadJobsPage = useCallback(async function loadVisibleJobsPage() {
-    const generation = ++phaseGenerations.current.jobs
-    if (!client) {
-      setJobs({
-        data: null,
-        load: { status: 'failure', message: 'Workspace HTTP client is unavailable.' },
-      })
-      setJobAssignments(new Map())
-      setJobPageInfo(emptyPageInfo)
-      return
-    }
-    setJobs((previous) => ({ data: previous.data, load: { status: 'loading' } }))
-    try {
-      const page = await jobConfig.list(client, {
-        includeRemoved: jobsShowRemoved,
-        limit: 50,
-        ...workspacePageRequest(jobsLocation.cursor, jobsLocation.cursorDirection),
-      })
-      const assignments = await Promise.all(
-        page.items.map((job) => client.companyAssignments.get(job.id)),
-      )
-      if (generation !== phaseGenerations.current.jobs) return
-      setJobs({ data: page.items, load: { status: 'loaded' } })
-      setJobAssignments(new Map(assignments.map((assignment) => [
-        assignment.jobId,
-        assignment,
-      ])))
-      setJobPageInfo(page.pageInfo)
-    } catch (error) {
-      if (generation !== phaseGenerations.current.jobs) return
-      setJobs((previous) => ({
-        data: previous.data,
-        load: loadFailure(error, () => void loadVisibleJobsPage()),
-      }))
-      setJobPageInfo(emptyPageInfo)
-    }
-  }, [client, jobsLocation.cursor, jobsLocation.cursorDirection, jobsShowRemoved])
-
-  const loadAllJobs = useCallback(async function loadCompleteJobsProjection() {
-    const generation = ++allJobsGeneration.current
-    if (!client) {
-      setAllJobs({
-        data: null,
-        load: { status: 'failure', message: 'Workspace HTTP client is unavailable.' },
-      })
-      return
-    }
-    setAllJobs((previous) => ({ data: previous.data, load: { status: 'loading' } }))
-    await loadAll((after) => jobConfig.list(client, {
-      ...afterPage(after),
-      includeRemoved: jobsShowRemoved,
-      limit: 100,
-    })).then(
-      (items) => {
-        if (generation === allJobsGeneration.current) {
-          setAllJobs({ data: items, load: { status: 'loaded' } })
-        }
-      },
-      (error: unknown) => {
-        if (generation === allJobsGeneration.current) {
-          setAllJobs((previous) => ({
-            data: previous.data,
-            load: loadFailure(error, () => void loadCompleteJobsProjection()),
-          }))
-        }
-      },
-    )
-  }, [client, jobsShowRemoved])
-
-  useEffect(() => { void load() }, [load])
-  useEffect(() => { void loadCapturesPage().catch(() => {}) }, [loadCapturesPage])
-  useEffect(() => { void loadJobsPage() }, [loadJobsPage])
-  useEffect(() => { void loadAllJobs() }, [loadAllJobs])
-
-  const refreshPhase = useCallback(async function refreshLifecyclePhase(phase: LifecyclePhase) {
-    if (!client) return
-    const generation = ++phaseGenerations.current[phase]
-    const isCurrent = () => generation === phaseGenerations.current[phase]
-    const commit = <Row,>(items: ReadonlyArray<Row>, setter: (state: PhaseState<Row>) => void) => {
-      if (!isCurrent()) throw new Error(`${phase} refresh was superseded before completion.`)
-      setter({ data: items, load: { status: 'loaded' } })
-    }
-    if (phase === 'captures') {
-      await loadCapturesPage()
-    } else if (phase === 'jobs') {
-      await loadJobsPage()
-    } else if (phase === 'opportunities') {
-      setOpportunities((prev) => ({ data: prev.data, load: { status: 'loading' } }))
-      await loadAll((after) => opportunityConfig.list(client, {
-        ...afterPage(after),
-        includeRemoved: showRemoved,
-        limit: 100,
-      })).then(
-        (items) => commit(items, setOpportunities),
-        (error: unknown) => {
-          if (isCurrent()) setOpportunities((prev) => ({ data: prev.data, load: loadFailure(error, () => { void refreshLifecyclePhase(phase).catch(() => {}) }) }))
-          throw error
-        },
-      )
-    } else {
-      setApplications((prev) => ({ data: prev.data, load: { status: 'loading' } }))
-      await loadAll((after) => applicationConfig.list(client, {
-        ...afterPage(after),
-        includeRemoved: showRemoved,
-        limit: 100,
-      })).then(
-        (items) => commit(items, setApplications),
-        (error: unknown) => {
-          if (isCurrent()) setApplications((prev) => ({ data: prev.data, load: loadFailure(error, () => { void refreshLifecyclePhase(phase).catch(() => {}) }) }))
-          throw error
-        },
-      )
-    }
-  }, [client, loadCapturesPage, loadJobsPage, showRemoved])
-
-  const refreshCaptures = useCallback(() => refreshPhase('captures'), [refreshPhase])
-  const refreshJobs = useCallback(async () => {
-    await Promise.all([loadJobsPage(), loadAllJobs()])
-  }, [loadAllJobs, loadJobsPage])
-  const refreshOpportunities = useCallback(() => refreshPhase('opportunities'), [refreshPhase])
-  const refreshApplications = useCallback(() => refreshPhase('applications'), [refreshPhase])
-  const refreshSelected = useCallback(
-    () => {
-      if (selected === 'applications' && applicationMode === 'action-queue') {
-        return actionQueue.refresh()
-      }
-      if (selected === 'jobs') {
-        return refreshJobs()
-      }
-      return refreshPhase(selected)
-    },
-    [actionQueue, applicationMode, refreshJobs, refreshPhase, selected],
-  )
-  const refreshApplicationPresentations = useCallback(async () => {
-    await Promise.all([refreshApplications(), actionQueue.refresh()])
-  }, [actionQueue, refreshApplications])
-  const refreshAll = useCallback(async () => {
-    await Promise.all([
-      refreshCaptures(),
-      refreshJobs(),
-      refreshOpportunities(),
-      refreshApplications(),
-      actionQueue.refresh(),
-    ])
-  }, [actionQueue, refreshApplications, refreshCaptures, refreshJobs, refreshOpportunities])
-
+    return invalidate[selected]()
+  }, [applicationMode, invalidate, selected])
   const refreshSelectedFromUi = useCallback(() => {
     void refreshSelected().catch(() => {})
   }, [refreshSelected])
-
-  useLifecycleInvalidation(refreshSelected, { enabled: Boolean(client), intervalMs: 60_000 })
 
   const closeCompletionForRemovedCapture = useCallback((captureId: string) => {
     setCompletion((current) => current?.row.captureId === captureId ? null : current)
   }, [])
   const captureController = useCaptureController({
     client,
-    refresh: refreshCaptures,
+    scope,
+    refresh: invalidate.captures,
     onRemoved: closeCompletionForRemovedCapture,
   })
-  const jobController = useJobController({ client, refresh: refreshJobs, refreshDestination: refreshOpportunities, refreshAll })
+  const jobController = useJobController({
+    client,
+    scope,
+    refresh: invalidate.jobs,
+    refreshDestination: invalidate.opportunities,
+    refreshAll: invalidate.workspace,
+  })
   const jobCompanyAssignmentController = useJobCompanyAssignmentController({
     assignments: jobAssignments,
     client,
-    refresh: refreshJobs,
+    refresh: invalidate.jobs,
     workspaceId,
   })
-  const opportunityController = useOpportunityController({ client, refresh: refreshOpportunities, refreshDestination: refreshApplications, refreshAll })
-  const applicationController = useApplicationController({ client, refresh: refreshApplicationPresentations, refreshAll })
+  const opportunityController = useOpportunityController({
+    client,
+    scope,
+    refresh: invalidate.opportunities,
+    refreshDestination: invalidate.applications,
+    refreshAll: invalidate.workspace,
+  })
+  const applicationController = useApplicationController({
+    client,
+    scope,
+    refresh: invalidate.applicationPresentations,
+    refreshAll: invalidate.workspace,
+  })
 
   const captureTable = useMemo<LifecycleTableConfig<CaptureListPresentation>>(
     () => createCaptureConfig({
@@ -516,7 +360,7 @@ export function LifecycleWorkbench({
       }))
       return
     }
-    setUncontrolledCaptureFilter(next)
+    onViewChange({ captureFilter: next })
   }
   const setJobsShowRemoved = (next: boolean) => {
     if (onWorkspaceNavigate && workspaceEntry?.location.view === 'jobs') {
@@ -525,14 +369,14 @@ export function LifecycleWorkbench({
       }))
       return
     }
-    setShowRemoved(next)
+    onViewChange({ showRemoved: next })
   }
   const setAddressedApplicationMode = (next: ApplicationMode) => {
     if (onWorkspaceNavigate && workspaceEntry?.location.view === 'applications') {
       onWorkspaceNavigate({ view: 'applications', mode: next })
       return
     }
-    setUncontrolledApplicationMode(next)
+    onViewChange({ applicationMode: next })
   }
 
   return (
@@ -570,23 +414,16 @@ export function LifecycleWorkbench({
           </ToggleGroup>
           <LifecycleTable
             config={captureTable}
-            data={captures.data}
-            state={captures.load}
+            data={captures.data?.items ?? null}
+            state={capturesLoad}
             onRefresh={refreshSelected}
-            toolbar={(
-              <CaptureToolbar
-                total={captureTotalCount}
-                loading={captures.load.status === 'loading'}
-                onRefresh={refreshSelectedFromUi}
-                onAdd={captureController.openCreate}
-              />
-            )}
+            toolbar={<RefreshToolbar caption="Captures" total={captureTotalCount} loading={capturesLoad.status === 'loading'} onRefresh={refreshSelectedFromUi} onAdd={captureController.openCreate} addLabel="Add capture" />}
           />
           <WorkspaceCursorPagination
             label="Capture pages"
             location={capturesLocation}
             onNavigate={onWorkspaceNavigate}
-            pageInfo={capturePageInfo}
+            pageInfo={captures.data?.pageInfo ?? emptyPageInfo}
           />
         </div>
       ) : null}
@@ -597,18 +434,18 @@ export function LifecycleWorkbench({
           <div className={selectedResourceId ? 'hidden min-w-0 md:block' : 'min-w-0'}>
             <LifecycleTable
               config={jobTable}
-              data={jobs.data}
-              state={jobs.load}
+              data={jobsPage.data?.items ?? null}
+              state={jobsLoad}
               focusLoadFailure={!selectedResourceId}
               onRefresh={refreshSelected}
-              toolbar={<RefreshToolbar caption="Jobs" total={counts.jobs} loading={jobs.load.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={jobsShowRemoved} onShowRemovedChange={setJobsShowRemoved} onAdd={jobController.openCreate} addLabel="Add job" />}
+              toolbar={<RefreshToolbar caption="Jobs" total={counts.jobs} loading={jobsLoad.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={jobsShowRemoved} onShowRemovedChange={setJobsShowRemoved} onAdd={jobController.openCreate} addLabel="Add job" />}
             />
             <WorkspaceCursorPagination
               className="mt-3 justify-end"
               label="Jobs pages"
               location={jobsLocation}
               onNavigate={onWorkspaceNavigate}
-              pageInfo={jobPageInfo}
+              pageInfo={jobsPage.data?.pageInfo ?? emptyPageInfo}
             />
           </div>
           {selectedResourceId ? (
@@ -627,10 +464,10 @@ export function LifecycleWorkbench({
       {selected === 'opportunities' ? (
         <LifecycleTable
           config={opportunityTable}
-          data={opportunities.data}
-          state={opportunities.load}
+          data={opportunities.data ?? null}
+          state={opportunitiesLoad}
           onRefresh={refreshSelected}
-          toolbar={<RefreshToolbar caption="Opportunities" total={counts.opportunities} loading={opportunities.load.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={showRemoved} onShowRemovedChange={setShowRemoved} onAdd={opportunityController.openCreate} addLabel="Add opportunity" />}
+          toolbar={<RefreshToolbar caption="Opportunities" total={counts.opportunities} loading={opportunitiesLoad.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={showRemoved} onShowRemovedChange={(next) => onViewChange({ showRemoved: next })} onAdd={opportunityController.openCreate} addLabel="Add opportunity" />}
         />
       ) : null}
       {selected === 'applications' ? (
@@ -652,10 +489,10 @@ export function LifecycleWorkbench({
           {applicationMode === 'all' ? (
             <LifecycleTable
               config={applicationTable}
-              data={applications.data}
-              state={applications.load}
+              data={applications.data ?? null}
+              state={applicationsLoad}
               onRefresh={refreshSelected}
-              toolbar={<RefreshToolbar caption="Applications" total={counts.applications} loading={applications.load.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={showRemoved} onShowRemovedChange={setShowRemoved} onAdd={applicationController.openCreate} addLabel="Add application" />}
+              toolbar={<RefreshToolbar caption="Applications" total={counts.applications} loading={applicationsLoad.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={showRemoved} onShowRemovedChange={(next) => onViewChange({ showRemoved: next })} onAdd={applicationController.openCreate} addLabel="Add application" />}
             />
           ) : (
             <ActionQueueMode
@@ -665,7 +502,7 @@ export function LifecycleWorkbench({
               onNextPage={actionQueue.nextPage}
               onPreviousPage={actionQueue.previousPage}
               onRefresh={refreshSelectedFromUi}
-              applications={applications.data}
+              applications={applications.data ?? null}
               client={client}
               extensions={applicationController.extensions}
             />
@@ -680,9 +517,9 @@ export function LifecycleWorkbench({
         workspaceId={workspaceId}
         onClose={() => setCompletion(null)}
         onCreated={async () => {
-          await Promise.all([refreshCaptures(), refreshJobs()])
+          await Promise.all([invalidate.captures(), invalidate.jobs()])
         }}
-        onAssignmentChanged={refreshJobs}
+        onAssignmentChanged={invalidate.jobs}
         onViewJob={(jobId) => onOpenResource?.(jobId, `capture-job-link-${completion?.row.captureId ?? ''}`)}
         onRemoveCapture={openCompletionRemoval}
         removalPending={captureController.removalPending}
@@ -695,19 +532,6 @@ export function LifecycleWorkbench({
   )
 }
 
-function msg(error: unknown): string {
-  return error instanceof Error ? error.message : 'Load failed.'
-}
-
-function loadFailure(error: unknown, onRetry: () => void): LifecycleLoadState {
-  return { status: 'failure', message: msg(error), onRetry }
-}
-
-interface LifecyclePage<Row> {
-  readonly items: ReadonlyArray<Row>
-  readonly pageInfo: WorkspacePageInfo
-}
-
 const emptyPageInfo: WorkspacePageInfo = {
   startCursor: null,
   endCursor: null,
@@ -715,50 +539,4 @@ const emptyPageInfo: WorkspacePageInfo = {
   hasNextPage: false,
 }
 
-/** Walk a whole projection forward through the canonical page boundaries. */
-async function loadAll<Row>(
-  fetchPage: (after?: string) => Promise<LifecyclePage<Row>>,
-): Promise<ReadonlyArray<Row>> {
-  const items: Row[] = []
-  let after: string | undefined
-  do {
-    const page = await fetchPage(after)
-    items.push(...page.items)
-    after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor ?? undefined : undefined
-  } while (after !== undefined)
-  return items
-}
-
-function CaptureToolbar({
-  total,
-  loading,
-  onRefresh,
-  onAdd,
-}: {
-  readonly total: number
-  readonly loading: boolean
-  readonly onRefresh: () => void
-  readonly onAdd: () => void
-}): ReactElement {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-muted-foreground">
-        Captures · {total} record{total === 1 ? '' : 's'}
-      </p>
-      <div className="flex items-center gap-2">
-        <Button type="button" size="sm" onClick={onAdd}>
-          Add capture
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onRefresh}
-          disabled={loading}
-        >
-          Refresh
-        </Button>
-      </div>
-    </div>
-  )
-}
+const emptyAssignments: ReadonlyMap<string, JobCompanyAssignmentPresentation> = new Map()

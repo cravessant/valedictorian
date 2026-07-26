@@ -72,7 +72,7 @@ export function ActionQueueMode({
   client,
   extensions,
 }: ActionQueueModeProps): ReactElement {
-  const { result, load, error } = state
+  const { result, load } = state
   const items = result?.items ?? []
   const showTable = load.status === 'loaded' && items.length > 0
 
@@ -128,8 +128,8 @@ export function ActionQueueMode({
 
       {load.status === 'failure' ? (
         <ScopedLoadFailure
-          message={error?.message ?? load.message}
-          title={error?.title ?? 'Load failed'}
+          message={load.message}
+          title={load.title}
           onRetry={load.onRetry}
         />
       ) : null}

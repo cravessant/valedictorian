@@ -14,13 +14,17 @@ import type {
 } from '@sparxie/sdk'
 
 import { jobFactsTiming } from '../../job/job.timing'
+import { WorkspaceClientUnavailableError } from '../../../app/app-load-failure'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from '../lifecycle-actor'
-import { FormModal, type FieldSpec, type FieldErrors } from '../form-modal'
+import { FormModal, requireRationale, type FieldSpec, type FieldErrors } from '../form-modal'
 import type { LifecycleOutcome, LifecycleOutcomeActions } from '../lifecycle-outcome-types'
 import { HistoryModal, OutcomeToast } from '../history-modal'
-import { outcomeForBlocker } from '../lifecycle-result'
-import { afterPage, loadHistory } from '../load-history'
+import { duplicateRecovery, outcomeForBlocker, removalBlockedOutcome } from '../lifecycle-result'
+import { lifecycleKeys, type LifecycleScope } from '../lifecycle-queries'
+import { afterPage, loadAllPages } from '../load-pages'
 import type { LifecycleAggregateExtensions } from '../lifecycle-table'
+import { useLifecycleCommand } from '../use-lifecycle-command'
+import { useLifecycleHistory } from '../use-lifecycle-history'
 import {
   AVAILABILITY_STATE_CHOICES,
   EMPLOYMENT_TYPE_CHOICES,
@@ -86,31 +90,42 @@ export interface JobController {
 
 export function useJobController(params: {
   client: Pick<ValedictorianWorkspaceClient, 'jobs'> | null
+  scope: LifecycleScope
   refresh: () => Promise<void> | void
   refreshDestination: () => Promise<void> | void
   refreshAll: () => Promise<void> | void
 }): JobController {
-  const { client, refresh, refreshDestination, refreshAll } = params
+  const { client, scope, refresh, refreshDestination, refreshAll } = params
 
   const [createOpen, setCreateOpen] = useState(false)
   const [correctTarget, setCorrectTarget] = useState<Job | null>(null)
   const [availabilityTarget, setAvailabilityTarget] = useState<Job | null>(null)
   const [removeTarget, setRemoveTarget] = useState<Job | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<Job | null>(null)
-  const [historyTarget, setHistoryTarget] = useState<Job | null>(null)
   const [promoteTarget, setPromoteTarget] = useState<Job | null>(null)
   const [outcome, setOutcome] = useState<LifecycleOutcome | null>(null)
-  const [historyOutcome, setHistoryOutcome] = useState<LifecycleOutcome | null>(null)
-  const [pending, setPending] = useState(false)
-  const [historyPending, setHistoryPending] = useState(false)
+  const command = useLifecycleCommand((message) => {
+    showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
+  })
+  const pending = command.pending
+  const history = useLifecycleHistory<Job>(
+    lifecycleKeys.jobs(scope),
+    (candidate) => candidate.id,
+    async (candidate) => {
+      const entries = await loadAllPages<JobHistoryResult['items'][number]>((after) =>
+        requireClient().jobs.history({ id: candidate.id, limit: 50, ...afterPage(after) }))
+      return entries.map((entry) => ({
+        revision: entry.sequence,
+        kind: entry.kind,
+        actor: entry.audit.actor,
+        timestamp: entry.audit.timestamp,
+        summary: `${entry.kind} (#${entry.sequence})`,
+      }))
+    },
+  )
   const outcomeActions = useRef<LifecycleOutcomeActions>({})
   const createKey = useRef('')
   const promotionKey = useRef('')
-  const historyRequest = useRef(0)
-  const clientRef = useRef(client)
-  const refreshRef = useRef(refresh)
-  const refreshDestinationRef = useRef(refreshDestination)
-  const refreshAllRef = useRef(refreshAll)
 
   const [createDraft, setCreateDraft] = useState<JobCreateDraft>(emptyCreateDraft())
   const [correctDraft, setCorrectDraft] = useState<JobCorrectDraft>(emptyCorrectDraft())
@@ -120,16 +135,12 @@ export function useJobController(params: {
   const [promoteDraft, setPromoteDraft] = useState<JobPromoteDraft>(emptyPromoteDraft())
   const createDraftRef = useRef(createDraft)
   const promoteDraftRef = useRef(promoteDraft)
-  clientRef.current = client
-  refreshRef.current = refresh
-  refreshDestinationRef.current = refreshDestination
-  refreshAllRef.current = refreshAll
   createDraftRef.current = createDraft
   promoteDraftRef.current = promoteDraft
 
   function requireClient(): Pick<ValedictorianWorkspaceClient, 'jobs'> {
-    if (!clientRef.current) throw new Error('Workspace HTTP client is unavailable.')
-    return clientRef.current
+    if (!client) throw new WorkspaceClientUnavailableError()
+    return client
   }
 
   function showOutcome(next: LifecycleOutcome, actions: LifecycleOutcomeActions = {}) {
@@ -171,42 +182,7 @@ export function useJobController(params: {
     setOutcome(null)
     setPromoteTarget(row)
   }
-  async function openHistory(row: Job) {
-    const request = ++historyRequest.current
-    setHistoryOutcome(null)
-    setHistoryTarget(row)
-    if (!client) { setHistoryOutcome({ kind: 'error', blocker: { code: 'workspace_ownership', message: 'Workspace HTTP client is unavailable.' }, message: 'Workspace HTTP client is unavailable.' }); return }
-    setHistoryPending(true)
-    try {
-      const entries = await loadHistory<JobHistoryResult['items'][number]>((after) =>
-        client.jobs.history({ id: row.id, limit: 50, ...afterPage(after) }))
-      if (request !== historyRequest.current) return
-      setHistoryOutcome({
-        kind: 'history',
-        entries: entries.map((entry) => ({
-          revision: entry.sequence,
-          kind: entry.kind,
-          actor: entry.audit.actor,
-          timestamp: entry.audit.timestamp,
-          summary: `${entry.kind} (#${entry.sequence})`,
-        })),
-      })
-    } catch (err) {
-      if (request !== historyRequest.current) return
-      setHistoryOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      if (request === historyRequest.current) setHistoryPending(false)
-    }
-  }
-  function closeHistory() {
-    historyRequest.current += 1
-    setHistoryPending(false)
-    setHistoryTarget(null)
-  }
 
-  function validateRationale<T extends { rationale: string }>(d: T): FieldErrors<T> | null {
-    return d.rationale.trim() === '' ? { fieldErrors: { rationale: 'Rationale is required.' } as Partial<Record<keyof T & string, string>> } : null
-  }
 
   function validateJobFacts<T extends JobFactsDraft>(d: T): FieldErrors<T> | null {
     const fieldErrors: Record<string, string> = {}
@@ -219,7 +195,7 @@ export function useJobController(params: {
 
   function validateJobCorrection(d: JobCorrectDraft): FieldErrors<JobCorrectDraft> | null {
     const facts = validateJobFacts(d)
-    const rationale = validateRationale(d)
+    const rationale = requireRationale(d)
     if (!facts && !rationale) return null
     return { fieldErrors: { ...facts?.fieldErrors, ...rationale?.fieldErrors } }
   }
@@ -233,9 +209,8 @@ export function useJobController(params: {
     return Object.keys(fieldErrors).length > 0 ? { fieldErrors } : null
   }
 
-  async function submitCreate(d: JobCreateDraft, retry: JobCreateRetry = {}) {
-    setPending(true)
-    try {
+  function submitCreate(d: JobCreateDraft, retry: JobCreateRetry = {}) {
+    command.run(async () => {
       const input: CreateJobInput = {
         idempotencyKey: createKey.current,
         actor: DESKTOP_USER_ACTOR,
@@ -268,32 +243,24 @@ export function useJobController(params: {
       }
       const result: JobMutationResult = await requireClient().jobs.create(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setCreateOpen(false)
       } else {
         const blocked = outcomeForBlocker(result.blocker)
-        showOutcome(blocked, blocked.kind === 'duplicate' ? {
-          onResolveDuplicate: (choice) => {
-            void submitCreate(createDraftRef.current, {
-              duplicateResolution: {
-                action: choice.action,
-                targetResourceId: choice.targetResourceId as NonNullable<CreateJobInput['duplicateResolution']>['targetResourceId'],
-              },
-            })
-          },
-        } : {})
+        showOutcome(blocked, duplicateRecovery(blocked, (choice) =>
+          submitCreate(createDraftRef.current, {
+            duplicateResolution: {
+              action: choice.action,
+              targetResourceId: choice.targetResourceId as NonNullable<CreateJobInput['duplicateResolution']>['targetResourceId'],
+            },
+          })))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitCorrect(row: Job, d: JobCorrectDraft) {
-    setPending(true)
-    try {
+  function submitCorrect(row: Job, d: JobCorrectDraft) {
+    command.run(async () => {
       const input: CorrectJobFactsInput = {
         jobId: row.id,
         expectedFactsRevision: row.factsRevision,
@@ -322,22 +289,17 @@ export function useJobController(params: {
       }
       const result = await requireClient().jobs.correctFacts(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setCorrectTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitAvailability(row: Job, d: JobAvailabilityDraft) {
-    setPending(true)
-    try {
+  function submitAvailability(row: Job, d: JobAvailabilityDraft) {
+    command.run(async () => {
       const input: UpdateJobAvailabilityInput = {
         jobId: row.id,
         expectedAvailabilityRevision: row.availabilityRevision,
@@ -350,22 +312,17 @@ export function useJobController(params: {
       }
       const result = await requireClient().jobs.updateAvailability(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setAvailabilityTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitRemove(row: Job, d: JobRemoveDraft) {
-    setPending(true)
-    try {
+  function submitRemove(row: Job, d: JobRemoveDraft) {
+    command.run(async () => {
       const input: RemoveJobInput = {
         id: row.id,
         choice: d.choice as RemoveJobInput['choice'],
@@ -374,37 +331,23 @@ export function useJobController(params: {
       }
       const result = await requireClient().jobs.remove(input)
       if (result.status === 'removed') {
-        await refreshAllRef.current()
+        await refreshAll()
         showOutcome({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
         setRemoveTarget(null)
       } else {
-        showOutcome({
-          kind: 'removal-blocked',
-          blocker: result.blocker,
-          message: result.blocker.message,
-          choice: {
-            choice: d.choice as RemoveJobInput['choice'],
-            dependentIds: result.dependentIds,
-            supportedChoices: result.supportedChoices,
-          },
-        }, {
+        showOutcome(removalBlockedOutcome(d.choice as RemoveJobInput['choice'], result), {
           onResolveRemoval: (choice, rationale) => {
             const next = { choice, rationale }
             setRemoveDraft(next)
-            void submitRemove(row, next)
+            submitRemove(row, next)
           },
         })
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitRestore(row: Job, d: JobRestoreDraft) {
-    setPending(true)
-    try {
+  function submitRestore(row: Job, d: JobRestoreDraft) {
+    command.run(async () => {
       const input: RestoreJobInput = {
         id: row.id,
         actor: DESKTOP_USER_ACTOR,
@@ -412,22 +355,17 @@ export function useJobController(params: {
       }
       const result = await requireClient().jobs.restore(input)
       if (result.status === 'restored') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'restored', dependentLinks: result.dependentLinks })
         setRestoreTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitPromote(row: Job, d: JobPromoteDraft, retry: JobPromotionRetry = {}) {
-    setPending(true)
-    try {
+  function submitPromote(row: Job, d: JobPromoteDraft, retry: JobPromotionRetry = {}) {
+    command.run(async () => {
       const input: PromoteJobToOpportunityInput = {
         idempotencyKey: promotionKey.current,
         actor: DESKTOP_USER_ACTOR,
@@ -443,13 +381,13 @@ export function useJobController(params: {
       }
       const result: PromoteJobToOpportunityResult = await requireClient().jobs.promoteToOpportunity(input)
       if (result.status === 'promoted') {
-        await Promise.all([refreshRef.current(), refreshDestinationRef.current()])
+        await Promise.all([refresh(), refreshDestination()])
         if (result.warnings.length > 0 && !input.override) {
           showOutcome(
             { kind: 'warnings', warnings: result.warnings, override: result.override },
             {
               onOverrideWarnings: (warningCodes, rationale) => {
-                void submitPromote(row, promoteDraftRef.current, {
+                submitPromote(row, promoteDraftRef.current, {
                   ...retry,
                   override: { actor: DESKTOP_USER_ACTOR, rationale, warningCodes: [...warningCodes] },
                 })
@@ -462,23 +400,16 @@ export function useJobController(params: {
         setPromoteTarget(null)
       } else {
         const blocked = outcomeForBlocker(result.blocker)
-        showOutcome(blocked, blocked.kind === 'duplicate' ? {
-          onResolveDuplicate: (choice) => {
-            void submitPromote(row, promoteDraftRef.current, {
-              ...retry,
-              duplicateResolution: {
-                action: choice.action,
-                targetResourceId: choice.targetResourceId as NonNullable<PromoteJobToOpportunityInput['duplicateResolution']>['targetResourceId'],
-              },
-            })
-          },
-        } : {})
+        showOutcome(blocked, duplicateRecovery(blocked, (choice) =>
+          submitPromote(row, promoteDraftRef.current, {
+            ...retry,
+            duplicateResolution: {
+              action: choice.action,
+              targetResourceId: choice.targetResourceId as NonNullable<PromoteJobToOpportunityInput['duplicateResolution']>['targetResourceId'],
+            },
+          })))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
   const extensions: LifecycleAggregateExtensions<Job> = {
@@ -497,7 +428,7 @@ export function useJobController(params: {
       { key: 'remove', label: 'Remove job', modal: true, destructive: true, disabled: (row) => Boolean(row.removedAt), onActivate: (row) => openRemove(row) },
       { key: 'restore', label: 'Restore job', modal: true, disabled: (row) => !row.removedAt, onActivate: (row) => openRestore(row) },
     ],
-    historyAction: { key: 'history', label: 'View history', modal: true, onActivate: (row) => { void openHistory(row) } },
+    historyAction: { key: 'history', label: 'View history', modal: true, onActivate: history.open },
     promotionActions: [
       { key: 'promote-to-opportunity', label: 'Promote to opportunity', modal: true, disabled: (row) => Boolean(row.removedAt), onActivate: (row) => openPromote(row) },
     ],
@@ -564,7 +495,7 @@ export function useJobController(params: {
         fields={factsFields}
         value={correctDraft}
         onChange={setCorrectDraft}
-        onSubmit={(d) => { if (correctTarget) void submitCorrect(correctTarget, d) }}
+        onSubmit={(d) => { if (correctTarget) submitCorrect(correctTarget, d) }}
         onCancel={() => setCorrectTarget(null)}
         validate={validateJobCorrection}
         pending={pending}
@@ -577,7 +508,7 @@ export function useJobController(params: {
         fields={availabilityFields}
         value={availabilityDraft}
         onChange={setAvailabilityDraft}
-        onSubmit={(d) => { if (availabilityTarget) void submitAvailability(availabilityTarget, d) }}
+        onSubmit={(d) => { if (availabilityTarget) submitAvailability(availabilityTarget, d) }}
         onCancel={() => setAvailabilityTarget(null)}
         pending={pending}
         submitLabel="Update"
@@ -589,9 +520,9 @@ export function useJobController(params: {
         fields={removeFields}
         value={removeDraft}
         onChange={setRemoveDraft}
-        onSubmit={(d) => { if (removeTarget) void submitRemove(removeTarget, d) }}
+        onSubmit={(d) => { if (removeTarget) submitRemove(removeTarget, d) }}
         onCancel={() => setRemoveTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Remove"
       />
@@ -602,9 +533,9 @@ export function useJobController(params: {
         fields={restoreFields}
         value={restoreDraft}
         onChange={setRestoreDraft}
-        onSubmit={(d) => { if (restoreTarget) void submitRestore(restoreTarget, d) }}
+        onSubmit={(d) => { if (restoreTarget) submitRestore(restoreTarget, d) }}
         onCancel={() => setRestoreTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Restore"
       />
@@ -615,18 +546,18 @@ export function useJobController(params: {
         fields={promoteFields}
         value={promoteDraft}
         onChange={setPromoteDraft}
-        onSubmit={(d) => { if (promoteTarget) void submitPromote(promoteTarget, d) }}
+        onSubmit={(d) => { if (promoteTarget) submitPromote(promoteTarget, d) }}
         onCancel={() => setPromoteTarget(null)}
         validate={validatePromote}
         pending={pending}
         submitLabel="Promote"
       />
       <HistoryModal
-        open={historyTarget !== null}
-        title={historyTarget ? `History · ${historyTarget.id}` : 'History'}
-        outcome={historyOutcome}
-        pending={historyPending}
-        onClose={closeHistory}
+        open={history.target !== null}
+        title={history.target ? `History · ${history.target.id}` : 'History'}
+        outcome={history.outcome}
+        pending={history.pending}
+        onClose={history.close}
       />
       {outcome ? <OutcomeToast outcome={outcome} pending={pending} onDismiss={() => setOutcome(null)} {...outcomeActions.current} /> : null}
     </>
@@ -678,8 +609,4 @@ function emptyRestoreDraft(): JobRestoreDraft {
 }
 function emptyPromoteDraft(): JobPromoteDraft {
   return { fit: 'unknown', rank: '', cutoff: 'not_evaluated', disposition: 'reviewing' }
-}
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : 'Operation failed.'
 }

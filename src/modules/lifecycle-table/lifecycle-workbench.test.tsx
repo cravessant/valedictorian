@@ -1,19 +1,12 @@
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CaptureListPresentation, Job, ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
+import { renderWithQueryClient, testQueryClient } from '@/test/query-client'
+import { emptyPageInfo } from './lifecycle.test-helpers'
 import { useWorkspaceLocation } from '@/app/use-workspace-location'
-
-/** The canonical page boundaries a single-page lifecycle list reports. */
-const emptyPageInfo = {
-  startCursor: null,
-  endCursor: null,
-  hasPreviousPage: false,
-  hasNextPage: false,
-} as const
-
 
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
 vi.mock('@/components/ui/use-toast', () => ({ toast }))
@@ -124,7 +117,7 @@ describe('LifecycleWorkbench', () => {
   it('loads every aggregate through the workspace client and switches the shared table wiring', async () => {
     const user = userEvent.setup()
     const { client, lists } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     expect(await screen.findByText('No captures')).toBeInTheDocument()
     await waitFor(() => {
@@ -142,7 +135,7 @@ describe('LifecycleWorkbench', () => {
   it('loads an addressed Job by ID even when it is absent from the list page', async () => {
     const addressedJobId = '01900000-0000-7000-8000-000000000001'
     const { client, lists } = makeClient()
-    lists.jobs.mockRejectedValueOnce(new Error('Jobs page unavailable'))
+    lists.jobs.mockRejectedValueOnce(new Error('pg: connection terminated unexpectedly'))
     const get = vi.fn(async () => ({
       id: addressedJobId,
       facts: {
@@ -154,7 +147,7 @@ describe('LifecycleWorkbench', () => {
     }))
     Object.assign(client.jobs, { get })
 
-    render(
+    renderWithQueryClient(
       <LifecycleWorkbench
         client={client}
         selectedPhase="jobs"
@@ -166,7 +159,9 @@ describe('LifecycleWorkbench', () => {
       name: 'Directly Addressed Role',
     })).toHaveFocus()
     expect(get).toHaveBeenCalledWith(addressedJobId)
-    expect(screen.getByRole('alert')).toHaveTextContent('Jobs page unavailable')
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Jobs could not be loaded.')
+    expect(alert).not.toHaveTextContent('connection terminated')
   })
 
   it('links the assigned Company as primary and keeps differing posting facts secondary', async () => {
@@ -185,7 +180,7 @@ describe('LifecycleWorkbench', () => {
     } as unknown as Job
     lists.jobs.mockResolvedValue({ items: [job], pageInfo: emptyPageInfo })
     const navigate = vi.fn()
-    render(
+    renderWithQueryClient(
       <LifecycleWorkbench
         client={client}
         selectedPhase="jobs"
@@ -205,7 +200,7 @@ describe('LifecycleWorkbench', () => {
   it('uses the canonical Capture filters on one operational surface', async () => {
     const user = userEvent.setup()
     const { client, lists } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     const filters = await screen.findByRole('radiogroup', { name: 'Capture filter' })
     expect(screen.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true')
@@ -231,7 +226,7 @@ describe('LifecycleWorkbench', () => {
       },
     })
     const navigate = vi.fn()
-    const { rerender } = render(
+    const { rerender } = renderWithQueryClient(
       <LifecycleWorkbench
         client={client}
         workspaceEntry={{ location: { view: 'captures' } }}
@@ -305,9 +300,10 @@ describe('LifecycleWorkbench', () => {
     lists.captures.mockResolvedValue(capturePage([capture]))
     const openResource = vi.fn()
 
-    render(<LifecycleWorkbench client={client} onOpenResource={openResource} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} onOpenResource={openResource} />)
 
     const table = await screen.findByRole('table', { name: 'Captures' })
+    await screen.findByRole('button', { name: 'Platform Engineer · Acme' })
     expect(table).toHaveTextContent('Platform Engineer')
     expect(table).toHaveTextContent('Jobright')
     expect(table).toHaveTextContent('jobs.example.com')
@@ -341,7 +337,7 @@ describe('LifecycleWorkbench', () => {
     })
     Object.assign(client.captureResolutionV2, { get, complete })
     const openResource = vi.fn()
-    render(<LifecycleWorkbench client={client} onOpenResource={openResource} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} onOpenResource={openResource} />)
 
     await user.click(await screen.findByRole('button', { name: 'Complete Job information' }))
     await user.click(await screen.findByRole('button', { name: 'Create Job' }))
@@ -364,7 +360,7 @@ describe('LifecycleWorkbench', () => {
     const get = vi.fn(async (captureId: string) => completionDetail(captureId))
     const complete = vi.fn()
     Object.assign(client.captureResolutionV2, { get, complete })
-    const { rerender } = render(<LifecycleWorkbench client={client} />)
+    const { rerender } = renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     await user.click(await screen.findByRole('button', { name: 'Complete Job information' }))
     captureInProjection = false
@@ -408,13 +404,13 @@ describe('LifecycleWorkbench', () => {
         dependentIds: ['job-1'],
         supportedChoices: ['preserve_historical_lineage'],
       })
-      .mockRejectedValueOnce(new Error('Capture removal is unavailable.'))
+      .mockRejectedValueOnce(new Error('constraint capture_pkey violated'))
     const complete = vi.fn()
     Object.assign(client.captureResolutionV2, {
       get: vi.fn(async (captureId: string) => completionDetail(captureId)),
       complete,
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     await user.click(await screen.findByRole('button', { name: 'Complete Job information' }))
     const roleTitle = await screen.findByLabelText('Role title')
@@ -438,7 +434,9 @@ describe('LifecycleWorkbench', () => {
     await user.type(within(removal).getByRole('textbox', { name: 'Rationale' }), 'No longer relevant.')
     await user.click(within(removal).getByRole('button', { name: 'Check and remove' }))
 
-    expect(await screen.findByTestId('lifecycle-outcome-error')).toHaveTextContent('Capture removal is unavailable.')
+    const failure = await screen.findByTestId('lifecycle-outcome-error')
+    expect(failure).toHaveTextContent('Capture removal failed.')
+    expect(failure).not.toHaveTextContent('capture_pkey')
     expect(screen.getByRole('dialog', { name: 'Remove Capture' })).toBeInTheDocument()
     expect(complete).not.toHaveBeenCalled()
   })
@@ -465,7 +463,7 @@ describe('LifecycleWorkbench', () => {
       get: vi.fn(async (captureId: string) => completionDetail(captureId)),
       complete,
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     await user.click(await screen.findByRole('button', { name: 'Complete Job information' }))
     await user.click(await screen.findByRole('button', { name: 'Remove Capture' }))
@@ -491,7 +489,7 @@ describe('LifecycleWorkbench', () => {
     ]))
     const get = vi.fn(async (captureId: string) => completionDetail(captureId))
     Object.assign(client.captureResolutionV2, { get })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     await user.click(await screen.findByRole('button', { name: 'Resolve duplicate Job' }))
     expect(await screen.findByLabelText('Job facts company')).toHaveValue('Acme')
@@ -514,7 +512,7 @@ describe('LifecycleWorkbench', () => {
     const complete = vi.fn()
     Object.assign(client.captureResolutionV2, { get, complete })
     Object.assign(client.jobs, { get: jobsGet })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     await user.click(await screen.findByRole('button', { name: 'View resolution details' }))
 
@@ -541,7 +539,7 @@ describe('LifecycleWorkbench', () => {
   })
 
   it('shows a terminal client-unavailable failure instead of loading forever', async () => {
-    render(<LifecycleWorkbench client={null} />)
+    renderWithQueryClient(<LifecycleWorkbench client={null} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Workspace HTTP client is unavailable.',
@@ -575,7 +573,7 @@ describe('LifecycleWorkbench', () => {
         },
       },
     })
-    render(<LifecycleWorkbench />)
+    renderWithQueryClient(<LifecycleWorkbench />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Workspace HTTP client is unavailable.',
@@ -590,10 +588,12 @@ describe('LifecycleWorkbench', () => {
   it('retries a failed aggregate load from the rendered failure action', async () => {
     const user = userEvent.setup()
     const { client, lists } = makeClient()
-    lists.captures.mockRejectedValueOnce(new Error('captures unavailable'))
-    render(<LifecycleWorkbench client={client} />)
+    lists.captures.mockRejectedValueOnce(new Error('EACCES /var/db/workspace.sqlite'))
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('captures unavailable')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Captures could not be loaded.')
+    expect(alert).not.toHaveTextContent('workspace.sqlite')
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
     expect(await screen.findByText('No captures')).toBeInTheDocument()
@@ -615,7 +615,7 @@ describe('LifecycleWorkbench', () => {
         ? emptyPage()
         : { items: [], pageInfo: morePages('jobs-page-2') }
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     await waitFor(() => {
       expect(lists.captures).toHaveBeenCalledTimes(1)
@@ -655,7 +655,7 @@ describe('LifecycleWorkbench', () => {
       },
     })
     const navigate = vi.fn()
-    const { rerender } = render(
+    const { rerender } = renderWithQueryClient(
       <LifecycleWorkbench
         client={client}
         selectedPhase="jobs"
@@ -730,7 +730,7 @@ describe('LifecycleWorkbench', () => {
   ) => {
     const { client, lists } = makeClient()
     lists.jobs.mockResolvedValueOnce({ items: [], pageInfo })
-    render(
+    renderWithQueryClient(
       <LifecycleWorkbench
         client={client}
         selectedPhase="jobs"
@@ -757,7 +757,7 @@ describe('LifecycleWorkbench', () => {
       },
     })
     const navigate = vi.fn()
-    render(
+    renderWithQueryClient(
       <LifecycleWorkbench
         client={client}
         selectedPhase="jobs"
@@ -785,7 +785,7 @@ describe('LifecycleWorkbench', () => {
       items: [],
       pageInfo: { startCursor: 's', endCursor: 'e', hasPreviousPage: true, hasNextPage: true },
     })
-    render(<LifecycleWorkbench client={client} selectedPhase="jobs" />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} selectedPhase="jobs" />)
     expect(await screen.findByRole('button', { name: 'Go to previous page' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Go to next page' })).toBeDisabled()
   })
@@ -795,7 +795,7 @@ describe('LifecycleWorkbench', () => {
     const { client } = makeClient()
     Object.assign(client.jobs, { get: vi.fn(async () => null) })
     const navigate = vi.fn()
-    render(
+    renderWithQueryClient(
       <LifecycleWorkbench
         client={client}
         selectedPhase="jobs"
@@ -844,7 +844,7 @@ describe('LifecycleWorkbench', () => {
     } as unknown as Job
     lists.jobs.mockResolvedValue({ items: [job], pageInfo: emptyPageInfo })
     Object.assign(client.jobs, { get: vi.fn(async () => job) })
-    render(<JobsHistoryHarness client={client} />)
+    renderWithQueryClient(<JobsHistoryHarness client={client} />)
 
     const origin = await screen.findByRole('button', { name: 'Narrow Job' })
     await userEvent.click(origin)
@@ -856,12 +856,43 @@ describe('LifecycleWorkbench', () => {
     expect(new URL(window.location.href).searchParams.get('filter')).toBe('include_removed')
   })
 
+  it('cannot reuse a superseded backend request after unmount and reconnect', async () => {
+    // One renderer-lifetime cache spans both mounts, as it does in the app.
+    const queryClient = testQueryClient()
+    const stale = makeClient()
+    let settleStale: ((page: unknown) => void) | undefined
+    stale.lists.captures.mockImplementation(
+      () => new Promise<unknown>((resolve) => { settleStale = resolve }),
+    )
+    const first = renderWithQueryClient(
+      <LifecycleWorkbench client={stale.client} workspaceId="ws-1" />,
+      { client: queryClient },
+    )
+    expect(await screen.findByTestId('lifecycle-loading')).toBeInTheDocument()
+    first.unmount()
+
+    const reconnected = makeClient()
+    reconnected.lists.captures.mockResolvedValue(
+      capturePage([leadCapture('reconnected', 'Reconnected lead')]),
+    )
+    renderWithQueryClient(
+      <LifecycleWorkbench client={reconnected.client} workspaceId="ws-1" />,
+      { client: queryClient },
+    )
+
+    expect(await screen.findByText('Reconnected lead')).toBeInTheDocument()
+    expect(reconnected.lists.captures).toHaveBeenCalledTimes(1)
+    await act(async () => settleStale?.(capturePage([leadCapture('stale', 'Stale lead')])))
+    expect(screen.queryByText('Stale lead')).not.toBeInTheDocument()
+    expect(document.querySelector('[data-row-id="stale"]')).toBeNull()
+  })
+
   it('does not strand an unrelated phase when a selected-phase refresh supersedes its own load', async () => {
     const user = userEvent.setup()
     const { client, lists } = makeClient()
     let resolveJobs: ((page: TestPage) => void) | undefined
     lists.jobs.mockImplementationOnce(() => new Promise<TestPage>((resolve) => { resolveJobs = resolve }))
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     expect(await screen.findByText('No captures')).toBeInTheDocument()
     window.dispatchEvent(new Event('focus'))
@@ -891,6 +922,13 @@ function captureIntent(
     primaryIntent: kind === 'resolve_duplicate_job'
       ? { kind, conflictingJobIds: ['job-conflict'], supportedActions: ['attach'] }
       : { kind, jobId: 'job-conflict', currentCompanyId: '01900000-0000-7000-8000-000000000099' },
+  }
+}
+
+function leadCapture(captureId: string, roleTitle: string): CaptureListPresentation {
+  return {
+    ...completionCapture(captureId),
+    lead: { roleTitle, companyName: 'Acme', fallbackLabel: roleTitle },
   }
 }
 

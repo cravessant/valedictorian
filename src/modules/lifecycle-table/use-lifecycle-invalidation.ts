@@ -1,57 +1,37 @@
-import { useEffect, useRef } from 'react'
+import { useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
-export interface LifecycleInvalidationOptions {
-  readonly enabled: boolean
-  readonly intervalMs?: number
-}
+import { lifecycleKeys, type LifecycleScope } from './lifecycle-queries'
 
 /**
- * Aggregate-neutral refresh invalidation for the lifecycle workbench. Fires
- * the supplied refresh on window focus, document visibility return, and a
- * slow interval. Overlapping invocations are coalesced and stale completions
- * are ignored when a newer refresh started before an in-flight one resolved.
- * Listeners and timers are cleaned on unmount.
+ * Invalidation ownership for the lifecycle workbench.
+ *
+ * Every reason to re-read — a committed command, the manual Refresh control,
+ * window focus, the bounded fallback interval, and the future workspace
+ * invalidation stream — converges here on the smallest owning key family. There
+ * is no second refresh graph, and `throwOnError` keeps a failed post-command
+ * re-read reportable so a command never claims a refreshed view it did not get.
  */
-export function useLifecycleInvalidation(
-  refresh: () => Promise<void> | void,
-  { enabled, intervalMs = 60_000 }: LifecycleInvalidationOptions,
-): void {
-  const refreshRef = useRef(refresh)
-  refreshRef.current = refresh
-
-  const inFlight = useRef<Promise<void> | null>(null)
-  const generation = useRef(0)
-
-  useEffect(() => {
-    if (!enabled) return
-
-    const run = (): void => {
-      if (inFlight.current !== null) return
-      const gen = ++generation.current
-      const maybe = refreshRef.current()
-      if (maybe && typeof maybe.then === 'function') {
-        inFlight.current = Promise.resolve(maybe).catch(() => {})
-        void inFlight.current.finally(() => {
-          if (gen === generation.current) inFlight.current = null
-          else inFlight.current = null
-        })
-      }
+export function useLifecycleInvalidation(scope: LifecycleScope) {
+  const queryClient = useQueryClient()
+  const { workspaceId, connectionId } = scope
+  return useMemo(() => {
+    const owning = { workspaceId, connectionId }
+    const commit = (queryKey: readonly unknown[]) => async (): Promise<void> => {
+      await queryClient.invalidateQueries({ queryKey }, { throwOnError: true })
     }
-
-    const onFocus = (): void => run()
-    const onVisibility = (): void => {
-      if (document.visibilityState === 'visible') run()
+    const applications = commit(lifecycleKeys.applications(owning))
+    const actionQueue = commit(lifecycleKeys.actionQueue(owning))
+    return {
+      captures: commit(lifecycleKeys.captures(owning)),
+      jobs: commit(lifecycleKeys.jobs(owning)),
+      opportunities: commit(lifecycleKeys.opportunities(owning)),
+      applications,
+      actionQueue,
+      /** Applications own two presentations of the same records: All and Action Queue. */
+      applicationPresentations: () => Promise.all([applications(), actionQueue()]).then(() => {}),
+      /** The whole chain, for a command whose outcome can tombstone downstream aggregates. */
+      workspace: commit(lifecycleKeys.workspace(owning)),
     }
-    const timer = window.setInterval(run, intervalMs)
-
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVisibility)
-      window.clearInterval(timer)
-      generation.current += 1
-      inFlight.current = null
-    }
-  }, [enabled, intervalMs])
+  }, [connectionId, queryClient, workspaceId])
 }

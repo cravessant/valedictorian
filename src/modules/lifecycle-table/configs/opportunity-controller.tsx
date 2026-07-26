@@ -13,13 +13,17 @@ import type {
   ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 
+import { WorkspaceClientUnavailableError } from '../../../app/app-load-failure'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from '../lifecycle-actor'
-import { FormModal, type FieldSpec, type FieldErrors } from '../form-modal'
+import { FormModal, requireRationale, type FieldSpec, type FieldErrors } from '../form-modal'
 import type { LifecycleOutcome, LifecycleOutcomeActions } from '../lifecycle-outcome-types'
 import { HistoryModal, OutcomeToast } from '../history-modal'
-import { outcomeForBlocker } from '../lifecycle-result'
-import { afterPage, loadHistory } from '../load-history'
+import { duplicateRecovery, outcomeForBlocker, removalBlockedOutcome } from '../lifecycle-result'
+import { lifecycleKeys, type LifecycleScope } from '../lifecycle-queries'
+import { afterPage, loadAllPages } from '../load-pages'
 import type { LifecycleAggregateExtensions } from '../lifecycle-table'
+import { useLifecycleCommand } from '../use-lifecycle-command'
+import { useLifecycleHistory } from '../use-lifecycle-history'
 import {
   CUTOFF_CHOICES,
   DISPOSITION_CHOICES,
@@ -69,31 +73,42 @@ export interface OpportunityController {
 
 export function useOpportunityController(params: {
   client: Pick<ValedictorianWorkspaceClient, 'opportunities'> | null
+  scope: LifecycleScope
   refresh: () => Promise<void> | void
   refreshDestination: () => Promise<void> | void
   refreshAll: () => Promise<void> | void
 }): OpportunityController {
-  const { client, refresh, refreshDestination, refreshAll } = params
+  const { client, scope, refresh, refreshDestination, refreshAll } = params
 
   const [createOpen, setCreateOpen] = useState(false)
   const [evalTarget, setEvalTarget] = useState<Opportunity | null>(null)
   const [dispositionTarget, setDispositionTarget] = useState<Opportunity | null>(null)
   const [removeTarget, setRemoveTarget] = useState<Opportunity | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<Opportunity | null>(null)
-  const [historyTarget, setHistoryTarget] = useState<Opportunity | null>(null)
   const [promoteTarget, setPromoteTarget] = useState<Opportunity | null>(null)
   const [outcome, setOutcome] = useState<LifecycleOutcome | null>(null)
-  const [historyOutcome, setHistoryOutcome] = useState<LifecycleOutcome | null>(null)
-  const [pending, setPending] = useState(false)
-  const [historyPending, setHistoryPending] = useState(false)
+  const command = useLifecycleCommand((message) => {
+    showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
+  })
+  const pending = command.pending
+  const history = useLifecycleHistory<Opportunity>(
+    lifecycleKeys.opportunities(scope),
+    (candidate) => candidate.id,
+    async (candidate) => {
+      const entries = await loadAllPages<OpportunityHistoryResult['items'][number]>((after) =>
+        requireClient().opportunities.history({ id: candidate.id, limit: 50, ...afterPage(after) }))
+      return entries.map((entry) => ({
+        revision: entry.revision,
+        kind: entry.kind,
+        actor: entry.audit.actor,
+        timestamp: entry.audit.timestamp,
+        summary: `${entry.kind} at revision ${entry.revision}`,
+      }))
+    },
+  )
   const outcomeActions = useRef<LifecycleOutcomeActions>({})
   const createKey = useRef('')
   const promotionKey = useRef('')
-  const historyRequest = useRef(0)
-  const clientRef = useRef(client)
-  const refreshRef = useRef(refresh)
-  const refreshDestinationRef = useRef(refreshDestination)
-  const refreshAllRef = useRef(refreshAll)
 
   const [createDraft, setCreateDraft] = useState<OppCreateDraft>(emptyCreateDraft())
   const [evalDraft, setEvalDraft] = useState<OppEvalDraft>(emptyEvalDraft())
@@ -103,16 +118,12 @@ export function useOpportunityController(params: {
   const [promoteDraft, setPromoteDraft] = useState<OppPromoteDraft>(emptyPromoteDraft())
   const createDraftRef = useRef(createDraft)
   const promoteDraftRef = useRef(promoteDraft)
-  clientRef.current = client
-  refreshRef.current = refresh
-  refreshDestinationRef.current = refreshDestination
-  refreshAllRef.current = refreshAll
   createDraftRef.current = createDraft
   promoteDraftRef.current = promoteDraft
 
   function requireClient(): Pick<ValedictorianWorkspaceClient, 'opportunities'> {
-    if (!clientRef.current) throw new Error('Workspace HTTP client is unavailable.')
-    return clientRef.current
+    if (!client) throw new WorkspaceClientUnavailableError()
+    return client
   }
 
   function showOutcome(next: LifecycleOutcome, actions: LifecycleOutcomeActions = {}) {
@@ -144,42 +155,7 @@ export function useOpportunityController(params: {
     setOutcome(null)
     setPromoteTarget(row)
   }
-  async function openHistory(row: Opportunity) {
-    const request = ++historyRequest.current
-    setHistoryOutcome(null)
-    setHistoryTarget(row)
-    if (!client) { setHistoryOutcome({ kind: 'error', blocker: { code: 'workspace_ownership', message: 'Workspace HTTP client is unavailable.' }, message: 'Workspace HTTP client is unavailable.' }); return }
-    setHistoryPending(true)
-    try {
-      const entries = await loadHistory<OpportunityHistoryResult['items'][number]>((after) =>
-        client.opportunities.history({ id: row.id, limit: 50, ...afterPage(after) }))
-      if (request !== historyRequest.current) return
-      setHistoryOutcome({
-        kind: 'history',
-        entries: entries.map((entry) => ({
-          revision: entry.revision,
-          kind: entry.kind,
-          actor: entry.audit.actor,
-          timestamp: entry.audit.timestamp,
-          summary: `${entry.kind} at revision ${entry.revision}`,
-        })),
-      })
-    } catch (err) {
-      if (request !== historyRequest.current) return
-      setHistoryOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      if (request === historyRequest.current) setHistoryPending(false)
-    }
-  }
-  function closeHistory() {
-    historyRequest.current += 1
-    setHistoryPending(false)
-    setHistoryTarget(null)
-  }
 
-  function validateRationale<T extends { rationale: string }>(d: T): FieldErrors<T> | null {
-    return d.rationale.trim() === '' ? { fieldErrors: { rationale: 'Rationale is required.' } as Partial<Record<keyof T & string, string>> } : null
-  }
 
   function validateEval(d: OppEvalDraft): FieldErrors<OppEvalDraft> | null {
     const fieldErrors: Record<string, string> = {}
@@ -199,9 +175,8 @@ export function useOpportunityController(params: {
     return Object.keys(fieldErrors).length > 0 ? { fieldErrors } : null
   }
 
-  async function submitCreate(d: OppCreateDraft, retry: OpportunityCreateRetry = {}) {
-    setPending(true)
-    try {
+  function submitCreate(d: OppCreateDraft, retry: OpportunityCreateRetry = {}) {
+    command.run(async () => {
       const input: CreateOpportunityInput = {
         idempotencyKey: createKey.current,
         actor: DESKTOP_USER_ACTOR,
@@ -215,32 +190,24 @@ export function useOpportunityController(params: {
       }
       const result: OpportunityMutationResult = await requireClient().opportunities.create(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setCreateOpen(false)
       } else {
         const blocked = outcomeForBlocker(result.blocker)
-        showOutcome(blocked, blocked.kind === 'duplicate' ? {
-          onResolveDuplicate: (choice) => {
-            void submitCreate(createDraftRef.current, {
-              duplicateResolution: {
-                action: choice.action,
-                targetResourceId: choice.targetResourceId as NonNullable<CreateOpportunityInput['duplicateResolution']>['targetResourceId'],
-              },
-            })
-          },
-        } : {})
+        showOutcome(blocked, duplicateRecovery(blocked, (choice) =>
+          submitCreate(createDraftRef.current, {
+            duplicateResolution: {
+              action: choice.action,
+              targetResourceId: choice.targetResourceId as NonNullable<CreateOpportunityInput['duplicateResolution']>['targetResourceId'],
+            },
+          })))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitEval(row: Opportunity, d: OppEvalDraft) {
-    setPending(true)
-    try {
+  function submitEval(row: Opportunity, d: OppEvalDraft) {
+    command.run(async () => {
       const input: UpdateOpportunityEvaluationInput = {
         opportunityId: row.id,
         expectedRevision: row.revision,
@@ -251,22 +218,17 @@ export function useOpportunityController(params: {
       }
       const result = await requireClient().opportunities.updateEvaluation(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setEvalTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitDisposition(row: Opportunity, d: OppDispositionDraft) {
-    setPending(true)
-    try {
+  function submitDisposition(row: Opportunity, d: OppDispositionDraft) {
+    command.run(async () => {
       const input: UpdateOpportunityDispositionInput = {
         opportunityId: row.id,
         expectedRevision: row.revision,
@@ -276,22 +238,17 @@ export function useOpportunityController(params: {
       }
       const result = await requireClient().opportunities.updateDisposition(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setDispositionTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitRemove(row: Opportunity, d: OppRemoveDraft) {
-    setPending(true)
-    try {
+  function submitRemove(row: Opportunity, d: OppRemoveDraft) {
+    command.run(async () => {
       const input: RemovalInput = {
         id: row.id,
         choice: d.choice as RemovalInput['choice'],
@@ -300,56 +257,37 @@ export function useOpportunityController(params: {
       }
       const result = await requireClient().opportunities.remove(input)
       if (result.status === 'removed') {
-        await refreshAllRef.current()
+        await refreshAll()
         showOutcome({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
         setRemoveTarget(null)
       } else {
-        showOutcome({
-          kind: 'removal-blocked',
-          blocker: result.blocker,
-          message: result.blocker.message,
-          choice: {
-            choice: d.choice as RemovalInput['choice'],
-            dependentIds: result.dependentIds,
-            supportedChoices: result.supportedChoices,
-          },
-        }, {
+        showOutcome(removalBlockedOutcome(d.choice as RemovalInput['choice'], result), {
           onResolveRemoval: (choice, rationale) => {
             const next = { choice, rationale }
             setRemoveDraft(next)
-            void submitRemove(row, next)
+            submitRemove(row, next)
           },
         })
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitRestore(row: Opportunity, d: OppRestoreDraft) {
-    setPending(true)
-    try {
+  function submitRestore(row: Opportunity, d: OppRestoreDraft) {
+    command.run(async () => {
       const input: RestoreInput = { id: row.id, actor: DESKTOP_USER_ACTOR, rationale: d.rationale.trim() }
       const result = await requireClient().opportunities.restore(input)
       if (result.status === 'restored') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'restored', dependentLinks: result.dependentLinks })
         setRestoreTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitPromote(row: Opportunity, d: OppPromoteDraft, retry: OpportunityPromotionRetry = {}) {
-    setPending(true)
-    try {
+  function submitPromote(row: Opportunity, d: OppPromoteDraft, retry: OpportunityPromotionRetry = {}) {
+    command.run(async () => {
       const input: PromoteOpportunityToApplicationInput = {
         idempotencyKey: promotionKey.current,
         actor: DESKTOP_USER_ACTOR,
@@ -361,13 +299,13 @@ export function useOpportunityController(params: {
       const result: PromoteOpportunityToApplicationResult = await requireClient().opportunities.promoteToApplication(input)
       void d
       if (result.status === 'promoted') {
-        await Promise.all([refreshRef.current(), refreshDestinationRef.current()])
+        await Promise.all([refresh(), refreshDestination()])
         if (result.warnings.length > 0 && !input.override) {
           showOutcome(
             { kind: 'warnings', warnings: result.warnings, override: result.override },
             {
               onOverrideWarnings: (warningCodes, rationale) => {
-                void submitPromote(row, promoteDraftRef.current, {
+                submitPromote(row, promoteDraftRef.current, {
                   ...retry,
                   override: { actor: DESKTOP_USER_ACTOR, rationale, warningCodes: [...warningCodes] },
                 })
@@ -380,23 +318,16 @@ export function useOpportunityController(params: {
         setPromoteTarget(null)
       } else {
         const blocked = outcomeForBlocker(result.blocker)
-        showOutcome(blocked, blocked.kind === 'duplicate' ? {
-          onResolveDuplicate: (choice) => {
-            void submitPromote(row, promoteDraftRef.current, {
-              ...retry,
-              duplicateResolution: {
-                action: choice.action,
-                targetResourceId: choice.targetResourceId as NonNullable<PromoteOpportunityToApplicationInput['duplicateResolution']>['targetResourceId'],
-              },
-            })
-          },
-        } : {})
+        showOutcome(blocked, duplicateRecovery(blocked, (choice) =>
+          submitPromote(row, promoteDraftRef.current, {
+            ...retry,
+            duplicateResolution: {
+              action: choice.action,
+              targetResourceId: choice.targetResourceId as NonNullable<PromoteOpportunityToApplicationInput['duplicateResolution']>['targetResourceId'],
+            },
+          })))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
   const extensions: LifecycleAggregateExtensions<Opportunity> = {
@@ -415,7 +346,7 @@ export function useOpportunityController(params: {
       { key: 'remove', label: 'Remove opportunity', modal: true, destructive: true, disabled: (row) => Boolean(row.removedAt), onActivate: (row) => openRemove(row) },
       { key: 'restore', label: 'Restore opportunity', modal: true, disabled: (row) => !row.removedAt, onActivate: (row) => openRestore(row) },
     ],
-    historyAction: { key: 'history', label: 'View history', modal: true, onActivate: (row) => { void openHistory(row) } },
+    historyAction: { key: 'history', label: 'View history', modal: true, onActivate: history.open },
     promotionActions: [
       { key: 'promote-to-application', label: 'Promote to application', modal: true, disabled: (row) => Boolean(row.removedAt), onActivate: (row) => openPromote(row) },
     ],
@@ -469,7 +400,7 @@ export function useOpportunityController(params: {
         fields={evalFields}
         value={evalDraft}
         onChange={setEvalDraft}
-        onSubmit={(d) => { if (evalTarget) void submitEval(evalTarget, d) }}
+        onSubmit={(d) => { if (evalTarget) submitEval(evalTarget, d) }}
         onCancel={() => setEvalTarget(null)}
         validate={validateEval}
         pending={pending}
@@ -482,9 +413,9 @@ export function useOpportunityController(params: {
         fields={dispositionFields}
         value={dispositionDraft}
         onChange={setDispositionDraft}
-        onSubmit={(d) => { if (dispositionTarget) void submitDisposition(dispositionTarget, d) }}
+        onSubmit={(d) => { if (dispositionTarget) submitDisposition(dispositionTarget, d) }}
         onCancel={() => setDispositionTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Save"
       />
@@ -495,9 +426,9 @@ export function useOpportunityController(params: {
         fields={removeFields}
         value={removeDraft}
         onChange={setRemoveDraft}
-        onSubmit={(d) => { if (removeTarget) void submitRemove(removeTarget, d) }}
+        onSubmit={(d) => { if (removeTarget) submitRemove(removeTarget, d) }}
         onCancel={() => setRemoveTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Remove"
       />
@@ -508,9 +439,9 @@ export function useOpportunityController(params: {
         fields={restoreFields}
         value={restoreDraft}
         onChange={setRestoreDraft}
-        onSubmit={(d) => { if (restoreTarget) void submitRestore(restoreTarget, d) }}
+        onSubmit={(d) => { if (restoreTarget) submitRestore(restoreTarget, d) }}
         onCancel={() => setRestoreTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Restore"
       />
@@ -521,17 +452,17 @@ export function useOpportunityController(params: {
         fields={promoteFields}
         value={promoteDraft}
         onChange={setPromoteDraft}
-        onSubmit={(d) => { if (promoteTarget) void submitPromote(promoteTarget, d) }}
+        onSubmit={(d) => { if (promoteTarget) submitPromote(promoteTarget, d) }}
         onCancel={() => setPromoteTarget(null)}
         pending={pending}
         submitLabel="Promote"
       />
       <HistoryModal
-        open={historyTarget !== null}
-        title={historyTarget ? `History · ${historyTarget.id}` : 'History'}
-        outcome={historyOutcome}
-        pending={historyPending}
-        onClose={closeHistory}
+        open={history.target !== null}
+        title={history.target ? `History · ${history.target.id}` : 'History'}
+        outcome={history.outcome}
+        pending={history.pending}
+        onClose={history.close}
       />
       {outcome ? <OutcomeToast outcome={outcome} pending={pending} onDismiss={() => setOutcome(null)} {...outcomeActions.current} /> : null}
     </>
@@ -557,8 +488,4 @@ function emptyRestoreDraft(): OppRestoreDraft {
 }
 function emptyPromoteDraft(): OppPromoteDraft {
   return {}
-}
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : 'Operation failed.'
 }

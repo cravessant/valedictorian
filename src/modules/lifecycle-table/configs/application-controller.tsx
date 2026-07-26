@@ -12,13 +12,17 @@ import type {
   ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 
+import { WorkspaceClientUnavailableError } from '../../../app/app-load-failure'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from '../lifecycle-actor'
-import { FormModal, type FieldSpec, type FieldErrors } from '../form-modal'
+import { FormModal, requireRationale, type FieldSpec, type FieldErrors } from '../form-modal'
 import type { LifecycleOutcome, LifecycleOutcomeActions } from '../lifecycle-outcome-types'
 import { HistoryModal, OutcomeToast } from '../history-modal'
-import { outcomeForBlocker } from '../lifecycle-result'
-import { afterPage, loadHistory } from '../load-history'
+import { duplicateRecovery, outcomeForBlocker, removalBlockedOutcome } from '../lifecycle-result'
+import { lifecycleKeys, type LifecycleScope } from '../lifecycle-queries'
+import { afterPage, loadAllPages } from '../load-pages'
 import type { LifecycleAggregateExtensions } from '../lifecycle-table'
+import { useLifecycleCommand } from '../use-lifecycle-command'
+import { useLifecycleHistory } from '../use-lifecycle-history'
 import {
   PURSUIT_STATUS_CHOICES,
   REMOVAL_CHOICE_CHOICES,
@@ -64,10 +68,11 @@ export interface ApplicationController {
 
 export function useApplicationController(params: {
   client: Pick<ValedictorianWorkspaceClient, 'applications'> | null
+  scope: LifecycleScope
   refresh: () => Promise<void> | void
   refreshAll: () => Promise<void> | void
 }): ApplicationController {
-  const { client, refresh, refreshAll } = params
+  const { client, scope, refresh, refreshAll } = params
 
   const [createOpen, setCreateOpen] = useState(false)
   const [statusTarget, setStatusTarget] = useState<Application | null>(null)
@@ -75,17 +80,28 @@ export function useApplicationController(params: {
   const [sourceTarget, setSourceTarget] = useState<Application | null>(null)
   const [removeTarget, setRemoveTarget] = useState<Application | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<Application | null>(null)
-  const [historyTarget, setHistoryTarget] = useState<Application | null>(null)
   const [outcome, setOutcome] = useState<LifecycleOutcome | null>(null)
-  const [historyOutcome, setHistoryOutcome] = useState<LifecycleOutcome | null>(null)
-  const [pending, setPending] = useState(false)
-  const [historyPending, setHistoryPending] = useState(false)
+  const command = useLifecycleCommand((message) => {
+    showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
+  })
+  const pending = command.pending
+  const history = useLifecycleHistory<Application>(
+    lifecycleKeys.applications(scope),
+    (candidate) => candidate.id,
+    async (candidate) => {
+      const entries = await loadAllPages<LifecycleApplicationHistoryResult['items'][number]>((after) =>
+        requireClient().applications.history({ id: candidate.id, limit: 50, ...afterPage(after) }))
+      return entries.map((entry) => ({
+        revision: entry.revision,
+        kind: entry.kind,
+        actor: entry.audit.actor,
+        timestamp: entry.audit.timestamp,
+        summary: `${entry.kind} at revision ${entry.revision}`,
+      }))
+    },
+  )
   const outcomeActions = useRef<LifecycleOutcomeActions>({})
   const createKey = useRef('')
-  const historyRequest = useRef(0)
-  const clientRef = useRef(client)
-  const refreshRef = useRef(refresh)
-  const refreshAllRef = useRef(refreshAll)
 
   const [createDraft, setCreateDraft] = useState<AppCreateDraft>(emptyCreateDraft())
   const [statusDraft, setStatusDraft] = useState<AppStatusDraft>(emptyStatusDraft())
@@ -94,14 +110,11 @@ export function useApplicationController(params: {
   const [removeDraft, setRemoveDraft] = useState<AppRemoveDraft>(emptyRemoveDraft())
   const [restoreDraft, setRestoreDraft] = useState<AppRestoreDraft>(emptyRestoreDraft())
   const createDraftRef = useRef(createDraft)
-  clientRef.current = client
-  refreshRef.current = refresh
-  refreshAllRef.current = refreshAll
   createDraftRef.current = createDraft
 
   function requireClient(): Pick<ValedictorianWorkspaceClient, 'applications'> {
-    if (!clientRef.current) throw new Error('Workspace HTTP client is unavailable.')
-    return clientRef.current
+    if (!client) throw new WorkspaceClientUnavailableError()
+    return client
   }
 
   function showOutcome(next: LifecycleOutcome, actions: LifecycleOutcomeActions = {}) {
@@ -124,42 +137,7 @@ export function useApplicationController(params: {
   function openSource(row: Application) { setSourceDraft({ sourceName: row.sourceName, rationale: '' }); setOutcome(null); setSourceTarget(row) }
   function openRemove(row: Application) { setRemoveDraft(emptyRemoveDraft()); setOutcome(null); setRemoveTarget(row) }
   function openRestore(row: Application) { setRestoreDraft(emptyRestoreDraft()); setOutcome(null); setRestoreTarget(row) }
-  async function openHistory(row: Application) {
-    const request = ++historyRequest.current
-    setHistoryOutcome(null)
-    setHistoryTarget(row)
-    if (!client) { setHistoryOutcome({ kind: 'error', blocker: { code: 'workspace_ownership', message: 'Workspace HTTP client is unavailable.' }, message: 'Workspace HTTP client is unavailable.' }); return }
-    setHistoryPending(true)
-    try {
-      const entries = await loadHistory<LifecycleApplicationHistoryResult['items'][number]>((after) =>
-        client.applications.history({ id: row.id, limit: 50, ...afterPage(after) }))
-      if (request !== historyRequest.current) return
-      setHistoryOutcome({
-        kind: 'history',
-        entries: entries.map((entry) => ({
-          revision: entry.revision,
-          kind: entry.kind,
-          actor: entry.audit.actor,
-          timestamp: entry.audit.timestamp,
-          summary: `${entry.kind} at revision ${entry.revision}`,
-        })),
-      })
-    } catch (err) {
-      if (request !== historyRequest.current) return
-      setHistoryOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      if (request === historyRequest.current) setHistoryPending(false)
-    }
-  }
-  function closeHistory() {
-    historyRequest.current += 1
-    setHistoryPending(false)
-    setHistoryTarget(null)
-  }
 
-  function validateRationale<T extends { rationale: string }>(d: T): FieldErrors<T> | null {
-    return d.rationale.trim() === '' ? { fieldErrors: { rationale: 'Rationale is required.' } as Partial<Record<keyof T & string, string>> } : null
-  }
 
   function validateCreate(d: AppCreateDraft): FieldErrors<AppCreateDraft> | null {
     const fieldErrors: Record<string, string> = {}
@@ -169,9 +147,8 @@ export function useApplicationController(params: {
     return Object.keys(fieldErrors).length > 0 ? { fieldErrors } : null
   }
 
-  async function submitCreate(d: AppCreateDraft, retry: ApplicationCreateRetry = {}) {
-    setPending(true)
-    try {
+  function submitCreate(d: AppCreateDraft, retry: ApplicationCreateRetry = {}) {
+    command.run(async () => {
       const input: CreateApplicationInput = {
         idempotencyKey: createKey.current,
         actor: DESKTOP_USER_ACTOR,
@@ -183,32 +160,24 @@ export function useApplicationController(params: {
       }
       const result: ApplicationMutationResult = await requireClient().applications.create(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setCreateOpen(false)
       } else {
         const blocked = outcomeForBlocker(result.blocker)
-        showOutcome(blocked, blocked.kind === 'duplicate' ? {
-          onResolveDuplicate: (choice) => {
-            void submitCreate(createDraftRef.current, {
-              duplicateResolution: {
-                action: choice.action,
-                targetResourceId: choice.targetResourceId as NonNullable<CreateApplicationInput['duplicateResolution']>['targetResourceId'],
-              },
-            })
-          },
-        } : {})
+        showOutcome(blocked, duplicateRecovery(blocked, (choice) =>
+          submitCreate(createDraftRef.current, {
+            duplicateResolution: {
+              action: choice.action,
+              targetResourceId: choice.targetResourceId as NonNullable<CreateApplicationInput['duplicateResolution']>['targetResourceId'],
+            },
+          })))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitStatus(row: Application, d: AppStatusDraft) {
-    setPending(true)
-    try {
+  function submitStatus(row: Application, d: AppStatusDraft) {
+    command.run(async () => {
       const input: UpdatePursuitApplicationStatusInput = {
         applicationId: row.id,
         expectedRevision: row.revision,
@@ -218,22 +187,17 @@ export function useApplicationController(params: {
       }
       const result = await requireClient().applications.updateStatus(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setStatusTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitCompany(row: Application, d: AppCompanyDraft) {
-    setPending(true)
-    try {
+  function submitCompany(row: Application, d: AppCompanyDraft) {
+    command.run(async () => {
       const input: UpdateApplicationCompanyInput = {
         applicationId: row.id,
         expectedRevision: row.revision,
@@ -243,22 +207,17 @@ export function useApplicationController(params: {
       }
       const result = await requireClient().applications.updateCompany(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setCompanyTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitSource(row: Application, d: AppSourceDraft) {
-    setPending(true)
-    try {
+  function submitSource(row: Application, d: AppSourceDraft) {
+    command.run(async () => {
       const input: UpdateApplicationSourceInput = {
         applicationId: row.id,
         expectedRevision: row.revision,
@@ -268,22 +227,17 @@ export function useApplicationController(params: {
       }
       const result = await requireClient().applications.updateSource(input)
       if (result.status === 'succeeded') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'succeeded' })
         setSourceTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitRemove(row: Application, d: AppRemoveDraft) {
-    setPending(true)
-    try {
+  function submitRemove(row: Application, d: AppRemoveDraft) {
+    command.run(async () => {
       const input: RemovalInput = {
         id: row.id,
         choice: d.choice as RemovalInput['choice'],
@@ -292,51 +246,33 @@ export function useApplicationController(params: {
       }
       const result = await requireClient().applications.remove(input)
       if (result.status === 'removed') {
-        await refreshAllRef.current()
+        await refreshAll()
         showOutcome({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
         setRemoveTarget(null)
       } else {
-        showOutcome({
-          kind: 'removal-blocked',
-          blocker: result.blocker,
-          message: result.blocker.message,
-          choice: {
-            choice: d.choice as RemovalInput['choice'],
-            dependentIds: result.dependentIds,
-            supportedChoices: result.supportedChoices,
-          },
-        }, {
+        showOutcome(removalBlockedOutcome(d.choice as RemovalInput['choice'], result), {
           onResolveRemoval: (choice, rationale) => {
             const next = { choice, rationale }
             setRemoveDraft(next)
-            void submitRemove(row, next)
+            submitRemove(row, next)
           },
         })
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
-  async function submitRestore(row: Application, d: AppRestoreDraft) {
-    setPending(true)
-    try {
+  function submitRestore(row: Application, d: AppRestoreDraft) {
+    command.run(async () => {
       const input: RestoreInput = { id: row.id, actor: DESKTOP_USER_ACTOR, rationale: d.rationale.trim() }
       const result = await requireClient().applications.restore(input)
       if (result.status === 'restored') {
-        await refreshRef.current()
+        await refresh()
         showOutcome({ kind: 'restored', dependentLinks: result.dependentLinks })
         setRestoreTarget(null)
       } else {
         showOutcome(outcomeForBlocker(result.blocker))
       }
-    } catch (err) {
-      showOutcome({ kind: 'error', blocker: { code: 'impossible_state', message: messageOf(err) }, message: messageOf(err) })
-    } finally {
-      setPending(false)
-    }
+    })
   }
 
   const extensions: LifecycleAggregateExtensions<Application> = {
@@ -356,7 +292,7 @@ export function useApplicationController(params: {
       { key: 'remove', label: 'Remove application', modal: true, destructive: true, disabled: (row) => Boolean(row.removedAt), onActivate: (row) => openRemove(row) },
       { key: 'restore', label: 'Restore application', modal: true, disabled: (row) => !row.removedAt, onActivate: (row) => openRestore(row) },
     ],
-    historyAction: { key: 'history', label: 'View history', modal: true, onActivate: (row) => { void openHistory(row) } },
+    historyAction: { key: 'history', label: 'View history', modal: true, onActivate: history.open },
     promotionActions: [],
   }
 
@@ -407,9 +343,9 @@ export function useApplicationController(params: {
         fields={statusFields}
         value={statusDraft}
         onChange={setStatusDraft}
-        onSubmit={(d) => { if (statusTarget) void submitStatus(statusTarget, d) }}
+        onSubmit={(d) => { if (statusTarget) submitStatus(statusTarget, d) }}
         onCancel={() => setStatusTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Save"
       />
@@ -420,9 +356,9 @@ export function useApplicationController(params: {
         fields={companyFields}
         value={companyDraft}
         onChange={setCompanyDraft}
-        onSubmit={(d) => { if (companyTarget) void submitCompany(companyTarget, d) }}
+        onSubmit={(d) => { if (companyTarget) submitCompany(companyTarget, d) }}
         onCancel={() => setCompanyTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Save"
       />
@@ -433,9 +369,9 @@ export function useApplicationController(params: {
         fields={sourceFields}
         value={sourceDraft}
         onChange={setSourceDraft}
-        onSubmit={(d) => { if (sourceTarget) void submitSource(sourceTarget, d) }}
+        onSubmit={(d) => { if (sourceTarget) submitSource(sourceTarget, d) }}
         onCancel={() => setSourceTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Save"
       />
@@ -446,9 +382,9 @@ export function useApplicationController(params: {
         fields={removeFields}
         value={removeDraft}
         onChange={setRemoveDraft}
-        onSubmit={(d) => { if (removeTarget) void submitRemove(removeTarget, d) }}
+        onSubmit={(d) => { if (removeTarget) submitRemove(removeTarget, d) }}
         onCancel={() => setRemoveTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Remove"
       />
@@ -459,18 +395,18 @@ export function useApplicationController(params: {
         fields={restoreFields}
         value={restoreDraft}
         onChange={setRestoreDraft}
-        onSubmit={(d) => { if (restoreTarget) void submitRestore(restoreTarget, d) }}
+        onSubmit={(d) => { if (restoreTarget) submitRestore(restoreTarget, d) }}
         onCancel={() => setRestoreTarget(null)}
-        validate={validateRationale}
+        validate={requireRationale}
         pending={pending}
         submitLabel="Restore"
       />
       <HistoryModal
-        open={historyTarget !== null}
-        title={historyTarget ? `History · ${historyTarget.id}` : 'History'}
-        outcome={historyOutcome}
-        pending={historyPending}
-        onClose={closeHistory}
+        open={history.target !== null}
+        title={history.target ? `History · ${history.target.id}` : 'History'}
+        outcome={history.outcome}
+        pending={history.pending}
+        onClose={history.close}
       />
       {outcome ? <OutcomeToast outcome={outcome} pending={pending} onDismiss={() => setOutcome(null)} {...outcomeActions.current} /> : null}
     </>
@@ -496,8 +432,4 @@ function emptyRemoveDraft(): AppRemoveDraft {
 }
 function emptyRestoreDraft(): AppRestoreDraft {
   return { rationale: '' }
-}
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : 'Operation failed.'
 }

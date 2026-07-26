@@ -5,10 +5,13 @@ import {
   type JobCompanyAssignmentPresentation,
   type ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
+import { scopedLoadFailure } from '@/app/app-load-failure'
 import { Spinner } from '@/components/ui/spinner'
 import { useMediaQuery } from '@/app/useMediaQuery'
 import { ResourceDetailFrame } from './ResourceDetailFrame'
 import { JobCompanyCell } from './JobCompanyCell'
+
+const jobDetailFailure = 'Job detail could not be loaded.'
 
 interface JobResourceDetailProps {
   readonly client: Pick<ValedictorianWorkspaceClient, 'jobs' | 'companyAssignments'> | null
@@ -52,7 +55,7 @@ export function JobResourceDetail({
       if (!result) setFailure('The requested Job was not found.')
       else setSelectedJob({ jobId, job: result, assignment })
     }, (error: unknown) => {
-      if (current) setFailure(error instanceof Error ? error.message : 'Job detail could not be loaded.')
+      if (current) setFailure(scopedLoadFailure(error, jobDetailFailure, false)?.message ?? jobDetailFailure)
     })
     return () => { current = false }
   }, [client, jobId])

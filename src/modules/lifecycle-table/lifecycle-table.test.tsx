@@ -223,11 +223,12 @@ describe('LifecycleTable shared component', () => {
     const trigger = screen.getByRole('button', { name: /Actions for row Alpha/ })
     await user.click(trigger)
     await user.click(await screen.findByRole('menuitem', { name: 'Open row' }))
-    rejectActivation(new Error('Permission changed. Refresh and try again.'))
+    rejectActivation(new Error('sqlite: relation "captures" does not exist'))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Open row failed: Permission changed. Refresh and try again.',
-    )
+    // The rejection text never reaches the announcement; a fixed message does.
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Open row failed: The action could not be completed.')
+    expect(alert).not.toHaveTextContent('sqlite')
     await waitFor(() => expect(trigger).toHaveFocus())
   })
 

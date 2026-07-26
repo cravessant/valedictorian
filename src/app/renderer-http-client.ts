@@ -60,6 +60,26 @@ export function getRendererHttpWorkspaceClient(): ValedictorianWorkspaceClientV2
   return rootClient.forWorkspace(config.workspaceId)
 }
 
+const connectionIds = new WeakMap<object, number>()
+let lastConnectionId = 0
+
+/**
+ * A renderer-lifetime identity for one workspace client instance.
+ *
+ * The counter is monotonic and module-owned, so an id survives any component
+ * unmounting and is never reused: a query scope keyed by it cannot alias a
+ * request issued against a replaced backend, even when the same workspace is
+ * reopened later. A missing client keeps the reserved id `0`.
+ */
+export function workspaceConnectionId(client: object | null): number {
+  if (!client) return 0
+  const known = connectionIds.get(client)
+  if (known !== undefined) return known
+  lastConnectionId += 1
+  connectionIds.set(client, lastConnectionId)
+  return lastConnectionId
+}
+
 export function onRendererBackendStateChanged(
   listener: (state: { status: string }) => void,
 ): () => void {

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 
 import App from './App'
+import { renderWithQueryClient } from './test/query-client'
 import { createConnectorsApi, createUpdatesApi } from './App.test-helpers'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
@@ -25,7 +26,7 @@ describe('App sidebar navigation', () => {
     const user = userEvent.setup()
     const { settingsApi, workspaceApi } = installAppApis()
 
-    render(
+    renderWithQueryClient(
       <App
         settingsApi={settingsApi}
         workspaceApi={workspaceApi}
@@ -66,7 +67,7 @@ describe('App sidebar navigation', () => {
     const user = userEvent.setup()
     const { settingsApi, workspaceApi } = installAppApis()
 
-    render(
+    renderWithQueryClient(
       <App
         settingsApi={settingsApi}
         workspaceApi={workspaceApi}
@@ -106,7 +107,7 @@ describe('App sidebar navigation', () => {
     const user = userEvent.setup()
     const { settingsApi, workspaceApi } = installAppApis()
 
-    render(
+    renderWithQueryClient(
       <App
         settingsApi={settingsApi}
         workspaceApi={workspaceApi}
@@ -129,7 +130,7 @@ describe('App sidebar navigation', () => {
     const user = userEvent.setup()
     const { settingsApi, workspaceApi } = installAppApis()
 
-    render(
+    renderWithQueryClient(
       <App
         settingsApi={settingsApi}
         workspaceApi={workspaceApi}
@@ -162,7 +163,7 @@ describe('App sidebar navigation', () => {
     })
     const { settingsApi, workspaceApi } = installAppApis()
 
-    render(
+    renderWithQueryClient(
       <App
         settingsApi={settingsApi}
         workspaceApi={workspaceApi}
@@ -181,7 +182,7 @@ describe('App sidebar navigation', () => {
     const updatesApi = createUpdatesApi({ currentVersion: '0.1.0', status: 'idle' })
     const { settingsApi, workspaceApi } = installAppApis()
 
-    render(
+    renderWithQueryClient(
       <App
         settingsApi={settingsApi}
         workspaceApi={workspaceApi}
@@ -286,7 +287,7 @@ describe('App sidebar navigation', () => {
       },
     } as unknown as ValedictorianWorkspaceClient
     const { settingsApi, workspaceApi } = installAppApis()
-    render(
+    renderWithQueryClient(
       <App
         settingsApi={settingsApi}
         workspaceApi={workspaceApi}

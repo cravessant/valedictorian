@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -8,6 +8,8 @@ import type {
 } from '@sparxie/sdk'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
+import { renderWithQueryClient } from '@/test/query-client'
+import { emptyPage, emptyPageInfo, makeApplication } from './lifecycle.test-helpers'
 import {
   DESKTOP_USER_ACTOR,
   __resetLifecycleActorCounterForTests,
@@ -17,62 +19,12 @@ import {
   createActionQueueResult,
 } from '../../App.test-helpers'
 
-/** The canonical page boundaries a single-page lifecycle list reports. */
-const emptyPageInfo = {
-  startCursor: null,
-  endCursor: null,
-  hasPreviousPage: false,
-  hasNextPage: false,
-} as const
-
-
-class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
-vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 Element.prototype.scrollIntoView = vi.fn()
 
 afterEach(() => {
   cleanup()
   delete (window as Window & { valedictorianHttp?: unknown }).valedictorianHttp
 })
-
-function makeApplication(id: string, overrides: Partial<Application> = {}): Application {
-  return {
-    id: id as Application['id'],
-    workspaceId: 'ws',
-    opportunityId: 'opp-1' as Application['opportunityId'],
-    jobId: 'job-1' as Application['jobId'],
-    revision: 1,
-    status: 'active',
-    snapshot: {
-      jobFactsRevision: 1,
-      capturedAt: '2025-01-01T00:00:00Z',
-      companyName: 'Acme',
-      roleTitle: 'Engineer',
-      sourceName: 'LinkedIn',
-      roleKind: 'new_grad',
-      term: null,
-      terms: [],
-      timingMode: 'unknown',
-      startDate: null,
-      endDate: null,
-      location: null,
-      workMode: 'unknown',
-      initialDestination: null,
-      initialLinks: [],
-    },
-    companyName: 'Acme',
-    sourceName: 'LinkedIn',
-    links: [],
-    createdAt: '2025-01-01T00:00:00Z',
-    updatedAt: '2025-01-01T00:00:00Z',
-    removedAt: null,
-    ...overrides,
-  }
-}
-
-function emptyPage() {
-  return { items: [], pageInfo: emptyPageInfo }
-}
 
 function makeClient(seed: {
   applications?: Application[]
@@ -133,7 +85,7 @@ async function switchToActionQueueMode(user: ReturnType<typeof userEvent.setup>)
 describe('A308-1: navigation hierarchy and mode placement', () => {
   it('keeps Captures, Jobs, Opportunities, Applications as top-level lifecycle peers', async () => {
     const { client } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     const nav = screen.getByRole('navigation', { name: 'Lifecycle phase' })
     const buttons = within(nav).getAllByRole('button')
     expect(buttons.map((b) => b.textContent?.replace(/\d+$/, '').trim())).toEqual([
@@ -143,7 +95,7 @@ describe('A308-1: navigation hierarchy and mode placement', () => {
 
   it('does not expose Action Queue as a top-level lifecycle destination', async () => {
     const { client } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     const nav = screen.getByRole('navigation', { name: 'Lifecycle phase' })
     expect(within(nav).queryByRole('button', { name: /Action Queue/ })).not.toBeInTheDocument()
   })
@@ -151,7 +103,7 @@ describe('A308-1: navigation hierarchy and mode placement', () => {
   it('Applications presents an internal All / Action Queue single-select mode toggle', async () => {
     const user = userEvent.setup()
     const { client } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     const modeGroup = screen.getByRole('radiogroup', { name: 'Applications view mode' })
     expect(modeGroup).toHaveAttribute('data-slot', 'toggle-group')
@@ -165,7 +117,7 @@ describe('A308-1: navigation hierarchy and mode placement', () => {
     const user = userEvent.setup()
     const { client } = makeClient()
     const navigate = vi.fn()
-    const { rerender } = render(
+    const { rerender } = renderWithQueryClient(
       <LifecycleWorkbench
         client={client}
         selectedPhase="applications"
@@ -201,7 +153,7 @@ describe('A308-2: All mode preserves the lifecycle table', () => {
     const user = userEvent.setup()
     const app = makeApplication('app-1')
     const { client } = makeClient({ applications: [app] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     expect(await screen.findByRole('table', { name: 'Applications' })).toBeInTheDocument()
     expect(screen.getByText('Acme')).toBeInTheDocument()
@@ -212,7 +164,7 @@ describe('A308-3: Action Queue mode calls client.actionQueue.list', () => {
   it('calls client.actionQueue.list when switching to Action Queue mode', async () => {
     const user = userEvent.setup()
     const { client, actionQueue } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     expect(actionQueue.list).not.toHaveBeenCalled()
     await switchToActionQueueMode(user)
@@ -223,7 +175,7 @@ describe('A308-3: Action Queue mode calls client.actionQueue.list', () => {
     const user = userEvent.setup()
     const item = createActionQueueItem({ actionBucket: 'apply_now' })
     const { client } = makeClient({ actionQueueItems: [item] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     const buckets = await screen.findByRole('radiogroup', { name: 'Action queue buckets' })
@@ -235,7 +187,7 @@ describe('A308-3: Action Queue mode calls client.actionQueue.list', () => {
     const user = userEvent.setup()
     const item = createActionQueueItem({ actionBucket: 'apply_now' })
     const { client, actionQueue } = makeClient({ actionQueueItems: [item] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('radiogroup', { name: 'Action queue buckets' })
@@ -260,7 +212,7 @@ describe('A308-3: Action Queue mode calls client.actionQueue.list', () => {
     }
     const { client, actionQueue } = makeClient()
     actionQueue.list.mockResolvedValue(result)
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     const pagination = await screen.findByRole('navigation', { name: 'Action Queue pagination' })
@@ -281,7 +233,7 @@ describe('A308-3: Action Queue mode calls client.actionQueue.list', () => {
       nextAction: 'apply_now',
     })
     const { client } = makeClient({ actionQueueItems: [item] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     expect(await screen.findByText('Queued score 8 meets policy cutoff 6.')).toBeInTheDocument()
@@ -297,7 +249,7 @@ describe('A308-4: shared Application modal actions and reconciliation', () => {
     const app = makeApplication('app-1')
     const item = createActionQueueItem({ id: 'app-1', actionBucket: 'apply_now' })
     const { client } = makeClient({ applications: [app], actionQueueItems: [item] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('table', { name: 'Action Queue' })
@@ -315,7 +267,7 @@ describe('A308-4: shared Application modal actions and reconciliation', () => {
     const app = makeApplication('app-1', { companyName: 'Acme Corp' })
     const item = createActionQueueItem({ id: 'app-1', companyName: 'Acme Corp', actionBucket: 'apply_now' })
     const { client, applications } = makeClient({ applications: [app], actionQueueItems: [item] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('table', { name: 'Action Queue' })
@@ -340,7 +292,7 @@ describe('A308-4: shared Application modal actions and reconciliation', () => {
     const item = createActionQueueItem({ id: 'app-missing', companyName: 'Fetched Co', actionBucket: 'apply_now' })
     const { client, applications } = makeClient({ applications: [], actionQueueItems: [item] })
     applications.get.mockResolvedValue(app)
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('table', { name: 'Action Queue' })
@@ -357,7 +309,7 @@ describe('A308-4: shared Application modal actions and reconciliation', () => {
     const app = makeApplication('app-1')
     const item = createActionQueueItem({ id: 'app-1', actionBucket: 'apply_now' })
     const { client, applications, actionQueue } = makeClient({ applications: [app], actionQueueItems: [item] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('table', { name: 'Action Queue' })
@@ -384,7 +336,7 @@ describe('A308-5: separate loading/error/empty state per mode', () => {
     let resolveQueue: ((value: unknown) => void) | undefined
     const { client, actionQueue } = makeClient()
     actionQueue.list.mockImplementationOnce(() => new Promise((resolve) => { resolveQueue = resolve }))
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     expect(await screen.findByTestId('action-queue-loading')).toBeInTheDocument()
@@ -396,7 +348,7 @@ describe('A308-5: separate loading/error/empty state per mode', () => {
     const user = userEvent.setup()
     const { client, actionQueue } = makeClient()
     actionQueue.list.mockRejectedValueOnce(new Error('queue unavailable'))
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     const alert = await screen.findByRole('alert')
@@ -412,7 +364,7 @@ describe('A308-5: separate loading/error/empty state per mode', () => {
     const app = makeApplication('app-1')
     const { client, actionQueue } = makeClient({ applications: [app] })
     actionQueue.list.mockRejectedValueOnce(new Error('queue down'))
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     expect(await screen.findByRole('table', { name: 'Applications' })).toBeInTheDocument()
     await switchToActionQueueMode(user)
@@ -432,7 +384,7 @@ describe('A308-5: separate loading/error/empty state per mode', () => {
     actionQueue.list
       .mockResolvedValueOnce(createActionQueueResult([]))
       .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByLabelText('Empty action queue')
@@ -449,7 +401,7 @@ describe('A308-6: keyboard and accessibility', () => {
   it('mode toggle is keyboard-operable via arrow keys and space', async () => {
     const user = userEvent.setup()
     const { client } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     const modeGroup = screen.getByRole('radiogroup', { name: 'Applications view mode' })
     const all = within(modeGroup).getByRole('radio', { name: 'All' })
@@ -465,7 +417,7 @@ describe('A308-6: keyboard and accessibility', () => {
     const user = userEvent.setup()
     const item = createActionQueueItem({ actionBucket: 'apply_now' })
     const { client } = makeClient({ actionQueueItems: [item] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     const buckets = await screen.findByRole('radiogroup', { name: 'Action queue buckets' })
@@ -481,7 +433,7 @@ describe('A308-6: keyboard and accessibility', () => {
   it('mode and bucket controls wrap at narrow widths', async () => {
     const user = userEvent.setup()
     const { client } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     const modeGroup = screen.getByRole('radiogroup', { name: 'Applications view mode' })
     expect(modeGroup.className).toContain('flex-wrap')
@@ -497,7 +449,7 @@ describe('validator fix 1: generation fencing on client change', () => {
     let resolveFirst: ((value: unknown) => void) | undefined
     const { client, actionQueue } = makeClient()
     actionQueue.list.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
-    const { rerender } = render(<LifecycleWorkbench client={client} />)
+    const { rerender } = renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     expect(await screen.findByTestId('action-queue-loading')).toBeInTheDocument()
@@ -518,7 +470,7 @@ describe('validator fix 2: manual Refresh control for Action Queue mode', () => 
     const user = userEvent.setup()
     let resolveRefresh: ((value: unknown) => void) | undefined
     const { client, actionQueue } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByLabelText('Empty action queue')
@@ -543,7 +495,7 @@ describe('validator fix 3: shared Application action enablement contract', () =>
     const app = makeApplication('app-1', { removedAt: null })
     const item = createActionQueueItem({ id: 'app-1', actionBucket: 'apply_now' })
     const { client } = makeClient({ applications: [app], actionQueueItems: [item] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('table', { name: 'Action Queue' })
@@ -559,7 +511,7 @@ describe('validator fix 3: shared Application action enablement contract', () =>
     const app = makeApplication('app-1', { removedAt: null })
     const item = createActionQueueItem({ id: 'app-1', actionBucket: 'apply_now' })
     const { client, applications } = makeClient({ applications: [app], actionQueueItems: [item] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('table', { name: 'Action Queue' })
@@ -579,7 +531,7 @@ describe('validator fix 4: canonical Application resolution failure ownership', 
     const item = createActionQueueItem({ id: 'app-missing', actionBucket: 'apply_now' })
     const { client, applications } = makeClient({ applications: [], actionQueueItems: [item] })
     applications.get.mockRejectedValue(new Error('network down'))
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('table', { name: 'Action Queue' })
@@ -594,7 +546,7 @@ describe('validator fix 4: canonical Application resolution failure ownership', 
     const item = createActionQueueItem({ id: 'app-gone', actionBucket: 'apply_now' })
     const { client, applications } = makeClient({ applications: [], actionQueueItems: [item] })
     applications.get.mockResolvedValue(null)
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('table', { name: 'Action Queue' })
@@ -633,7 +585,7 @@ describe('validator fix 6: nonzero-offset empty page recovery', () => {
       if (actionQueue.list.mock.calls.length >= 3) return recoveredPage
       return firstPage
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)
     await switchToActionQueueMode(user)
     await screen.findByRole('table', { name: 'Action Queue' })

@@ -45,6 +45,13 @@ export interface FieldSpec<T> {
   readonly readOnly?: boolean
 }
 
+/** Every lifecycle command that records why it happened requires a rationale. */
+export function requireRationale<T extends { rationale: string }>(value: T): FieldErrors<T> | null {
+  return value.rationale.trim() === ''
+    ? { fieldErrors: { rationale: 'Rationale is required.' } as Partial<Record<keyof T & string, string>> }
+    : null
+}
+
 export interface FieldErrors<T> {
   readonly fieldErrors?: Partial<Record<keyof T & string, string>>
   readonly formError?: string

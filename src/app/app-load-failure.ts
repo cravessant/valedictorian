@@ -4,89 +4,40 @@ import {
   type ErrorPresentation,
 } from './error-presentation'
 
-export function applicationsLoadFailure(
-  error: unknown,
-  hasStaleData: boolean,
-): ErrorPresentation | null {
-  return ownedLoadFailure(presentLoadFailure(error, {
-    fallbackMessage: 'Applications could not be loaded.',
-    hasStaleData,
-    trigger: hasStaleData ? 'refresh' : 'load',
-  }))
+/** The renderer's own canonical message when no workspace client is connected. */
+export const workspaceClientUnavailableMessage = 'Workspace HTTP client is unavailable.'
+
+/** Raised by workspace reads and commands when no workspace client is connected. */
+export class WorkspaceClientUnavailableError extends Error {
+  constructor() {
+    super(workspaceClientUnavailableMessage)
+    this.name = 'WorkspaceClientUnavailableError'
+  }
 }
 
-export function actionQueueLoadFailure(
+/**
+ * Present a scoped load failure without leaking upstream text.
+ *
+ * Only the renderer's own connection message passes through verbatim. Every
+ * other rejection — transport, protocol, HTTP body, or an arbitrary thrown
+ * value — is classified down to a fixed public message, so nothing a remote or
+ * a defect puts in `Error.message` reaches the surface.
+ */
+export function scopedLoadFailure(
   error: unknown,
+  fallbackMessage: string,
   hasStaleData: boolean,
 ): ErrorPresentation | null {
+  if (error instanceof WorkspaceClientUnavailableError) {
+    return {
+      message: workspaceClientUnavailableMessage,
+      retryable: true,
+      surface: 'scoped_load',
+      title: 'Load failed',
+    }
+  }
   return ownedLoadFailure(presentLoadFailure(error, {
-    fallbackMessage: 'Action Queue could not be loaded.',
-    hasStaleData,
-    trigger: hasStaleData ? 'refresh' : 'load',
-  }))
-}
-
-export function connectorStatusLoadFailure(
-  error: unknown,
-  hasStaleData: boolean,
-): ErrorPresentation | null {
-  return ownedLoadFailure(presentLoadFailure(error, {
-    fallbackMessage: 'Connector status could not be loaded.',
-    hasStaleData,
-    trigger: hasStaleData ? 'refresh' : 'load',
-  }))
-}
-
-export function sourcingLoadFailure(
-  error: unknown,
-  hasStaleData: boolean,
-): ErrorPresentation | null {
-  return ownedLoadFailure(presentLoadFailure(error, {
-    fallbackMessage: 'Opportunities could not be loaded.',
-    hasStaleData,
-    trigger: hasStaleData ? 'refresh' : 'load',
-  }))
-}
-
-export function applicationDetailLoadFailure(
-  error: unknown,
-  hasStaleData: boolean,
-): ErrorPresentation | null {
-  return ownedLoadFailure(presentLoadFailure(error, {
-    fallbackMessage: 'Application detail could not be loaded.',
-    hasStaleData,
-    trigger: hasStaleData ? 'refresh' : 'load',
-  }))
-}
-
-export function applicationLinksLoadFailure(
-  error: unknown,
-  hasStaleData: boolean,
-): ErrorPresentation | null {
-  return ownedLoadFailure(presentLoadFailure(error, {
-    fallbackMessage: 'Links could not be loaded.',
-    hasStaleData,
-    trigger: hasStaleData ? 'refresh' : 'load',
-  }))
-}
-
-export function applicationEventsLoadFailure(
-  error: unknown,
-  hasStaleData: boolean,
-): ErrorPresentation | null {
-  return ownedLoadFailure(presentLoadFailure(error, {
-    fallbackMessage: 'Events could not be loaded.',
-    hasStaleData,
-    trigger: hasStaleData ? 'refresh' : 'load',
-  }))
-}
-
-export function applicationAttemptsLoadFailure(
-  error: unknown,
-  hasStaleData: boolean,
-): ErrorPresentation | null {
-  return ownedLoadFailure(presentLoadFailure(error, {
-    fallbackMessage: 'Attempts could not be loaded.',
+    fallbackMessage,
     hasStaleData,
     trigger: hasStaleData ? 'refresh' : 'load',
   }))

@@ -56,6 +56,11 @@ export function phaseLabel(phase: LifecyclePhase): string {
   return 'Applications'
 }
 
+/**
+ * The shared list toolbar. Removed-record visibility is offered only by the
+ * surfaces that own that filter; Captures address theirs through the location
+ * filter group instead.
+ */
 export function RefreshToolbar({
   caption,
   total,
@@ -70,8 +75,8 @@ export function RefreshToolbar({
   readonly total: number
   readonly loading: boolean
   readonly onRefresh: () => void
-  readonly showRemoved: boolean
-  readonly onShowRemovedChange: (next: boolean) => void
+  readonly showRemoved?: boolean
+  readonly onShowRemovedChange?: (next: boolean) => void
   readonly onAdd?: () => void
   readonly addLabel?: string
 }): ReactElement {
@@ -81,14 +86,16 @@ export function RefreshToolbar({
         {caption} · {total} record{total === 1 ? '' : 's'}
       </p>
       <div className="flex items-center gap-3">
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Checkbox
-            checked={showRemoved}
-            onCheckedChange={(value) => onShowRemovedChange(value === true)}
-            aria-label="Show removed"
-          />
-          Show removed
-        </label>
+        {onShowRemovedChange ? (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Checkbox
+              checked={showRemoved ?? false}
+              onCheckedChange={(value) => onShowRemovedChange(value === true)}
+              aria-label="Show removed"
+            />
+            Show removed
+          </label>
+        ) : null}
         {onAdd ? (
           <Button type="button" variant="default" size="sm" onClick={onAdd}>
             {addLabel ?? 'Add'}

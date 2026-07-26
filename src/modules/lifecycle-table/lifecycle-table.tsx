@@ -29,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { commandFailureMessage } from './use-lifecycle-command'
 
 /**
  * Phase-neutral shared lifecycle table family. Owns the read-side shell:
@@ -42,7 +43,7 @@ import {
 export type LifecycleLoadState =
   | { status: 'loading' }
   | { status: 'loaded' }
-  | { status: 'failure'; message: string; onRetry?: () => void }
+  | { status: 'failure'; message: string; title?: string; onRetry?: () => void }
 
 export interface LifecycleColumn<Row> {
   readonly key: string
@@ -151,7 +152,7 @@ export function LifecycleTable<Row>({
       setMutation({
         kind: 'failed',
         label: `${action.label} failed`,
-        message: error instanceof Error ? error.message : 'The action could not be completed.',
+        message: commandFailureMessage(error, 'The action could not be completed.'),
       })
       restoreFocus(trigger, fallbackFocusRef.current)
     }
@@ -243,6 +244,7 @@ export function LifecycleTable<Row>({
         <ScopedLoadFailure
           autoFocus={focusLoadFailure}
           message={state.message}
+          title={state.title}
           onRetry={state.onRetry}
         />
       ) : null}

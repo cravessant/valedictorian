@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 import type {
   CaptureHistoryResult,
   CaptureListPresentation,
@@ -10,11 +10,19 @@ import type {
   ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 
+import { WorkspaceClientUnavailableError } from '../../../app/app-load-failure'
 import { DESKTOP_USER_ACTOR } from '../lifecycle-actor'
-import { FormModal, type FieldErrors, type FieldSpec } from '../form-modal'
+import { FormModal, requireRationale, type FieldErrors, type FieldSpec } from '../form-modal'
 import { HistoryModal, OutcomeToast } from '../history-modal'
-import { afterPage, loadHistory } from '../load-history'
 import type { LifecycleOutcome } from '../lifecycle-outcome-types'
+import { lifecycleKeys, type LifecycleScope } from '../lifecycle-queries'
+import { afterPage, loadAllPages } from '../load-pages'
+import {
+  LifecycleBlockerError,
+  commandFailureMessage,
+  useLifecycleCommand,
+} from '../use-lifecycle-command'
+import { useLifecycleHistory } from '../use-lifecycle-history'
 import { EVIDENCE_MODE_CHOICES } from './field-choices'
 
 interface CaptureDraft {
@@ -51,6 +59,7 @@ export interface CaptureController {
 
 export function useCaptureController(params: {
   client: Pick<ValedictorianWorkspaceClient, 'captures'> | null
+  scope: LifecycleScope
   refresh: () => Promise<void> | void
   onRemoved?: (captureId: string) => void
 }): CaptureController {
@@ -61,23 +70,29 @@ export function useCaptureController(params: {
   const [removeBlocker, setRemoveBlocker] = useState<CaptureRemovalBlocker | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<CaptureListPresentation | null>(null)
   const [restoreDraft, setRestoreDraft] = useState<CaptureRestoreDraft>(emptyRestoreDraft())
-  const [historyTarget, setHistoryTarget] = useState<CaptureListPresentation | null>(null)
   const [outcome, setOutcome] = useState<LifecycleOutcome | null>(null)
-  const [historyOutcome, setHistoryOutcome] = useState<LifecycleOutcome | null>(null)
-  const [pending, setPending] = useState(false)
-  const [historyPending, setHistoryPending] = useState(false)
-  const mutationInFlight = useRef(false)
-  const historyRequest = useRef(0)
-  const clientRef = useRef(params.client)
-  const refreshRef = useRef(params.refresh)
-  const onRemovedRef = useRef(params.onRemoved)
-  clientRef.current = params.client
-  refreshRef.current = params.refresh
-  onRemovedRef.current = params.onRemoved
-
+  const command = useLifecycleCommand((message) => {
+    setOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
+  })
+  const pending = command.pending
+  const history = useLifecycleHistory<CaptureListPresentation>(
+    lifecycleKeys.captures(params.scope),
+    (row) => row.captureId,
+    async (row) => {
+      const entries = await loadAllPages<CaptureHistoryResult['items'][number]>((after) =>
+        requireClient().captures.history({ id: row.captureId, limit: 50, ...afterPage(after) }))
+      return entries.map((entry) => ({
+        revision: entry.revision,
+        kind: entry.kind,
+        actor: entry.audit.actor,
+        timestamp: entry.audit.timestamp,
+        summary: `Capture ${entry.kind}.`,
+      }))
+    },
+  )
   function requireClient(): Pick<ValedictorianWorkspaceClient, 'captures'> {
-    if (!clientRef.current) throw new Error('Workspace HTTP client is unavailable.')
-    return clientRef.current
+    if (!params.client) throw new WorkspaceClientUnavailableError()
+    return params.client
   }
 
   function openCreate() {
@@ -100,40 +115,6 @@ export function useCaptureController(params: {
     setRestoreTarget(row)
   }
 
-  async function openHistory(row: CaptureListPresentation) {
-    const request = ++historyRequest.current
-    setHistoryOutcome(null)
-    setHistoryTarget(row)
-    setHistoryPending(true)
-    try {
-      const entries = await loadHistory<CaptureHistoryResult['items'][number]>((after) =>
-        requireClient().captures.history({ id: row.captureId, limit: 50, ...afterPage(after) }))
-      if (request !== historyRequest.current) return
-      setHistoryOutcome({
-        kind: 'history',
-        entries: entries.map((entry) => ({
-          revision: entry.revision,
-          kind: entry.kind,
-          actor: entry.audit.actor,
-          timestamp: entry.audit.timestamp,
-          summary: `Capture ${entry.kind}.`,
-        })),
-      })
-    } catch (error) {
-      if (request !== historyRequest.current) return
-      const message = messageOf(error)
-      setHistoryOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
-    } finally {
-      if (request === historyRequest.current) setHistoryPending(false)
-    }
-  }
-
-  function closeHistory() {
-    historyRequest.current += 1
-    setHistoryPending(false)
-    setHistoryTarget(null)
-  }
-
   function validateCreate(value: CaptureDraft): FieldErrors<CaptureDraft> | null {
     const fieldErrors: Partial<Record<keyof CaptureDraft, string>> = {}
     if (!value.evidenceMode) fieldErrors.evidenceMode = 'Evidence mode is required.'
@@ -143,11 +124,6 @@ export function useCaptureController(params: {
     return Object.keys(fieldErrors).length > 0 ? { fieldErrors } : null
   }
 
-  function validateRationale<T extends { rationale: string }>(value: T): FieldErrors<T> | null {
-    return value.rationale.trim() === ''
-      ? { fieldErrors: { rationale: 'Rationale is required.' } as Partial<Record<keyof T & string, string>> }
-      : null
-  }
 
   function validateRemoval(value: CaptureRemovalDraft): FieldErrors<CaptureRemovalDraft> | null {
     const fieldErrors: Partial<Record<keyof CaptureRemovalDraft, string>> = {}
@@ -158,9 +134,8 @@ export function useCaptureController(params: {
     return Object.keys(fieldErrors).length > 0 ? { fieldErrors } : null
   }
 
-  async function submitCreate(value: CaptureDraft) {
-    setPending(true)
-    try {
+  function submitCreate(value: CaptureDraft) {
+    command.run(async () => {
       const input: CreateCaptureInput = {
         evidenceMode: value.evidenceMode as CreateCaptureInput['evidenceMode'],
         adapter: {
@@ -175,23 +150,15 @@ export function useCaptureController(params: {
         evidence: [],
       }
       const result: CaptureMutationResult = await requireClient().captures.create(input)
-      if (result.status !== 'succeeded') throw new Error(result.blocker.message)
-      await refreshRef.current()
+      if (result.status !== 'succeeded') throw new LifecycleBlockerError(result.blocker.message)
+      await params.refresh()
       setCreateOpen(false)
       setOutcome({ kind: 'succeeded' })
-    } catch (error) {
-      const message = messageOf(error, 'Capture creation failed.')
-      setOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
-    } finally {
-      setPending(false)
-    }
+    }, 'Capture creation failed.')
   }
 
-  async function submitRemove(row: CaptureListPresentation, value: CaptureRemovalDraft) {
-    if (mutationInFlight.current) return
-    mutationInFlight.current = true
-    setPending(true)
-    try {
+  function submitRemove(row: CaptureListPresentation, value: CaptureRemovalDraft) {
+    command.run(async () => {
       const choice = removeBlocker
         ? value.choice as RemovalChoice
         : 'reject_if_dependents' as const
@@ -215,27 +182,18 @@ export function useCaptureController(params: {
       }
       setRemoveBlocker(null)
       setRemoveTarget(null)
-      onRemovedRef.current?.(row.captureId)
+      params.onRemoved?.(row.captureId)
       try {
-        await refreshRef.current()
+        await params.refresh()
         setOutcome({ kind: 'removed', affectedDependentIds: result.affectedDependentIds })
       } catch (error) {
-        setOutcome({ kind: 'partial-success', action: 'removed', refreshError: messageOf(error, 'The current Capture projection could not be refreshed.') })
+        setOutcome({ kind: 'partial-success', action: 'removed', refreshError: commandFailureMessage(error, 'The current Capture projection could not be refreshed.') })
       }
-    } catch (error) {
-      const message = messageOf(error, 'Capture removal failed.')
-      setOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
-    } finally {
-      mutationInFlight.current = false
-      setPending(false)
-    }
+    }, 'Capture removal failed.')
   }
 
-  async function submitRestore(row: CaptureListPresentation, value: CaptureRestoreDraft) {
-    if (mutationInFlight.current) return
-    mutationInFlight.current = true
-    setPending(true)
-    try {
+  function submitRestore(row: CaptureListPresentation, value: CaptureRestoreDraft) {
+    command.run(async () => {
       const input: RestoreInput = {
         id: row.captureId,
         actor: DESKTOP_USER_ACTOR,
@@ -252,22 +210,16 @@ export function useCaptureController(params: {
       }
       setRestoreTarget(null)
       try {
-        await refreshRef.current()
+        await params.refresh()
         setOutcome({
           kind: 'restored',
           dependentLinks: result.dependentLinks,
           message: 'Only this Capture was restored. Downstream resources are not restored automatically. It is now available in All and no longer appears in Removed.',
         })
       } catch (error) {
-        setOutcome({ kind: 'partial-success', action: 'restored', refreshError: messageOf(error, 'The current Capture projection could not be refreshed.') })
+        setOutcome({ kind: 'partial-success', action: 'restored', refreshError: commandFailureMessage(error, 'The current Capture projection could not be refreshed.') })
       }
-    } catch (error) {
-      const message = messageOf(error, 'Capture restoration failed.')
-      setOutcome({ kind: 'error', blocker: { code: 'impossible_state', message }, message })
-    } finally {
-      mutationInFlight.current = false
-      setPending(false)
-    }
+    }, 'Capture restoration failed.')
   }
 
   const createFields: ReadonlyArray<FieldSpec<CaptureDraft>> = [
@@ -300,7 +252,7 @@ export function useCaptureController(params: {
   return {
     removalPending: removeTarget !== null && pending,
     openCreate,
-    openHistory,
+    openHistory: history.open,
     openRemove,
     openRestore,
     modalLayer: (
@@ -325,7 +277,7 @@ export function useCaptureController(params: {
           fields={removeFields}
           value={removeDraft}
           onChange={setRemoveDraft}
-          onSubmit={(value) => { if (removeTarget) void submitRemove(removeTarget, value) }}
+          onSubmit={(value) => { if (removeTarget) submitRemove(removeTarget, value) }}
           onCancel={() => { setRemoveTarget(null); setRemoveBlocker(null) }}
           validate={validateRemoval}
           pending={pending}
@@ -339,19 +291,19 @@ export function useCaptureController(params: {
           fields={restoreFields}
           value={restoreDraft}
           onChange={setRestoreDraft}
-          onSubmit={(value) => { if (restoreTarget) void submitRestore(restoreTarget, value) }}
+          onSubmit={(value) => { if (restoreTarget) submitRestore(restoreTarget, value) }}
           onCancel={() => setRestoreTarget(null)}
-          validate={validateRationale}
+          validate={requireRationale}
           pending={pending}
           submitLabel="Restore Capture"
           afterFields={<p className="text-sm text-muted-foreground">This restores only the Capture, not any downstream resources.</p>}
         />
         <HistoryModal
-          open={historyTarget !== null}
-          title={historyTarget ? `History · ${historyTarget.captureId}` : 'History'}
-          outcome={historyOutcome}
-          pending={historyPending}
-          onClose={closeHistory}
+          open={history.target !== null}
+          title={history.target ? `History · ${history.target.captureId}` : 'History'}
+          outcome={history.outcome}
+          pending={history.pending}
+          onClose={history.close}
         />
         {outcome ? <OutcomeToast outcome={outcome} pending={pending} onDismiss={() => setOutcome(null)} /> : null}
       </>
@@ -416,8 +368,4 @@ function removalChoiceConsequence(choice: RemovalChoice): string {
     cascade_tombstone: 'Tombstone downstream chain: tombstone this Capture and every linked downstream Job, Opportunity, and Application resource.',
   }
   return consequences[choice]
-}
-
-function messageOf(error: unknown, fallback = 'Operation failed.'): string {
-  return error instanceof Error ? error.message : fallback
 }

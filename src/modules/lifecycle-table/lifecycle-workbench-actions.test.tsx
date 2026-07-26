@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -12,6 +12,8 @@ import type {
 } from '@sparxie/sdk'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
+import { renderWithQueryClient } from '@/test/query-client'
+import { emptyPageInfo, makeApplication } from './lifecycle.test-helpers'
 import {
   DESKTOP_USER_ACTOR,
   __resetLifecycleActorCounterForTests,
@@ -19,17 +21,6 @@ import {
 import type { LifecycleOutcome } from './lifecycle-outcome-types'
 import { LifecycleOutcomeView } from './lifecycle-outcome-view'
 
-/** The canonical page boundaries a single-page lifecycle list reports. */
-const emptyPageInfo = {
-  startCursor: null,
-  endCursor: null,
-  hasPreviousPage: false,
-  hasNextPage: false,
-} as const
-
-
-class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
-vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 Element.prototype.scrollIntoView = vi.fn()
 
 afterEach(() => {
@@ -129,41 +120,6 @@ function makeOpportunity(id: string, overrides: Partial<Opportunity> = {}): Oppo
     cutoff: 'not_evaluated',
     disposition: 'reviewing',
     override: null,
-    createdAt: '2025-01-01T00:00:00Z',
-    updatedAt: '2025-01-01T00:00:00Z',
-    removedAt: null,
-    ...overrides,
-  }
-}
-
-function makeApplication(id: string, overrides: Partial<Application> = {}): Application {
-  return {
-    id: id as Application['id'],
-    workspaceId: 'ws',
-    opportunityId: 'opp-1' as Application['opportunityId'],
-    jobId: 'job-1' as Application['jobId'],
-    revision: 1,
-    status: 'active',
-    snapshot: {
-      jobFactsRevision: 1,
-      capturedAt: '2025-01-01T00:00:00Z',
-      companyName: 'Acme',
-      roleTitle: 'Engineer',
-      sourceName: 'LinkedIn',
-      roleKind: 'new_grad',
-      term: null,
-      terms: [],
-      timingMode: 'unknown',
-      startDate: null,
-      endDate: null,
-      location: null,
-      workMode: 'unknown',
-      initialDestination: null,
-      initialLinks: [],
-    },
-    companyName: 'Acme',
-    sourceName: 'LinkedIn',
-    links: [],
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
     removedAt: null,
@@ -288,6 +244,47 @@ function makeClient(seed: {
   }
 }
 
+/** Submit a Capture removal in one workspace and keep the handles to move workspaces. */
+async function submitCaptureRemovalIn(
+  workspaceId: string,
+  stubRemoval: (client: MockClient) => void,
+) {
+  const user = userEvent.setup()
+  const mock = makeClient({ captures: [makeCapture('cap-1')] })
+  stubRemoval(mock)
+  const { rerender } = renderWithQueryClient(
+    <LifecycleWorkbench client={mock.client} workspaceId={workspaceId} />,
+  )
+  const menu = await openRowMenu(user, 'jobright')
+  await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Remove Capture' })
+  await user.type(within(dialog).getByRole('textbox', { name: 'Rationale' }), 'Duplicate intake.')
+  await user.click(within(dialog).getByRole('button', { name: 'Check and remove' }))
+  await waitFor(() => expect(mock.captures.remove).toHaveBeenCalledTimes(1))
+  return {
+    captures: mock.captures,
+    rerenderIn: (nextWorkspaceId: string, nextClient = mock.client) => rerender(
+      <LifecycleWorkbench client={nextClient} workspaceId={nextWorkspaceId} />,
+    ),
+  }
+}
+
+function expectNoOutcomePublished(): void {
+  for (const outcome of ['removed', 'error', 'partial-success']) {
+    expect(screen.queryByTestId(`lifecycle-outcome-${outcome}`)).not.toBeInTheDocument()
+  }
+}
+
+/** The committed removal a superseded session's command settles with. */
+const committedRemoval = {
+  status: 'removed',
+  id: 'cap-1',
+  choice: 'reject_if_dependents',
+  removedAt: '2025-02-01T00:00:00Z',
+  affectedDependentIds: [],
+  audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-01T00:00:00Z' },
+}
+
 async function openRowMenu(user: ReturnType<typeof userEvent.setup>, rowLabel: string | RegExp) {
   const label = rowLabel instanceof RegExp ? rowLabel.source : rowLabel
   const trigger = await screen.findByRole('button', { name: new RegExp(`Actions for row ${label}`) })
@@ -311,7 +308,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
         totalCount: items.length,
       }
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     const activeMenu = await openRowMenu(user, 'jobright')
     expect(within(activeMenu).getByRole('menuitem', { name: 'Remove Capture' })).toBeInTheDocument()
@@ -356,7 +353,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
         audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-01T00:00:00Z' },
       }
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     let menu = await openRowMenu(user, 'jobright')
     await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
@@ -404,7 +401,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
         'cascade_tombstone',
       ],
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     const menu = await openRowMenu(user, 'jobright')
     await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
@@ -442,8 +439,8 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('retains Capture removal context and reports failures without a success claim', async () => {
     const user = userEvent.setup()
     const { client, captures } = makeClient({ captures: [makeCapture('cap-1')] })
-    captures.remove.mockRejectedValue(new Error('Capture removal is unavailable.'))
-    render(<LifecycleWorkbench client={client} />)
+    captures.remove.mockRejectedValue(new Error('ECONNREFUSED 127.0.0.1:4317'))
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     const menu = await openRowMenu(user, 'jobright')
     await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
@@ -451,7 +448,9 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     await user.type(within(dialog).getByRole('textbox', { name: 'Rationale' }), 'No longer relevant.')
     await user.click(within(dialog).getByRole('button', { name: 'Check and remove' }))
 
-    expect(await screen.findByTestId('lifecycle-outcome-error')).toHaveTextContent('Capture removal is unavailable.')
+    const failure = await screen.findByTestId('lifecycle-outcome-error')
+    expect(failure).toHaveTextContent('Capture removal failed.')
+    expect(failure).not.toHaveTextContent('ECONNREFUSED')
     expect(screen.getByRole('dialog', { name: 'Remove Capture' })).toBeInTheDocument()
     expect(screen.queryByTestId('lifecycle-outcome-removed')).not.toBeInTheDocument()
   })
@@ -459,10 +458,10 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('closes a committed Capture removal and reports partial success when its refresh fails', async () => {
     const user = userEvent.setup()
     const { client, captures, captureResolution } = makeClient({ captures: [makeCapture('cap-1')] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     const menu = await openRowMenu(user, 'jobright')
-    captureResolution.list.mockRejectedValueOnce(new Error('remove refresh unavailable'))
+    captureResolution.list.mockRejectedValueOnce(new Error('remote stack trace: at Query.run'))
     await user.click(within(menu).getByRole('menuitem', { name: 'Remove Capture' }))
     const dialog = await screen.findByRole('dialog', { name: 'Remove Capture' })
     await user.type(within(dialog).getByRole('textbox', { name: 'Rationale' }), 'Remove duplicate lead.')
@@ -470,7 +469,8 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
 
     await waitFor(() => expect(captures.remove).toHaveBeenCalledTimes(1))
     const outcome = await screen.findByTestId('lifecycle-outcome-partial-success')
-    expect(outcome).toHaveTextContent('Capture was removed, but the workbench could not refresh: remove refresh unavailable')
+    expect(outcome).toHaveTextContent('Capture was removed, but the workbench could not refresh: The current Capture projection could not be refreshed.')
+    expect(outcome).not.toHaveTextContent('stack trace')
     expect(outcome).toHaveTextContent('Refresh or reconcile the workbench before taking another action.')
     expect(screen.queryByRole('dialog', { name: 'Remove Capture' })).not.toBeInTheDocument()
     expect(screen.queryByTestId('lifecycle-outcome-removed')).not.toBeInTheDocument()
@@ -500,7 +500,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
         audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-02T00:00:00Z' },
       }
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     await user.click(await screen.findByRole('radio', { name: 'Removed' }))
     const menu = await openRowMenu(user, 'jobright')
@@ -539,11 +539,11 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
       dependentLinks: [],
       audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-02T00:00:00Z' },
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     await user.click(await screen.findByRole('radio', { name: 'Removed' }))
     const menu = await openRowMenu(user, 'jobright')
-    captureResolution.list.mockRejectedValueOnce(new Error('restore refresh unavailable'))
+    captureResolution.list.mockRejectedValueOnce(new Error('remote stack trace: at Query.run'))
     await user.click(within(menu).getByRole('menuitem', { name: 'Restore Capture' }))
     const dialog = await screen.findByRole('dialog', { name: 'Restore Capture' })
     await user.type(within(dialog).getByRole('textbox', { name: 'Rationale' }), 'Review again.')
@@ -551,7 +551,8 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
 
     await waitFor(() => expect(captures.restore).toHaveBeenCalledTimes(1))
     const outcome = await screen.findByTestId('lifecycle-outcome-partial-success')
-    expect(outcome).toHaveTextContent('Capture was restored, but the workbench could not refresh: restore refresh unavailable')
+    expect(outcome).toHaveTextContent('Capture was restored, but the workbench could not refresh: The current Capture projection could not be refreshed.')
+    expect(outcome).not.toHaveTextContent('stack trace')
     expect(outcome).toHaveTextContent('Refresh or reconcile the workbench before taking another action.')
     expect(screen.queryByRole('dialog', { name: 'Restore Capture' })).not.toBeInTheDocument()
     expect(screen.queryByTestId('lifecycle-outcome-restored')).not.toBeInTheDocument()
@@ -568,7 +569,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
       ],
       pageInfo: emptyPageInfo,
     })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
     const menu = await openRowMenu(user, 'jobright')
     await user.click(within(menu).getByRole('menuitem', { name: 'View history' }))
@@ -581,7 +582,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('Add Capture opens a modal, submits with the typed CreateCaptureInput, and awaits refresh before success', async () => {
     const user = userEvent.setup()
     const { client, captures } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await screen.findByText('No captures')
 
     await user.click(screen.getByRole('button', { name: 'Add capture' }))
@@ -601,7 +602,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('uses immediate clean Cancel exits for Capture, Job, Opportunity, and Application create forms', async () => {
     const user = userEvent.setup()
     const { client } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     const forms = [
       { trigger: 'Add capture', title: 'Add capture', tab: null },
       { trigger: 'Add job', title: 'Add job', tab: /^Jobs/ },
@@ -621,7 +622,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('Job promote routes to jobs.promoteToOpportunity with the typed evaluation', async () => {
     const user = userEvent.setup()
     const { client, jobs, opportunities } = makeClient({ jobs: [makeJob('job-1')] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await user.click(screen.getByRole('button', { name: /^Jobs/ }))
     await screen.findByRole('table', { name: 'Jobs' })
     const menu = await openRowMenu(user, /Acme.*Engineer/)
@@ -648,7 +649,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('offers Company reassignment from the Job row only after its assignment loads', async () => {
     const user = userEvent.setup()
     const { client } = makeClient({ jobs: [makeJob('job-1')] })
-    render(<LifecycleWorkbench client={client} workspaceId="ws" />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} workspaceId="ws" />)
     await user.click(await screen.findByRole('button', { name: /^Jobs/ }))
 
     const menu = await openRowMenu(user, /Acme.*Engineer/)
@@ -664,7 +665,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('Opportunity promote routes to opportunities.promoteToApplication', async () => {
     const user = userEvent.setup()
     const { client, opportunities, applications } = makeClient({ opportunities: [makeOpportunity('opp-1')] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await user.click(screen.getByRole('button', { name: /^Opportunities/ }))
     await screen.findByRole('table', { name: 'Opportunities' })
     const menu = await openRowMenu(user, 'opp-1')
@@ -686,7 +687,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('Application has no promote action', async () => {
     const user = userEvent.setup()
     const { client } = makeClient({ applications: [makeApplication('app-1')] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await user.click(screen.getByRole('button', { name: /^Applications/ }))
     await screen.findByRole('table', { name: 'Applications' })
     const menu = await openRowMenu(user, /Acme.*Engineer/)
@@ -710,7 +711,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
         status: 'succeeded', resource: makeJob('job-existing'), duplicateResolution: { action: 'attach', targetResourceId: 'job-existing' },
         audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' },
       })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await user.click(await screen.findByRole('button', { name: /^Jobs/ }))
     await user.click(screen.getByRole('button', { name: 'Add job' }))
     await user.type(screen.getByRole('textbox', { name: 'Company name' }), 'Acme')
@@ -746,7 +747,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
         override: { actor: DESKTOP_USER_ACTOR, rationale: 'Reviewed manually.', warningCodes: ['fit'] }, duplicateResolution: null,
         audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' },
       })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await user.click(await screen.findByRole('button', { name: /^Jobs/ }))
     const menu = await openRowMenu(user, /Acme.*Engineer/)
     await user.click(within(menu).getByRole('menuitem', { name: 'Promote to opportunity' }))
@@ -786,7 +787,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
       captureEvidenceReferences: [{ captureId: 'cap-1', captureRevision: 3, evidenceIndexes: [0] }],
     })
     const { client, jobs } = makeClient({ jobs: [job] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await user.click(await screen.findByRole('button', { name: /^Jobs/ }))
     const menu = await openRowMenu(user, /Acme.*Engineer/)
     await user.click(within(menu).getByRole('menuitem', { name: 'Correct facts' }))
@@ -811,16 +812,18 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('keeps the modal open and reports refresh failure instead of stale success', async () => {
     const user = userEvent.setup()
     const { client, captureResolution } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await screen.findByText('No captures')
-    captureResolution.list.mockRejectedValueOnce(new Error('refresh unavailable'))
+    captureResolution.list.mockRejectedValueOnce(new Error('internal: /Users/keni/workspace.db locked'))
     await user.click(screen.getByRole('button', { name: 'Add capture' }))
     await user.type(screen.getByRole('textbox', { name: 'Source id' }), 'manual')
     await user.type(screen.getByRole('textbox', { name: 'Source version' }), '1.0.0')
     await user.type(screen.getByRole('textbox', { name: 'Observed at' }), '2025-01-01T00:00')
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
-    expect(await screen.findByTestId('lifecycle-outcome-error')).toHaveTextContent('refresh unavailable')
+    const failure = await screen.findByTestId('lifecycle-outcome-error')
+    expect(failure).toHaveTextContent('Capture creation failed.')
+    expect(failure).not.toHaveTextContent('workspace.db')
     expect(screen.getByRole('dialog', { name: 'Add capture' })).toBeInTheDocument()
     expect(screen.queryByTestId('lifecycle-outcome-succeeded')).not.toBeInTheDocument()
   })
@@ -828,7 +831,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   it('preserves the form draft when validation fails', async () => {
     const user = userEvent.setup()
     const { client, captures } = makeClient()
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await screen.findByText('No captures')
     await user.click(screen.getByRole('button', { name: 'Add capture' }))
     await user.click(screen.getByRole('button', { name: 'Create' }))
@@ -838,7 +841,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
 
   it('refreshes on window focus via the invalidation hook', async () => {
     const { client, captureResolution } = makeClient({ captures: [makeCapture('cap-1')] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await screen.findByRole('table', { name: 'Captures' })
     expect(captureResolution.list).toHaveBeenCalledTimes(1)
     window.dispatchEvent(new Event('focus'))
@@ -847,13 +850,98 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
 
   it('coalesces overlapping focus events into a single refresh', async () => {
     const { client, captureResolution } = makeClient({ captures: [makeCapture('cap-1')] })
-    render(<LifecycleWorkbench client={client} />)
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await screen.findByRole('table', { name: 'Captures' })
     const callsBefore = captureResolution.list.mock.calls.length
     window.dispatchEvent(new Event('focus'))
     window.dispatchEvent(new Event('focus'))
     window.dispatchEvent(new Event('focus'))
     await waitFor(() => expect(captureResolution.list.mock.calls.length).toBe(callsBefore + 1))
+  })
+
+  it('reads through a supplied client replacement in the render that delivers it', async () => {
+    const superseded = makeClient({ captures: [makeCapture('cap-1')] })
+    const replacement = makeClient({ captures: [makeCapture('cap-1')] })
+    const { rerender } = renderWithQueryClient(
+      <LifecycleWorkbench client={superseded.client} workspaceId="ws-a" />,
+    )
+    await waitFor(() => expect(superseded.captureResolution.list).toHaveBeenCalledTimes(1))
+
+    // The parent replaces backend and workspace together. Nothing may read through
+    // the superseded client under the new workspace while an effect catches up.
+    rerender(<LifecycleWorkbench client={replacement.client} workspaceId="ws-b" />)
+
+    await waitFor(() => expect(replacement.captureResolution.list).toHaveBeenCalledTimes(1))
+    expect(superseded.captureResolution.list).toHaveBeenCalledTimes(1)
+    expect(superseded.jobs.list).toHaveBeenCalledTimes(2)
+  })
+
+  it('never publishes a command that settles after a supplied client replacement', async () => {
+    let settleRemoval: ((result: unknown) => void) | undefined
+    const { rerenderIn } = await submitCaptureRemovalIn('ws-a', (client) => {
+      client.captures.remove.mockImplementation(
+        () => new Promise<unknown>((resolve) => { settleRemoval = resolve }),
+      )
+    })
+
+    rerenderIn('ws-a', makeClient({ captures: [makeCapture('cap-1')] }).client)
+    await act(async () => settleRemoval?.(committedRemoval))
+
+    expect(screen.queryByRole('dialog', { name: 'Remove Capture' })).not.toBeInTheDocument()
+    expectNoOutcomePublished()
+  })
+
+  it('reports a failed Capture history load without the upstream text', async () => {
+    const user = userEvent.setup()
+    const { client, captures } = makeClient({ captures: [makeCapture('cap-1')] })
+    captures.history.mockRejectedValue(
+      new Error('pg_dump: permission denied for relation capture_events'),
+    )
+    renderWithQueryClient(<LifecycleWorkbench client={client} />)
+
+    const menu = await openRowMenu(user, 'jobright')
+    await user.click(within(menu).getByRole('menuitem', { name: 'View history' }))
+    const dialog = await screen.findByRole('dialog', { name: 'History · cap-1' })
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('History could not be loaded.')
+    expect(dialog).not.toHaveTextContent('permission denied')
+  })
+
+  it('drops a held removal blocker and its resolution callback when the workspace changes', async () => {
+    const { captures, rerenderIn } = await submitCaptureRemovalIn('ws-a', (client) => {
+      client.captures.remove.mockResolvedValue({
+        status: 'blocked',
+        id: 'cap-1',
+        blocker: { code: 'impossible_state', message: 'Linked Jobs require a choice.' },
+        dependentIds: ['job-1'],
+        supportedChoices: ['preserve_historical_lineage'],
+      })
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent('job-1')
+
+    rerenderIn('ws-b')
+
+    await waitFor(() => expect(
+      screen.queryByRole('dialog', { name: 'Remove Capture' }),
+    ).not.toBeInTheDocument())
+    expect(screen.queryByRole('combobox', { name: 'Removal option' })).not.toBeInTheDocument()
+    expect(captures.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('never publishes a command that settles after the workspace changed', async () => {
+    let settleRemoval: ((result: unknown) => void) | undefined
+    const { rerenderIn } = await submitCaptureRemovalIn('ws-a', (client) => {
+      client.captures.remove.mockImplementation(
+        () => new Promise<unknown>((resolve) => { settleRemoval = resolve }),
+      )
+    })
+
+    rerenderIn('ws-b')
+    await act(async () => settleRemoval?.(committedRemoval))
+
+    for (const outcome of ['removed', 'error', 'partial-success']) {
+      expect(screen.queryByTestId(`lifecycle-outcome-${outcome}`)).not.toBeInTheDocument()
+    }
   })
 
   it('renders the desktop user actor attribution as stable and unchanged across modals', () => {
