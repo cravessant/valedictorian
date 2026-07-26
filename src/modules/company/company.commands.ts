@@ -19,6 +19,7 @@ import type { PgliteDatabase } from '../../db/pglite'
 import { createUuidV7Generator, type Clock, type UuidV7Generator } from '../../db/uuidv7'
 import { companyAliases, workspaceCompanies } from './company.schema'
 import {
+  admitCompanyCommand,
   appendCompanyHistory,
   blockedMutation,
   capabilityFailure,
@@ -117,7 +118,7 @@ export function createCompanyCommands(
   const nowIso = () => clock().toISOString()
 
   async function create(input: unknown): Promise<CreateCompanyResult> {
-    const parsed = createCompanyInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => createCompanyInputSchema.parse(input))
     if (parsed.workspaceId !== workspaceId) {
       return blockedCreate(parsed, lifecycleFailure(
         'workspace_ownership',
@@ -175,7 +176,7 @@ export function createCompanyCommands(
   }
 
   async function update(input: unknown): Promise<UpdateCompanyResult> {
-    const parsed = updateCompanyInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => updateCompanyInputSchema.parse(input))
     const changedFields = [
       ...(parsed.displayName === undefined ? [] : ['display_name']),
       ...(parsed.websiteUrl === undefined ? [] : ['website_url']),
@@ -201,7 +202,7 @@ export function createCompanyCommands(
   }
 
   async function updateNotes(input: unknown): Promise<UpdateCompanyNotesResult> {
-    const parsed = updateCompanyNotesInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => updateCompanyNotesInputSchema.parse(input))
     return mutateCompany(database, workspaceId, parsed, {
       operation: 'notes',
       allowMerged: true,
@@ -215,7 +216,7 @@ export function createCompanyCommands(
   }
 
   async function addAlias(input: unknown): Promise<UpdateCompanyResult> {
-    const parsed = addCompanyAliasInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => addCompanyAliasInputSchema.parse(input))
     return mutateAlias(database, workspaceId, parsed, {
       operation: 'alias_add',
       kind: 'alias_added',
@@ -246,7 +247,7 @@ export function createCompanyCommands(
   }
 
   async function updateAlias(input: unknown): Promise<UpdateCompanyResult> {
-    const parsed = updateCompanyAliasInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => updateCompanyAliasInputSchema.parse(input))
     return mutateAlias(database, workspaceId, parsed, {
       operation: 'alias_update',
       kind: 'alias_updated',
@@ -280,7 +281,7 @@ export function createCompanyCommands(
   }
 
   async function removeAlias(input: unknown): Promise<UpdateCompanyResult> {
-    const parsed = removeCompanyAliasInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => removeCompanyAliasInputSchema.parse(input))
     return mutateAlias(database, workspaceId, parsed, {
       operation: 'alias_remove',
       kind: 'alias_removed',
@@ -305,7 +306,7 @@ export function createCompanyCommands(
   }
 
   async function archive(input: unknown): Promise<ArchiveCompanyResult> {
-    const parsed = archiveCompanyInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => archiveCompanyInputSchema.parse(input))
     return mutateCompany(database, workspaceId, parsed, {
       operation: 'archive',
       allowMerged: false,
@@ -320,7 +321,7 @@ export function createCompanyCommands(
   }
 
   async function restore(input: unknown): Promise<RestoreCompanyResult> {
-    const parsed = restoreCompanyInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => restoreCompanyInputSchema.parse(input))
     return mutateCompany(database, workspaceId, parsed, {
       operation: 'restore',
       allowMerged: false,

@@ -6,17 +6,6 @@ import {
   companyHistoryListInputSchema,
   companyMatchPreviewInputSchema,
   companySearchInputSchema,
-  createCompanyInputSchema,
-  addCompanyAliasInputSchema,
-  archiveCompanyInputSchema,
-  removeCompanyAliasInputSchema,
-  markCompaniesDistinctInputSchema,
-  mergeCompaniesInputSchema,
-  reassignJobCompanyInputSchema,
-  restoreCompanyInputSchema,
-  updateCompanyAliasInputSchema,
-  updateCompanyInputSchema,
-  updateCompanyNotesInputSchema,
 } from '@sparxie/sdk'
 import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
 import {
@@ -50,12 +39,7 @@ export async function handleCompanyRoutes({
     }
     if (request.method === 'POST' && assignmentMatch[2] === 'reassign') {
       const body = await readJsonBody(request)
-      const input = parseLocalHttpInput(() => reassignJobCompanyInputSchema.parse({
-        ...asRecord(body),
-        workspaceId,
-        jobId,
-      }))
-      writeJson(response, 200, await client.companyAssignments.reassign(input))
+      writeJson(response, 200, await client.companyAssignments.reassign(untrusted(body, { workspaceId, jobId }) as never))
       return true
     }
     return false
@@ -83,11 +67,7 @@ export async function handleCompanyRoutes({
   }
   if (method === 'POST' && pathname === '/v1/companies/merge') {
     const body = await readJsonBody(request)
-    const input = parseLocalHttpInput(() => mergeCompaniesInputSchema.parse({
-      ...asRecord(body),
-      workspaceId,
-    }))
-    writeJson(response, 200, await client.companies.duplicates.merge(input))
+    writeJson(response, 200, await client.companies.duplicates.merge(untrusted(body, { workspaceId }) as never))
     return true
   }
   if (pathname === '/v1/companies') {
@@ -99,11 +79,7 @@ export async function handleCompanyRoutes({
     }
     if (method === 'POST') {
       const body = await readJsonBody(request)
-      const input = parseLocalHttpInput(() => createCompanyInputSchema.parse({
-        ...asRecord(body),
-        workspaceId,
-      }))
-      writeJson(response, 200, await client.companies.create(input))
+      writeJson(response, 200, await client.companies.create(untrusted(body, { workspaceId }) as never))
       return true
     }
     return false
@@ -129,12 +105,7 @@ export async function handleCompanyRoutes({
     }
     if (method === 'POST' && duplicateMatch[2] === 'mark-distinct') {
       const body = await readJsonBody(request)
-      const input = parseLocalHttpInput(() => markCompaniesDistinctInputSchema.parse({
-        ...asRecord(body),
-        workspaceId,
-        candidateId,
-      }))
-      writeJson(response, 200, await client.companies.duplicates.markDistinct(input))
+      writeJson(response, 200, await client.companies.duplicates.markDistinct(untrusted(body, { workspaceId, candidateId }) as never))
       return true
     }
     return false
@@ -145,24 +116,13 @@ export async function handleCompanyRoutes({
     const companyId = decode(aliasMatch[1]!)
     const aliasId = decode(aliasMatch[2]!)
     const body = await readJsonBody(request)
+    const alias = { workspaceId, companyId, aliasId }
     if (method === 'PATCH') {
-      const input = parseLocalHttpInput(() => updateCompanyAliasInputSchema.parse({
-        ...asRecord(body),
-        workspaceId,
-        companyId,
-        aliasId,
-      }))
-      writeJson(response, 200, await client.companies.aliases.update(input))
+      writeJson(response, 200, await client.companies.aliases.update(untrusted(body, alias) as never))
       return true
     }
     if (method === 'DELETE') {
-      const input = parseLocalHttpInput(() => removeCompanyAliasInputSchema.parse({
-        ...asRecord(body),
-        workspaceId,
-        companyId,
-        aliasId,
-      }))
-      writeJson(response, 200, await client.companies.aliases.remove(input))
+      writeJson(response, 200, await client.companies.aliases.remove(untrusted(body, alias) as never))
       return true
     }
     return false
@@ -193,12 +153,7 @@ export async function handleCompanyRoutes({
   }
   if (method === 'PATCH') {
     const body = await readJsonBody(request)
-    const input = parseLocalHttpInput(() => updateCompanyInputSchema.parse({
-      ...asRecord(body),
-      workspaceId,
-      companyId,
-    }))
-    writeJson(response, 200, await client.companies.update(input))
+    writeJson(response, 200, await client.companies.update(untrusted(body, { workspaceId, companyId }) as never))
     return true
   }
   return false
@@ -234,25 +189,21 @@ async function handleCompanyAction(input: {
     return true
   }
   const body = await readJsonBody(request)
-  const context = { ...asRecord(body), workspaceId, companyId }
+  const target = { workspaceId, companyId }
   if (method === 'PATCH' && action === 'notes') {
-    const parsed = parseLocalHttpInput(() => updateCompanyNotesInputSchema.parse(context))
-    writeJson(response, 200, await client.companies.notes.update(parsed))
+    writeJson(response, 200, await client.companies.notes.update(untrusted(body, target) as never))
     return true
   }
   if (method === 'POST' && action === 'aliases') {
-    const parsed = parseLocalHttpInput(() => addCompanyAliasInputSchema.parse(context))
-    writeJson(response, 200, await client.companies.aliases.add(parsed))
+    writeJson(response, 200, await client.companies.aliases.add(untrusted(body, target) as never))
     return true
   }
   if (method === 'POST' && action === 'archive') {
-    const parsed = parseLocalHttpInput(() => archiveCompanyInputSchema.parse(context))
-    writeJson(response, 200, await client.companies.archive(parsed))
+    writeJson(response, 200, await client.companies.archive(untrusted(body, target) as never))
     return true
   }
   if (method === 'POST' && action === 'restore') {
-    const parsed = parseLocalHttpInput(() => restoreCompanyInputSchema.parse(context))
-    writeJson(response, 200, await client.companies.restore(parsed))
+    writeJson(response, 200, await client.companies.restore(untrusted(body, target) as never))
     return true
   }
   return false
@@ -269,10 +220,14 @@ function parseQuery<T>(
   return parseLocalHttpInput(() => schema.parse(query))
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
+/**
+ * Untrusted Company command representation: caller body fields first, authoritative route and
+ * client context last, so a body-supplied identifier cannot override it. The Company module
+ * parses the result; this adapter never parses a command schema and asserts no command type.
+ */
+function untrusted(body: unknown, context: Readonly<Record<string, string>>): unknown {
+  const fields = body && typeof body === 'object' && !Array.isArray(body) ? body : {}
+  return { ...fields, ...context }
 }
 
 function decode(value: string): string {

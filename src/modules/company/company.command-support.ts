@@ -45,6 +45,27 @@ export class CompanyCommandConflictError extends Error {
   }
 }
 
+export class CompanyAdmissionError extends Error {
+  readonly statusCode = 400
+
+  constructor(cause: unknown) {
+    super('The Company command representation is invalid.', { cause })
+    this.name = 'CompanyAdmissionError'
+  }
+}
+
+/**
+ * Relabels an SDK command schema failure as the established fixed HTTP 400, without server
+ * coupling. It admits nothing itself: the supplied `parse` stays the sole structural admission.
+ */
+export function admitCompanyCommand<Command>(parse: () => Command): Command {
+  try {
+    return parse()
+  } catch (error) {
+    throw new CompanyAdmissionError(error)
+  }
+}
+
 export function companyCommandFingerprint(input: unknown): string {
   return createHash('sha256').update(stableJson(input)).digest('hex')
 }

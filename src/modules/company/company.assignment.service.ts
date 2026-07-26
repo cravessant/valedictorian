@@ -10,6 +10,7 @@ import type { PgliteDatabase } from '../../db/pglite'
 import { createUuidV7Generator, type Clock, type UuidV7Generator } from '../../db/uuidv7'
 import { jobs } from '../job/job.schema'
 import {
+  admitCompanyCommand,
   companyCommandFingerprint,
   capabilityFailure,
   runCompanyCommand,
@@ -94,7 +95,7 @@ export function createPgliteCompanyAssignmentService(
   }
 
   async function reassign(input: unknown): Promise<ReassignJobCompanyResult> {
-    const parsed = reassignJobCompanyInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => reassignJobCompanyInputSchema.parse(input))
     if (parsed.workspaceId !== workspaceId) {
       return blocked(parsed, lifecycleFailure(
         'workspace_ownership',

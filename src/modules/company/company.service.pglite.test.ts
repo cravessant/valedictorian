@@ -21,6 +21,15 @@ function context(idempotencyKey: string) {
 }
 
 describe.sequential('Workspace Company service', () => {
+  it('parses an untrusted representation at the command boundary, with no structural bypass', async () => {
+    const client = await createClient({ workspaceId: WORKSPACE })
+    await expect(client.companies.create({
+      ...context('create-without-display-name'),
+      websiteUrl: null,
+      notes: null,
+    } as never)).rejects.toMatchObject({ name: 'CompanyAdmissionError', statusCode: 400 })
+  })
+
   it('creates idempotently and owns direct, search, preview, and directory reads', async () => {
     const client = await createClient({ workspaceId: WORKSPACE })
     const input = {

@@ -25,6 +25,7 @@ import {
 import type { PgliteDatabase } from '../../db/pglite'
 import { createUuidV7Generator, type Clock, type UuidV7Generator } from '../../db/uuidv7'
 import {
+  admitCompanyCommand,
   capabilityFailure,
   companyCommandFingerprint,
   runCompanyCommand,
@@ -107,7 +108,7 @@ export function createCompanyDuplicateService(
   }
 
   async function markDistinct(input: unknown): Promise<MarkCompaniesDistinctResult> {
-    const parsed = markCompaniesDistinctInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => markCompaniesDistinctInputSchema.parse(input))
     if (parsed.workspaceId !== workspaceId) {
       return blockedMarkDistinct(parsed, lifecycleFailure(
         'workspace_ownership',

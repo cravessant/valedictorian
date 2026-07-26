@@ -153,6 +153,17 @@ describe.sequential('Workspace Company HTTP surface', () => {
     })).items).toHaveLength(8)
   })
 
+  it('maps Company module schema admission failure to the fixed 400', async () => {
+    const { server } = await setup()
+    const response = await fetch(`${server.url}/v1/workspaces/${WORKSPACE}/companies`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...context('http-company-admission'), websiteUrl: null, notes: null }),
+    })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ message: 'The request is invalid.' })
+  })
+
   it('keeps Company routes workspace-scoped and maps missing detail to 404', async () => {
     const { client, server } = await setup()
     await expect(client.companies.get(

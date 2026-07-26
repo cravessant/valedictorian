@@ -18,6 +18,7 @@ import {
 import type { PgliteDatabase } from '../../db/pglite'
 import { createUuidV7Generator, type Clock, type UuidV7Generator } from '../../db/uuidv7'
 import {
+  admitCompanyCommand,
   appendCompanyHistory,
   capabilityFailure,
   companyCommandFingerprint,
@@ -55,7 +56,7 @@ export function createCompanyMergeService(
   const nowIso = () => clock().toISOString()
 
   return async (input: unknown): Promise<MergeCompaniesResult> => {
-    const parsed = mergeCompaniesInputSchema.parse(input)
+    const parsed = admitCompanyCommand(() => mergeCompaniesInputSchema.parse(input))
     if (parsed.workspaceId !== workspaceId) {
       return blocked(parsed, lifecycleFailure(
         'workspace_ownership',
