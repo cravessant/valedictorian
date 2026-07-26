@@ -1,12 +1,10 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {
+  createOwnedTestPgliteDataPath,
   createTestLocalValedictorianClient as createLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
 } from './local-valedictorian-client.test-harness'
@@ -43,7 +41,7 @@ describe('local connector settings completeness and upgrade edges', () => {
   })
 
   it('validates descriptor-required config before running a persisted enabled instance', async () => {
-    const pgliteDataPath = tempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-settings-edge-')
     const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('1.0.0')]),
       seedDataMode: 'none',
@@ -68,7 +66,7 @@ describe('local connector settings completeness and upgrade edges', () => {
   })
 
   it('disables incompatible persisted settings unchanged while other invalid saves stay blocked', async () => {
-    const pgliteDataPath = tempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-settings-edge-')
     const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('1.0.0')]),
       seedDataMode: 'none',
@@ -109,7 +107,7 @@ describe('local connector settings completeness and upgrade edges', () => {
   })
 
   it('upgrades an old incomplete instance by saving a newly required field through reconciliation', async () => {
-    const pgliteDataPath = tempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-settings-edge-')
     const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('0.12.0')]),
       seedDataMode: 'none',
@@ -146,7 +144,7 @@ describe('local connector settings completeness and upgrade edges', () => {
   })
 
   it('can disable and replace credentials on an old-version instance without remove and re-add', async () => {
-    const pgliteDataPath = tempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-settings-edge-')
     const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('0.12.0')]),
       seedDataMode: 'none',
@@ -185,7 +183,7 @@ describe('local connector settings completeness and upgrade edges', () => {
   })
 
   it('allows only a current bounded option query to repair an authenticated old-version instance', async () => {
-    const pgliteDataPath = tempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-settings-edge-')
     const secretCodec = {
       decrypt: (value: string) => value.replace(/^enc:/, ''),
       encrypt: (value: string) => `enc:${value}`,
@@ -293,7 +291,7 @@ describe('local connector settings completeness and upgrade edges', () => {
     const exactClient = await createLocalValedictorianClient({
       connectorRegistry: versionedRegistry(current, old),
       seedDataMode: 'none',
-      pgliteDataPath: tempDatabasePath(),
+      pgliteDataPath: createOwnedTestPgliteDataPath('valedictorian-settings-edge-'),
     })
     await expect(exactClient.connectors.descriptors.get(CONNECTOR_ID, '0.12.0'))
       .resolves.toMatchObject({ connectorId: CONNECTOR_ID, connectorVersion: '0.12.0' })
@@ -310,7 +308,7 @@ async function clientFor(connector: AppJobConnector) {
   return await createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
     seedDataMode: 'none',
-    pgliteDataPath: tempDatabasePath(),
+    pgliteDataPath: createOwnedTestPgliteDataPath('valedictorian-settings-edge-'),
   })
 }
 
@@ -473,8 +471,4 @@ function versionedRegistry(current: AppJobConnector, exact: AppJobConnector): Lo
       return [current, exact]
     },
   }
-}
-
-function tempDatabasePath() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-settings-edge-'))
 }

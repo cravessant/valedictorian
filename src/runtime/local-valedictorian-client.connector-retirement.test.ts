@@ -1,6 +1,3 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { connectorRetirementResultSchema } from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
@@ -12,14 +9,11 @@ import {
 } from '../modules/source-execution/source-execution-governor'
 import {
   closeTestLocalValedictorianClient,
+  createOwnedTestPgliteDataPath,
   createTestLocalValedictorianClient as createFreshLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
   useResettablePgliteTestLocalValedictorianClient,
 } from './local-valedictorian-client.test-harness'
-
-function createTempDatabasePath() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'connector-retirement-'))
-}
 
 const createLocalValedictorianClient = useResettablePgliteTestLocalValedictorianClient()
 
@@ -50,7 +44,7 @@ describe.sequential('local connector instance retirement', () => {
   })
 
   it('retires an unregistered connector without loading its implementation or authentication', async () => {
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('connector-retirement-')
     const setupClient = await createFreshLocalValedictorianClient({ pgliteDataPath })
     await createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(setupClient),

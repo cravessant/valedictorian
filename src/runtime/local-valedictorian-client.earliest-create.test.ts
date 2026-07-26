@@ -1,14 +1,10 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client.test-harness'
-
-function createTempDatabasePath() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-earliest-create-'))
-}
+import {
+  createOwnedTestPgliteDataPath,
+  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+} from './local-valedictorian-client.test-harness'
 
 function createFixtureConnector(): AppJobConnector {
   return {
@@ -32,7 +28,7 @@ function createFixtureConnector(): AppJobConnector {
 
 describe('runtime connectors.create earliest backfill date', () => {
   it('defaults omitted dates from the create instant and rejects out-of-range explicit dates', async () => {
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-earliest-create-')
     const createInstant = '2026-07-11T15:30:00.000Z'
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([createFixtureConnector()]),

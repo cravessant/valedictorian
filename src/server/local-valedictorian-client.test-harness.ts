@@ -26,7 +26,18 @@ export interface OwnedPgliteTestDatabase {
 
 const activeOwners = new Set<OwnedPgliteTestDatabase>()
 const clientOwners = new WeakMap<LocalValedictorianClient, OwnedPgliteTestDatabase>()
-const clonedDataPaths = new Set<string>()
+const ownedDataPaths = new Set<string>()
+
+/**
+ * Temporary PGlite directory the caller may close and reopen freely for the whole test.
+ * Removal is sequenced with this module's teardown, which closes every database owner
+ * before deleting any directory.
+ */
+export function createOwnedPgliteTestDataPath(prefix = 'valedictorian-server-pglite-') {
+  const dataPath = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+  ownedDataPaths.add(dataPath)
+  return dataPath
+}
 
 export async function openPgliteTestDatabase(
   pgliteDataPath?: string,
@@ -34,7 +45,7 @@ export async function openPgliteTestDatabase(
   const dataPath = pgliteDataPath
     ?? fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-server-pglite-'))
   const clonedFromTemplate = prepareConfiguredPgliteDataPath(dataPath)
-  if (clonedFromTemplate) clonedDataPaths.add(dataPath)
+  if (clonedFromTemplate) ownedDataPaths.add(dataPath)
   const client = await createPgliteClient({ dataDir: dataPath })
   const database = clonedFromTemplate
     ? createPgliteDatabase(client)
@@ -91,6 +102,6 @@ export function getLocalValedictorianTestDatabase(
 afterEach(async () => {
   const owners = [...activeOwners].reverse()
   for (const owner of owners) await owner.close()
-  for (const dataPath of clonedDataPaths) fs.rmSync(dataPath, { force: true, recursive: true })
-  clonedDataPaths.clear()
+  for (const dataPath of ownedDataPaths) fs.rmSync(dataPath, { force: true, recursive: true })
+  ownedDataPaths.clear()
 })

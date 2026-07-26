@@ -1,8 +1,6 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  createOwnedTestPgliteDataPath,
   createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
 } from './local-valedictorian-client.test-harness'
@@ -10,10 +8,6 @@ import { createPgliteConnectorRepository } from '../modules/connectors/connector
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-
-function createTempDatabasePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-coverage-')), 'pglite')
-}
 
 function createCoverageFixtureConnector(refresh: AppJobConnector['refresh']): AppJobConnector {
   return {
@@ -35,7 +29,7 @@ function createCoverageFixtureConnector(refresh: AppJobConnector['refresh']): Ap
 
 describe('runtime connector coverage from earliest backfill date', () => {
   it('records and invokes the same anchored coverage start for manual, catch-up, and edited dates', async () => {
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-coverage-')
     const coverages: Array<{ mode: string; start: string | null; end: string | null }> = []
     const connector = createCoverageFixtureConnector(async (input) => {
       coverages.push({
@@ -124,7 +118,7 @@ describe('runtime connector coverage from earliest backfill date', () => {
   })
 
   it('retains anchored coverage start on queued and preflight-failed rows', async () => {
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-coverage-')
     const connector = createCoverageFixtureConnector(async () => {
       throw new Error('refresh exploded')
     })

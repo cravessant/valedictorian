@@ -1,26 +1,18 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { createHttpValedictorianClient } from '@sparxie/sdk'
+import { describe, expect, it } from 'vitest'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
-  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
-  createValedictorianHttpServer,
-  type ScheduleHttpServerHandle,
+  useScheduleHttpFixture,
 } from './local-server.connector-schedules.http-fixture'
 
 describe('local server connector schedule dispatch', () => {
-  let server: ScheduleHttpServerHandle | null = null
-
-  afterEach(async () => {
-    await server?.close()
-    server = null
-  })
+  const fixture = useScheduleHttpFixture()
 
   it('executes an admitted due run exactly once through the shared connector path to a terminal result', async () => {
     const workspaceId = 'schedule-dispatch-execute-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let refreshCalls = 0
     const localClient = await createLocalValedictorianClient({
@@ -58,13 +50,10 @@ describe('local server connector schedule dispatch', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const created = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',

@@ -1,39 +1,19 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
+  createOwnedTestPgliteDataPath,
   createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
+  useTestMissingReferenceTrackerPath,
 } from './local-valedictorian-client.test-harness'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 
-function createTempDatabasePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
-}
-
 describe('runtime local Valedictorian client deferred refresh', () => {
-  const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
-
-  beforeEach(() => {
-    process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = path.join(
-      os.tmpdir(),
-      'valedictorian-missing-reference-tracker.md',
-    )
-  })
-
-  afterEach(() => {
-    if (originalReferenceTrackerPath === undefined) {
-      delete process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
-    } else {
-      process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
-    }
-  })
+  useTestMissingReferenceTrackerPath()
 
   it('persists deferred_refresh work as public manual mode without schedule provenance or a startup scan API', async () => {
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-client-')
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {

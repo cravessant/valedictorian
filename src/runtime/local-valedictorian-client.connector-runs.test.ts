@@ -1,47 +1,27 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  createOwnedTestPgliteDataPath,
+  createTestFixtureJobsConnector,
   createTestLocalValedictorianClient as createFreshRuntimeLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
   useResettablePgliteTestLocalValedictorianClient,
+  useTestMissingReferenceTrackerPath,
 } from './local-valedictorian-client.test-harness'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 
-function createTempDatabasePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
-}
-
-
 describe.sequential('runtime local Valedictorian client', () => {
   const createRuntimeLocalValedictorianClient
     = useResettablePgliteTestLocalValedictorianClient()
-  const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
-
-  beforeEach(() => {
-    process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = path.join(
-      os.tmpdir(),
-      'valedictorian-missing-reference-tracker.md',
-    )
-  })
-
-  afterEach(() => {
-    if (originalReferenceTrackerPath === undefined) {
-      delete process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
-    } else {
-      process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
-    }
-  })
+  useTestMissingReferenceTrackerPath()
 
   it('creates and updates connector instances through the local client', async () => {
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
-            ? fixtureConnector({
+            ? createTestFixtureJobsConnector({
               observedAt: '2026-07-08T18:00:00.000Z',
             })
             : null
@@ -124,7 +104,7 @@ describe.sequential('runtime local Valedictorian client', () => {
     const normalizationGate = new Promise<void>((resolve) => {
       releaseNormalization = resolve
     })
-    const baseConnector = fixtureConnector({ observedAt: '2026-07-08T18:00:00.000Z' })
+    const baseConnector = createTestFixtureJobsConnector({ observedAt: '2026-07-08T18:00:00.000Z' })
     const connector: AppJobConnector = {
       ...baseConnector,
       async refresh(input, runtime) {
@@ -242,9 +222,9 @@ describe.sequential('runtime local Valedictorian client', () => {
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
-            ? fixtureConnector({
+            ? createTestFixtureJobsConnector({
               observedAt: '2026-07-08T18:00:00.000Z',
-              waitForRefresh: refreshGate,
+              gateRefreshUntil: refreshGate,
             })
             : null
         },
@@ -312,14 +292,14 @@ describe.sequential('runtime local Valedictorian client', () => {
   })
 
   it('returns one active run across clients when concurrent triggers target the same connector instance', async () => {
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-client-')
     let releaseRefresh: (() => void) | undefined
     const refreshGate = new Promise<void>((resolve) => {
       releaseRefresh = resolve
     })
-    const connector = fixtureConnector({
+    const connector = createTestFixtureJobsConnector({
       observedAt: '2026-07-08T18:00:00.000Z',
-      waitForRefresh: refreshGate,
+      gateRefreshUntil: refreshGate,
     })
     const refresh = vi.fn((
       input: Parameters<AppJobConnector['refresh']>[0],
@@ -420,7 +400,7 @@ describe.sequential('runtime local Valedictorian client', () => {
     const firstRefreshGate = new Promise<void>((resolve) => {
       releaseFirstRefresh = resolve
     })
-    const baseConnector = fixtureConnector({
+    const baseConnector = createTestFixtureJobsConnector({
       observedAt: '2026-07-08T18:00:00.000Z',
     })
     const refreshedInstances: string[] = []
@@ -498,95 +478,4 @@ describe.sequential('runtime local Valedictorian client', () => {
       'connector-instance-second',
     ])
   })
-
 })
-
-function fixtureConnector({
-  additionalCompanyNames = [],
-  companyName = 'Example Robotics',
-  observedAt,
-  throwOnRefresh = false,
-  waitForRefresh,
-}: {
-  additionalCompanyNames?: string[]
-  companyName?: string
-  observedAt: string
-  throwOnRefresh?: boolean
-  waitForRefresh?: Promise<void>
-}): AppJobConnector {
-  return {
-    definition: {
-      id: 'fixture.jobs',
-      version: '0.0.0-fixture',
-    },
-    async refresh(input) {
-      await waitForRefresh
-
-      if (throwOnRefresh) {
-        throw new Error('Fixture connector refresh failed')
-      }
-      const observations = [companyName, ...additionalCompanyNames].map((observationCompanyName, index) => {
-        const slug = index === 0
-          ? 'software-engineering-intern'
-          : `software-engineering-intern-${index + 1}`
-
-        return {
-          connectorId: 'fixture.jobs',
-          connectorVersion: '0.0.0-fixture',
-          sourceRecordKey: `fixture.jobs:${slug}`,
-          observedAt,
-          companyName: observationCompanyName,
-          roleTitle: 'Software Engineering Intern',
-          locationRaw: 'Remote',
-          descriptionText: 'Build fixture robots and connector proofs.',
-          pay: null,
-          links: {
-            source: `https://example.test/jobs/${slug}`,
-            intermediary: null,
-            official: `https://jobs.example.com/apply/${slug}`,
-          },
-          resolution: {
-            status: 'resolved',
-            method: 'fixture',
-            reason: null,
-          },
-          dedupeKeys: [`official:https://jobs.example.com/apply/${slug}`],
-          sourceMetadata: {
-            fixture: true,
-            destinationClass: 'employer_or_ats',
-          },
-          evidence: [
-            {
-              type: 'fixture',
-              capturedAt: observedAt,
-              sourceUrl: `https://example.test/jobs/${slug}`,
-            },
-          ],
-        }
-      })
-
-      return {
-        coverage: input.coverage,
-        nextCheckpoint: {
-          checkpoint: {
-            cursor: `fixture:${observedAt}`,
-          },
-          schemaVersion: 'fixture-checkpoint@1',
-        },
-        observations,
-        stats: {
-          observations: observations.length,
-        },
-        warnings: [],
-        operationOutcome: null,
-        status: 'completed',
-        synchronization: {
-          newestFrontier: { state: 'caught_up' },
-          historicalBackfill: { state: 'caught_up', boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
-          pendingResolutionCount: 0,
-          outcome: { kind: 'caught_up' },
-        },
-      }
-    },
-  }
-}

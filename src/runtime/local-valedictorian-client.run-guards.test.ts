@@ -1,51 +1,64 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   closeTestLocalValedictorianClient,
+  createOwnedTestPgliteDataPath,
+  createTestFixtureJobsConnector,
   createTestLocalValedictorianClient as createFreshRuntimeLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
   useResettablePgliteTestLocalValedictorianClient,
+  useTestMissingReferenceTrackerPath,
 } from './local-valedictorian-client.test-harness'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 
-function createTempDatabasePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
-}
-
-
 describe.sequential('runtime local Valedictorian client', () => {
   const createRuntimeLocalValedictorianClient
     = useResettablePgliteTestLocalValedictorianClient()
-  const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
+  useTestMissingReferenceTrackerPath()
 
-  beforeEach(() => {
-    process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = path.join(
-      os.tmpdir(),
-      'valedictorian-missing-reference-tracker.md',
+  async function arrangeEnabledFixtureInstance(options: {
+    connector?: AppJobConnector
+    earliestBackfillDate?: string
+    now?: () => Date
+  } = {}) {
+    const client = await createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs' ? options.connector ?? null : null
+        },
+      },
+      now: options.now,
+      seedDataMode: 'none',
+    })
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
     )
-  })
 
-  afterEach(() => {
-    if (originalReferenceTrackerPath === undefined) {
-      delete process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
-    } else {
-      process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
-    }
-  })
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+      ...(options.earliestBackfillDate === undefined
+        ? {}
+        : { earliestBackfillDate: options.earliestBackfillDate }),
+    })
+    return { client, connectorRepository }
+  }
 
   it('runs the same connector instance id independently in different workspace databases', async () => {
-    const firstPgliteDataPath = createTempDatabasePath()
-    const secondPgliteDataPath = createTempDatabasePath()
+    const firstPgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-client-')
+    const secondPgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-client-')
     let releaseFirstRefresh: (() => void) | undefined
     const firstRefreshGate = new Promise<void>((resolve) => {
       releaseFirstRefresh = resolve
     })
-    const baseConnector = fixtureConnector({
+    const baseConnector = createTestFixtureJobsConnector({
       observedAt: '2026-07-08T18:00:00.000Z',
     })
     const refreshedWorkspaces: string[] = []
@@ -117,7 +130,7 @@ describe.sequential('runtime local Valedictorian client', () => {
   })
 
   it('recovers an interrupted running row as an explicit cancelled result on reopen', async () => {
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-client-')
     const setupClient = await createFreshRuntimeLocalValedictorianClient({ pgliteDataPath })
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(setupClient),
@@ -182,7 +195,7 @@ describe.sequential('runtime local Valedictorian client', () => {
     const reopenedClient = await createFreshRuntimeLocalValedictorianClient({
       connectorRunRecovery: createConnectorRunRecoveryLifecycle(),
       connectorRegistry: createStaticConnectorRegistry([
-        fixtureConnector({ observedAt: '2026-07-08T19:00:00.000Z' }),
+        createTestFixtureJobsConnector({ observedAt: '2026-07-08T19:00:00.000Z' }),
       ]),
       now: () => new Date('2026-07-08T19:00:00.000Z'),
       seedDataMode: 'none',
@@ -236,26 +249,7 @@ describe.sequential('runtime local Valedictorian client', () => {
   })
 
   it('rejects unsupported connector run triggers instead of queueing them', async () => {
-    const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get() {
-          return null
-        },
-      },
-      seedDataMode: 'none',
-    })
-    const connectorRepository = createPgliteConnectorRepository(
-      getTestLocalValedictorianDatabase(client),
-    )
-
-    await connectorRepository.upsertInstance({
-      id: 'connector-instance-fixture',
-      connectorId: 'fixture.jobs',
-      connectorVersion: '0.0.0-fixture',
-      displayName: 'Fixture Jobs',
-      enabled: true,
-      createdAt: '2026-07-08T15:00:00.000Z',
-    })
+    const { client } = await arrangeEnabledFixtureInstance()
 
     await expect(
       client.connectors.runs.trigger({
@@ -275,29 +269,8 @@ describe.sequential('runtime local Valedictorian client', () => {
   })
 
   it('rejects dry-run connector triggers before executing registered connectors', async () => {
-    const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? fixtureConnector({
-              observedAt: '2026-07-08T18:00:00.000Z',
-            })
-            : null
-        },
-      },
-      seedDataMode: 'none',
-    })
-    const connectorRepository = createPgliteConnectorRepository(
-      getTestLocalValedictorianDatabase(client),
-    )
-
-    await connectorRepository.upsertInstance({
-      id: 'connector-instance-fixture',
-      connectorId: 'fixture.jobs',
-      connectorVersion: '0.0.0-fixture',
-      displayName: 'Fixture Jobs',
-      enabled: true,
-      createdAt: '2026-07-08T15:00:00.000Z',
+    const { client } = await arrangeEnabledFixtureInstance({
+      connector: createTestFixtureJobsConnector({ observedAt: '2026-07-08T18:00:00.000Z' }),
     })
 
     await expect(
@@ -320,31 +293,10 @@ describe.sequential('runtime local Valedictorian client', () => {
 
   it('derives ordinary manual coverage end from the injected clock when omitted', async () => {
     const clock = '2026-07-08T18:30:00.000Z'
-    const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? fixtureConnector({
-              observedAt: clock,
-            })
-            : null
-        },
-      },
-      now: () => new Date(clock),
-      seedDataMode: 'none',
-    })
-    const connectorRepository = createPgliteConnectorRepository(
-      getTestLocalValedictorianDatabase(client),
-    )
-
-    await connectorRepository.upsertInstance({
-      id: 'connector-instance-fixture',
-      connectorId: 'fixture.jobs',
-      connectorVersion: '0.0.0-fixture',
-      displayName: 'Fixture Jobs',
-      enabled: true,
-      createdAt: '2026-07-08T15:00:00.000Z',
+    const { client } = await arrangeEnabledFixtureInstance({
+      connector: createTestFixtureJobsConnector({ observedAt: clock }),
       earliestBackfillDate: '2026-07-01',
+      now: () => new Date(clock),
     })
 
     await expect(
@@ -377,29 +329,8 @@ describe.sequential('runtime local Valedictorian client', () => {
   })
 
   it('rejects per-run filter overrides before executing registered connectors', async () => {
-    const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? fixtureConnector({
-              observedAt: '2026-07-08T18:00:00.000Z',
-            })
-            : null
-        },
-      },
-      seedDataMode: 'none',
-    })
-    const connectorRepository = createPgliteConnectorRepository(
-      getTestLocalValedictorianDatabase(client),
-    )
-
-    await connectorRepository.upsertInstance({
-      id: 'connector-instance-fixture',
-      connectorId: 'fixture.jobs',
-      connectorVersion: '0.0.0-fixture',
-      displayName: 'Fixture Jobs',
-      enabled: true,
-      createdAt: '2026-07-08T15:00:00.000Z',
+    const { client } = await arrangeEnabledFixtureInstance({
+      connector: createTestFixtureJobsConnector({ observedAt: '2026-07-08T18:00:00.000Z' }),
     })
 
     await expect(
@@ -421,30 +352,11 @@ describe.sequential('runtime local Valedictorian client', () => {
   })
 
   it('records failed runs and allows a later trigger when registered connectors throw', async () => {
-    const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? fixtureConnector({
-              observedAt: '2026-07-08T18:00:00.000Z',
-              throwOnRefresh: true,
-            })
-            : null
-        },
-      },
-      seedDataMode: 'none',
-    })
-    const connectorRepository = createPgliteConnectorRepository(
-      getTestLocalValedictorianDatabase(client),
-    )
-
-    await connectorRepository.upsertInstance({
-      id: 'connector-instance-fixture',
-      connectorId: 'fixture.jobs',
-      connectorVersion: '0.0.0-fixture',
-      displayName: 'Fixture Jobs',
-      enabled: true,
-      createdAt: '2026-07-08T15:00:00.000Z',
+    const { client } = await arrangeEnabledFixtureInstance({
+      connector: createTestFixtureJobsConnector({
+        observedAt: '2026-07-08T18:00:00.000Z',
+        failRefresh: true,
+      }),
     })
 
     await expect(
@@ -488,60 +400,13 @@ describe.sequential('runtime local Valedictorian client', () => {
   })
 
   it('does not fail a connector run by interpreting an invalid legacy observation', async () => {
-    const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? fixtureConnector({
-              companyName: '',
-              observedAt: '2026-07-08T18:00:00.000Z',
-            })
-            : null
-        },
-      },
-      seedDataMode: 'none',
+    const { client, connectorRepository } = await arrangeEnabledFixtureInstance({
+      connector: createTestFixtureJobsConnector({
+        observationCompanyNames: [''],
+        observedAt: '2026-07-08T18:00:00.000Z',
+      }),
     })
-    const connectorRepository = createPgliteConnectorRepository(
-      getTestLocalValedictorianDatabase(client),
-    )
-
-    await connectorRepository.upsertInstance({
-      id: 'connector-instance-fixture',
-      connectorId: 'fixture.jobs',
-      connectorVersion: '0.0.0-fixture',
-      displayName: 'Fixture Jobs',
-      enabled: true,
-      createdAt: '2026-07-08T15:00:00.000Z',
-    })
-    await connectorRepository.recordRefreshResult({
-      connectorInstanceId: 'connector-instance-fixture',
-      mode: 'manual',
-      startedAt: '2026-07-08T16:00:00.000Z',
-      completedAt: '2026-07-08T16:00:01.000Z',
-      config: {},
-      filters: {},
-      filterSignature: 'filters:{}',
-      result: {
-        operationOutcome: null,
-        status: 'completed',
-        synchronization: completedSynchronization('2026-07-08'),
-        coverage: {
-          start: '2026-07-08T15:00:00.000Z',
-          end: '2026-07-08T16:00:00.000Z',
-        },
-        nextCheckpoint: {
-          checkpoint: {
-            cursor: 'previous-successful-cursor',
-          },
-          schemaVersion: 'fixture-checkpoint@1',
-        },
-        observations: [],
-        stats: {
-          observations: 0,
-        },
-        warnings: [],
-      },
-    })
+    await recordPreviousSuccessfulRefresh(connectorRepository)
 
     await expect(
       client.connectors.runs.trigger({
@@ -581,60 +446,13 @@ describe.sequential('runtime local Valedictorian client', () => {
   })
 
   it('commits catch-up checkpoints independently of legacy observation projection', async () => {
-    const client = await createRuntimeLocalValedictorianClient({
-      connectorRegistry: {
-        get(connectorId) {
-          return connectorId === 'fixture.jobs'
-            ? fixtureConnector({
-              additionalCompanyNames: [''],
-              observedAt: '2026-07-08T18:00:00.000Z',
-            })
-            : null
-        },
-      },
-      seedDataMode: 'none',
+    const { client, connectorRepository } = await arrangeEnabledFixtureInstance({
+      connector: createTestFixtureJobsConnector({
+        observationCompanyNames: ['Example Robotics', ''],
+        observedAt: '2026-07-08T18:00:00.000Z',
+      }),
     })
-    const connectorRepository = createPgliteConnectorRepository(
-      getTestLocalValedictorianDatabase(client),
-    )
-
-    await connectorRepository.upsertInstance({
-      id: 'connector-instance-fixture',
-      connectorId: 'fixture.jobs',
-      connectorVersion: '0.0.0-fixture',
-      displayName: 'Fixture Jobs',
-      enabled: true,
-      createdAt: '2026-07-08T15:00:00.000Z',
-    })
-    await connectorRepository.recordRefreshResult({
-      connectorInstanceId: 'connector-instance-fixture',
-      mode: 'manual',
-      startedAt: '2026-07-08T16:00:00.000Z',
-      completedAt: '2026-07-08T16:00:01.000Z',
-      config: {},
-      filters: {},
-      filterSignature: 'filters:{}',
-      result: {
-        operationOutcome: null,
-        status: 'completed',
-        synchronization: completedSynchronization('2026-07-08'),
-        coverage: {
-          start: '2026-07-08T15:00:00.000Z',
-          end: '2026-07-08T16:00:00.000Z',
-        },
-        nextCheckpoint: {
-          checkpoint: {
-            cursor: 'previous-successful-cursor',
-          },
-          schemaVersion: 'fixture-checkpoint@1',
-        },
-        observations: [],
-        stats: {
-          observations: 0,
-        },
-        warnings: [],
-      },
-    })
+    await recordPreviousSuccessfulRefresh(connectorRepository)
 
     await expect(
       client.connectors.runs.trigger({
@@ -687,7 +505,7 @@ describe.sequential('runtime local Valedictorian client', () => {
 
 
   it('gates a manual retry before connector refresh and returns the persisted not-due run', async () => {
-    const base = fixtureConnector({ observedAt: '2026-07-11T12:00:00.000Z' })
+    const base = createTestFixtureJobsConnector({ observedAt: '2026-07-11T12:00:00.000Z' })
     const refresh = vi.fn(async (input: Parameters<AppJobConnector['refresh']>[0], runtime: Parameters<AppJobConnector['refresh']>[1]) => ({
       ...await base.refresh(input, runtime),
       observations: [],
@@ -766,9 +584,7 @@ describe.sequential('runtime local Valedictorian client', () => {
       filters: {},
       filterSignature: 'provider-state:jobright.resolver@0.12.0',
       result: {
-        operationOutcome: null,
-        status: 'completed',
-        synchronization: completedSynchronization('2026-07-11'),
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [],
         warnings: [],
         stats: { observations: 0 },
@@ -811,101 +627,34 @@ describe.sequential('runtime local Valedictorian client', () => {
 
 })
 
-function completedSynchronization(earliestDate: string) {
-  return {
-    newestFrontier: { state: 'caught_up' as const },
-    historicalBackfill: { state: 'caught_up' as const, boundary: { earliestDate } },
-    pendingResolutionCount: 0,
-    outcome: { kind: 'caught_up' as const },
-  }
-}
-
-function fixtureConnector({
-  additionalCompanyNames = [],
-  companyName = 'Example Robotics',
-  observedAt,
-  throwOnRefresh = false,
-  waitForRefresh,
-}: {
-  additionalCompanyNames?: string[]
-  companyName?: string
-  observedAt: string
-  throwOnRefresh?: boolean
-  waitForRefresh?: Promise<void>
-}): AppJobConnector {
-  return {
-    definition: {
-      id: 'fixture.jobs',
-      version: '0.0.0-fixture',
+function recordPreviousSuccessfulRefresh(
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>,
+) {
+  return connectorRepository.recordRefreshResult({
+    connectorInstanceId: 'connector-instance-fixture',
+    mode: 'manual',
+    startedAt: '2026-07-08T16:00:00.000Z',
+    completedAt: '2026-07-08T16:00:01.000Z',
+    config: {},
+    filters: {},
+    filterSignature: 'filters:{}',
+    result: {
+      ...completedConnectorRefreshContract('2026-07-08'),
+      coverage: {
+        start: '2026-07-08T15:00:00.000Z',
+        end: '2026-07-08T16:00:00.000Z',
+      },
+      nextCheckpoint: {
+        checkpoint: {
+          cursor: 'previous-successful-cursor',
+        },
+        schemaVersion: 'fixture-checkpoint@1',
+      },
+      observations: [],
+      stats: {
+        observations: 0,
+      },
+      warnings: [],
     },
-    async refresh(input) {
-      await waitForRefresh
-
-      if (throwOnRefresh) {
-        throw new Error('Fixture connector refresh failed')
-      }
-      const observations = [companyName, ...additionalCompanyNames].map((observationCompanyName, index) => {
-        const slug = index === 0
-          ? 'software-engineering-intern'
-          : `software-engineering-intern-${index + 1}`
-
-        return {
-          connectorId: 'fixture.jobs',
-          connectorVersion: '0.0.0-fixture',
-          sourceRecordKey: `fixture.jobs:${slug}`,
-          observedAt,
-          companyName: observationCompanyName,
-          roleTitle: 'Software Engineering Intern',
-          locationRaw: 'Remote',
-          descriptionText: 'Build fixture robots and connector proofs.',
-          pay: null,
-          links: {
-            source: `https://example.test/jobs/${slug}`,
-            intermediary: null,
-            official: `https://jobs.example.com/apply/${slug}`,
-          },
-          resolution: {
-            status: 'resolved',
-            method: 'fixture',
-            reason: null,
-          },
-          dedupeKeys: [`official:https://jobs.example.com/apply/${slug}`],
-          sourceMetadata: {
-            fixture: true,
-            destinationClass: 'employer_or_ats',
-          },
-          evidence: [
-            {
-              type: 'fixture',
-              capturedAt: observedAt,
-              sourceUrl: `https://example.test/jobs/${slug}`,
-            },
-          ],
-        }
-      })
-
-      return {
-        coverage: input.coverage,
-        nextCheckpoint: {
-          checkpoint: {
-            cursor: `fixture:${observedAt}`,
-          },
-          schemaVersion: 'fixture-checkpoint@1',
-        },
-        observations,
-        stats: {
-          observations: observations.length,
-        },
-        warnings: [],
-        operationOutcome: null,
-        status: 'completed',
-        synchronization: {
-          newestFrontier: { state: 'caught_up' },
-          historicalBackfill: { state: 'caught_up', boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
-          pendingResolutionCount: 0,
-          outcome: { kind: 'caught_up' },
-        },
-      }
-    },
-  }
+  })
 }

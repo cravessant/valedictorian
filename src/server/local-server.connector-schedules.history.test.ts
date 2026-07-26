@@ -1,33 +1,24 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import {
-  createHttpValedictorianClient,
-  MAX_CONNECTOR_SCHEDULE_HISTORY_LIMIT,
-} from '@sparxie/sdk'
+import { MAX_CONNECTOR_SCHEDULE_HISTORY_LIMIT } from '@sparxie/sdk'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
-  createValedictorianHttpServer,
   readScheduleHttpJson as readJson,
-  type ScheduleHttpServerHandle,
+  scheduleWorkspaceHttpClient,
+  useScheduleHttpFixture,
 } from './local-server.connector-schedules.http-fixture'
 
 describe('local server connector schedule occurrence history', () => {
-  let server: ScheduleHttpServerHandle | null = null
-
-  afterEach(async () => {
-    await server?.close()
-    server = null
-  })
+  const fixture = useScheduleHttpFixture()
 
   it('rejects history limits above the released maximum for audit and occurrences', async () => {
     expect(MAX_CONNECTOR_SCHEDULE_HISTORY_LIMIT).toBe(200)
 
     const workspaceId = 'schedule-history-limit-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
@@ -45,11 +36,9 @@ describe('local server connector schedule occurrence history', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { server } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
 
     const overLimit = MAX_CONNECTOR_SCHEDULE_HISTORY_LIMIT + 1
@@ -69,8 +58,8 @@ describe('local server connector schedule occurrence history', () => {
   it('lists one admitted occurrence with pagination and workspace isolation', async () => {
     const workspaceA = 'schedule-occurrence-list-a'
     const workspaceB = 'schedule-occurrence-list-b'
-    const pgliteDataPathA = createTempDatabasePath()
-    const pgliteDataPathB = createTempDatabasePath()
+    const pgliteDataPathA = fixture.createPgliteDataPath()
+    const pgliteDataPathB = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const clientA = await createLocalValedictorianClient({
@@ -105,18 +94,16 @@ describe('local server connector schedule occurrence history', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { server, workspace: httpA } = await fixture.startWorkspaceServer({
       client: clientA,
-      host: '127.0.0.1',
-      port: 0,
+      workspaceId: workspaceA,
       resolveWorkspaceClient: async (id) => {
         if (id === workspaceA) return clientA
         if (id === workspaceB) return clientB
         throw new Error(`Unexpected workspace: ${id}`)
       },
     })
-    const httpA = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceA)
-    const httpB = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceB)
+    const httpB = scheduleWorkspaceHttpClient(server, workspaceB)
 
     const createdA = await httpA.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
@@ -201,7 +188,7 @@ describe('local server connector schedule occurrence history', () => {
 
   it('lists two historical occurrences for the same connector instance across delete and recreate', async () => {
     const workspaceId = 'schedule-occurrence-history-recreate-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let refreshCalls = 0
 
@@ -240,13 +227,10 @@ describe('local server connector schedule occurrence history', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const firstSchedule = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',

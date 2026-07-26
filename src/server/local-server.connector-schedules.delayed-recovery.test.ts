@@ -1,5 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { createHttpValedictorianClient } from '@sparxie/sdk'
+import { describe, expect, it } from 'vitest'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {
   CONNECTOR_INSTANCE_ID,
@@ -8,23 +7,14 @@ import {
   openScheduleDatabase,
   seedHourlyScheduleWorkspace,
 } from './local-server.connector-schedules.delayed-recovery.helpers'
-import {
-  createScheduleHttpTempDatabasePath as createTempDatabasePath,
-  createValedictorianHttpServer,
-  type ScheduleHttpServerHandle,
-} from './local-server.connector-schedules.http-fixture'
+import { useScheduleHttpFixture } from './local-server.connector-schedules.http-fixture'
 
 describe('local server connector schedule delayed recovery and reconciliation', () => {
-  let server: ScheduleHttpServerHandle | null = null
-
-  afterEach(async () => {
-    await server?.close()
-    server = null
-  })
+  const fixture = useScheduleHttpFixture()
 
   it('reuses an admitted queued occurrence after later nominals become due instead of deferring forever', async () => {
     const workspaceId = 'schedule-delayed-due-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const initialDatabase = await openScheduleDatabase(pgliteDataPath)
 
@@ -60,13 +50,10 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     })
 
     clock = new Date('2026-07-11T14:05:00.000Z')
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: reopened.client,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => reopened.client,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const recovered = await httpClient.connectors.schedules.dispatchDue({
       connectorInstanceId: CONNECTOR_INSTANCE_ID,
@@ -147,7 +134,7 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
   it('reconciles a cancelled interrupted schedule run occurrence and admits the next due after reopen', async () => {
     const workspaceId = 'schedule-delayed-running-cancel-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const initialDatabase = await openScheduleDatabase(pgliteDataPath)
 
@@ -201,13 +188,10 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     })
 
     clock = new Date('2026-07-11T14:05:00.000Z')
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: reopened.client,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => reopened.client,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const nextDue = await httpClient.connectors.schedules.dispatchDue({
       connectorInstanceId: CONNECTOR_INSTANCE_ID,
@@ -255,7 +239,7 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
   it('reuses an admitted queued occurrence after a revision-changing pause/resume instead of deferring forever', async () => {
     const workspaceId = 'schedule-delayed-revision-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const initialDatabase = await openScheduleDatabase(pgliteDataPath)
 
@@ -294,13 +278,10 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     })
 
     clock = new Date('2026-07-11T13:05:00.000Z')
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: reopened.client,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => reopened.client,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const paused = await httpClient.connectors.schedules.pause({
       connectorInstanceId: CONNECTOR_INSTANCE_ID,
@@ -387,7 +368,7 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
   it('repairs an admitted occurrence whose linked run is already terminal across reopen before later dispatch', async () => {
     const workspaceId = 'schedule-delayed-stale-terminal-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const initialDatabase = await openScheduleDatabase(pgliteDataPath)
 
@@ -454,13 +435,10 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     })
 
     clock = new Date('2026-07-11T14:05:00.000Z')
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: reopened.client,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => reopened.client,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const later = await httpClient.connectors.schedules.dispatchDue({
       connectorInstanceId: CONNECTOR_INSTANCE_ID,
@@ -507,7 +485,7 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
   it('reconciles a same-process admitted occurrence linked to a terminal run before admitting later due work', async () => {
     const workspaceId = 'schedule-delayed-same-process-terminal-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const databaseOwner = await openScheduleDatabase(pgliteDataPath)
 
@@ -542,13 +520,10 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     })
 
     // Same process: no reopen/recovery. Dispatch must self-heal the stale admitted row.
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => client,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const staleBefore = await httpClient.connectors.schedules.listOccurrences({
       connectorInstanceId: CONNECTOR_INSTANCE_ID,

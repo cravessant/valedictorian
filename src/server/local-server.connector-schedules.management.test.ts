@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
-  createHttpValedictorianClient,
   ValedictorianHttpError,
   type ConnectorSchedulingCapability,
 } from '@sparxie/sdk'
@@ -8,25 +7,19 @@ import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
-  createValedictorianHttpServer,
+  onlyScheduleWorkspace,
   readScheduleHttpJson as readJson,
-  type ScheduleHttpServerHandle,
+  useScheduleHttpFixture,
 } from './local-server.connector-schedules.http-fixture'
 import { closeLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 
 describe('local server connector schedule management', () => {
-  let server: ScheduleHttpServerHandle | null = null
-
-  afterEach(async () => {
-    await server?.close()
-    server = null
-  })
+  const fixture = useScheduleHttpFixture()
 
   it('creates and reads an interval schedule when scheduling capability is injected', async () => {
     const workspaceId = 'schedule-create-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const now = () => new Date('2026-07-11T12:00:00.000Z')
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
@@ -45,23 +38,15 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { server, workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async (id) => {
-        if (id !== workspaceId) {
-          throw new Error(`Unexpected workspace: ${id}`)
-        }
-        return localClient
-      },
+      workspaceId,
+      resolveWorkspaceClient: onlyScheduleWorkspace(workspaceId, localClient),
     })
 
     await expect(fetch(`${server.url}/v1/capabilities`).then(readJson)).resolves.toMatchObject({
       connectorScheduling: availableSchedulingCapability,
     })
-
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
     const created = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
       expectedRevision: null,
@@ -90,7 +75,7 @@ describe('local server connector schedule management', () => {
 
   it('reloads a persisted schedule from the same workspace PGlite data directory', async () => {
     const workspaceId = 'schedule-reload-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const now = () => new Date('2026-07-11T12:00:00.000Z')
     const options = {
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
@@ -132,7 +117,7 @@ describe('local server connector schedule management', () => {
       connectorScheduling: availableSchedulingCapability,
       now,
       seedDataMode: 'none',
-      pgliteDataPath: createTempDatabasePath(),
+      pgliteDataPath: fixture.createPgliteDataPath(),
       workspaceId: 'workspace-a',
     })
     const second = await createLocalValedictorianClient({
@@ -140,7 +125,7 @@ describe('local server connector schedule management', () => {
       connectorScheduling: availableSchedulingCapability,
       now,
       seedDataMode: 'none',
-      pgliteDataPath: createTempDatabasePath(),
+      pgliteDataPath: fixture.createPgliteDataPath(),
       workspaceId: 'workspace-b',
     })
 
@@ -177,7 +162,7 @@ describe('local server connector schedule management', () => {
 
   it('updates a schedule only with the exact expected revision', async () => {
     const workspaceId = 'schedule-edit-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
@@ -196,13 +181,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const created = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
@@ -251,7 +233,7 @@ describe('local server connector schedule management', () => {
 
   it('pauses a schedule with exact revision and appends a sanitized audit event', async () => {
     const workspaceId = 'schedule-pause-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
@@ -270,13 +252,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const created = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
@@ -338,7 +317,7 @@ describe('local server connector schedule management', () => {
 
   it('resumes a paused schedule from resume time without catch-up replay', async () => {
     const workspaceId = 'schedule-resume-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
@@ -357,13 +336,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const created = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
@@ -403,7 +379,7 @@ describe('local server connector schedule management', () => {
 
   it('deletes a schedule with exact revision and keeps sanitized delete audit history', async () => {
     const workspaceId = 'schedule-delete-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
@@ -422,13 +398,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const created = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
@@ -470,7 +443,7 @@ describe('local server connector schedule management', () => {
 
   it('rejects invalid IANA timezones before persistence with no audit side effects', async () => {
     const workspaceId = 'schedule-invalid-zone-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
@@ -488,13 +461,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { server, workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const response = await fetch(
       `${server.url}/v1/workspaces/${workspaceId}/connectors/connector-instance-schedule/schedule`,
@@ -528,7 +498,7 @@ describe('local server connector schedule management', () => {
 
   it('rejects unsupported cadence discriminators with typed invalid_cadence and no persistence', async () => {
     const workspaceId = 'schedule-invalid-cadence-kind-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
@@ -546,13 +516,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { server, workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const response = await fetch(
       `${server.url}/v1/workspaces/${workspaceId}/connectors/connector-instance-schedule/schedule`,
@@ -585,7 +552,7 @@ describe('local server connector schedule management', () => {
 
   it('rejects intervals below the capability minimum before persistence', async () => {
     const workspaceId = 'schedule-too-frequent-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
@@ -603,13 +570,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const error = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
@@ -631,7 +595,7 @@ describe('local server connector schedule management', () => {
 
   it('rejects client-supplied server-owned schedule fields before persistence', async () => {
     const workspaceId = 'schedule-spoof-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
@@ -649,13 +613,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { server, workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const response = await fetch(
       `${server.url}/v1/workspaces/${workspaceId}/connectors/connector-instance-schedule/schedule`,
@@ -688,7 +649,7 @@ describe('local server connector schedule management', () => {
 
   it('rejects cadence kinds outside the injected capability before persistence', async () => {
     const workspaceId = 'schedule-invalid-cadence-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const limitedCapability: Extract<ConnectorSchedulingCapability, { available: true }> = {
       ...availableSchedulingCapability,
       supportedCadences: ['interval'],
@@ -710,13 +671,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const error = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
@@ -738,7 +696,7 @@ describe('local server connector schedule management', () => {
 
   it('allows recreate after delete while preserving prior sanitized audit history', async () => {
     const workspaceId = 'schedule-delete-recreate-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
@@ -757,13 +715,10 @@ describe('local server connector schedule management', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => localClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const created = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',

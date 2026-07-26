@@ -1,5 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { createHttpValedictorianClient } from '@sparxie/sdk'
+import { describe, expect, it } from 'vitest'
 import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
@@ -8,10 +7,8 @@ import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
-  createValedictorianHttpServer,
-  type ScheduleHttpServerHandle,
+  useScheduleHttpFixture,
 } from './local-server.connector-schedules.http-fixture'
 import {
   closeLocalValedictorianClient,
@@ -19,16 +16,11 @@ import {
 } from './local-valedictorian-client.test-harness'
 
 describe('local server connector schedule reopen recovery', () => {
-  let server: ScheduleHttpServerHandle | null = null
-
-  afterEach(async () => {
-    await server?.close()
-    server = null
-  })
+  const fixture = useScheduleHttpFixture()
 
   it('recovers an admitted queued schedule run across PGlite reopen through public dispatchDue', async () => {
     const workspaceId = 'schedule-reopen-recover-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const setupClient = await createLocalValedictorianClient({
@@ -131,13 +123,10 @@ describe('local server connector schedule reopen recovery', () => {
       }],
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: reopenedClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => reopenedClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const recovered = await httpClient.connectors.schedules.dispatchDue({
       connectorInstanceId: 'connector-instance-schedule',
@@ -186,7 +175,7 @@ describe('local server connector schedule reopen recovery', () => {
 
   it('cancels a schedule-linked running run on PGlite reopen and never re-executes it', async () => {
     const workspaceId = 'schedule-reopen-running-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const setupClient = await createLocalValedictorianClient({
@@ -271,13 +260,10 @@ describe('local server connector schedule reopen recovery', () => {
       mode: 'scheduled',
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: reopenedClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => reopenedClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const reused = await httpClient.connectors.schedules.dispatchDue({
       connectorInstanceId: 'connector-instance-schedule',
@@ -307,7 +293,7 @@ describe('local server connector schedule reopen recovery', () => {
 
   it('does not revive a terminal failed scheduled occurrence across reopen', async () => {
     const workspaceId = 'schedule-reopen-failed-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const setupClient = await createLocalValedictorianClient({
@@ -395,13 +381,10 @@ describe('local server connector schedule reopen recovery', () => {
       workspaceId,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: reopenedClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => reopenedClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const reused = await httpClient.connectors.schedules.dispatchDue({
       connectorInstanceId: 'connector-instance-schedule',
@@ -431,7 +414,7 @@ describe('local server connector schedule reopen recovery', () => {
 
   it('terminalizes a claimed schedule run when reopened registry cannot provide the connector', async () => {
     const workspaceId = 'schedule-reopen-missing-connector-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const setupClient = await createLocalValedictorianClient({
@@ -490,13 +473,10 @@ describe('local server connector schedule reopen recovery', () => {
       workspaceId,
     })
 
-    server = await createValedictorianHttpServer({
+    const { server, workspace: httpClient } = await fixture.startWorkspaceServer({
       client: reopenedClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => reopenedClient,
+      workspaceId,
     })
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const failed = await httpClient.connectors.schedules.dispatchDue({
       connectorInstanceId: 'connector-instance-schedule',
@@ -535,7 +515,6 @@ describe('local server connector schedule reopen recovery', () => {
     expect(JSON.stringify(runs.items[0])).not.toMatch(/Unsupported connector|version mismatch/i)
 
     await server.close()
-    server = null
     await closeLocalValedictorianClient(reopenedClient)
 
     // Later reopen with a valid connector must not revive the terminal failure.
@@ -563,13 +542,10 @@ describe('local server connector schedule reopen recovery', () => {
       workspaceId,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: revivedHttp } = await fixture.startWorkspaceServer({
       client: revivedClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async () => revivedClient,
+      workspaceId,
     })
-    const revivedHttp = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const stillFailed = await revivedHttp.connectors.schedules.dispatchDue({
       connectorInstanceId: 'connector-instance-schedule',

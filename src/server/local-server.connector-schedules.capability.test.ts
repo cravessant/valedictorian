@@ -1,32 +1,25 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import {
-  createHttpValedictorianClient,
-  ValedictorianHttpError,
-} from '@sparxie/sdk'
+import { describe, expect, it } from 'vitest'
+import { ValedictorianHttpError } from '@sparxie/sdk'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
-  createValedictorianHttpServer,
+  onlyScheduleWorkspace,
   readScheduleHttpJson as readJson,
-  type ScheduleHttpServerHandle,
+  scheduleWorkspaceHttpClient,
+  useScheduleHttpFixture,
+  type ScheduleHttpFixture,
 } from './local-server.connector-schedules.http-fixture'
 
 describe('local server connector schedule capability', () => {
-  let server: ScheduleHttpServerHandle | null = null
-
-  afterEach(async () => {
-    await server?.close()
-    server = null
-  })
+  const fixture = useScheduleHttpFixture()
 
   it('reports connector scheduling unavailable by default', async () => {
-    server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
-      host: '127.0.0.1',
-      port: 0,
+    const server = await fixture.start({
+      client: await createLocalValedictorianClient({
+        pgliteDataPath: fixture.createPgliteDataPath(),
+      }),
     })
 
     await expect(fetch(`${server.url}/v1/capabilities`).then(readJson)).resolves.toMatchObject({
@@ -36,7 +29,7 @@ describe('local server connector schedule capability', () => {
 
   it('rejects schedule upsert with typed unavailable error and no persisted schedule', async () => {
     const workspaceId = 'schedule-unavailable-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       seedDataMode: 'none',
@@ -52,19 +45,11 @@ describe('local server connector schedule capability', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async (id) => {
-        if (id !== workspaceId) {
-          throw new Error(`Unexpected workspace: ${id}`)
-        }
-        return localClient
-      },
+      workspaceId,
+      resolveWorkspaceClient: onlyScheduleWorkspace(workspaceId, localClient),
     })
-
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const error = await httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
@@ -90,7 +75,7 @@ describe('local server connector schedule capability', () => {
 
   it('rejects schedule pause with typed unavailable error and no persisted schedule', async () => {
     const workspaceId = 'schedule-pause-unavailable-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       seedDataMode: 'none',
@@ -106,19 +91,11 @@ describe('local server connector schedule capability', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async (id) => {
-        if (id !== workspaceId) {
-          throw new Error(`Unexpected workspace: ${id}`)
-        }
-        return localClient
-      },
+      workspaceId,
+      resolveWorkspaceClient: onlyScheduleWorkspace(workspaceId, localClient),
     })
-
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const error = await httpClient.connectors.schedules.pause({
       connectorInstanceId: 'connector-instance-schedule',
@@ -141,7 +118,7 @@ describe('local server connector schedule capability', () => {
 
   it('rejects schedule dispatchDue with typed unavailable error and no persisted schedule', async () => {
     const workspaceId = 'schedule-dispatch-unavailable-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       seedDataMode: 'none',
@@ -157,19 +134,11 @@ describe('local server connector schedule capability', () => {
       enabled: true,
     })
 
-    server = await createValedictorianHttpServer({
+    const { workspace: httpClient } = await fixture.startWorkspaceServer({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
-      resolveWorkspaceClient: async (id) => {
-        if (id !== workspaceId) {
-          throw new Error(`Unexpected workspace: ${id}`)
-        }
-        return localClient
-      },
+      workspaceId,
+      resolveWorkspaceClient: onlyScheduleWorkspace(workspaceId, localClient),
     })
-
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
 
     const error = await httpClient.connectors.schedules.dispatchDue({
       connectorInstanceId: 'connector-instance-schedule',
@@ -192,7 +161,7 @@ describe('local server connector schedule capability', () => {
 
   it('derives capability reporting from the workspace client so contradictory server injection cannot disagree', async () => {
     const workspaceId = 'schedule-capability-owner-ws'
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = fixture.createPgliteDataPath()
     const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
@@ -212,20 +181,17 @@ describe('local server connector schedule capability', () => {
 
     expect(localClient.connectorScheduling).toEqual(availableSchedulingCapability)
 
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: localClient,
-      host: '127.0.0.1',
-      port: 0,
       resolveWorkspaceClient: async () => localClient,
       // Runtime contradiction attempt: must not override the client-owned capability.
       ...({ connectorScheduling: { available: false } } as object),
-    } as Parameters<typeof createValedictorianHttpServer>[0])
+    } as Parameters<ScheduleHttpFixture['start']>[0])
+    const httpClient = scheduleWorkspaceHttpClient(server, workspaceId)
 
     await expect(fetch(`${server.url}/v1/capabilities`).then(readJson)).resolves.toMatchObject({
       connectorScheduling: localClient.connectorScheduling,
     })
-
-    const httpClient = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
     await expect(httpClient.connectors.schedules.upsert({
       connectorInstanceId: 'connector-instance-schedule',
       expectedRevision: null,

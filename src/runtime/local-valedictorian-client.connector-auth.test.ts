@@ -1,9 +1,8 @@
-import path from 'node:path'
-import os from 'node:os'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   getTestLocalValedictorianDatabase,
   useResettablePgliteTestLocalValedictorianClient,
+  useTestMissingReferenceTrackerPath,
 } from './local-valedictorian-client.test-harness'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
@@ -13,22 +12,7 @@ import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
 describe.sequential('runtime local Valedictorian client', () => {
   const createRuntimeLocalValedictorianClient
     = useResettablePgliteTestLocalValedictorianClient()
-  const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
-
-  beforeEach(() => {
-    process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = path.join(
-      os.tmpdir(),
-      'valedictorian-missing-reference-tracker.md',
-    )
-  })
-
-  afterEach(() => {
-    if (originalReferenceTrackerPath === undefined) {
-      delete process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
-    } else {
-      process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
-    }
-  })
+  useTestMissingReferenceTrackerPath()
 
   it('runs connector status reconnect and skip actions through the local client', async () => {
     const client = await createRuntimeLocalValedictorianClient()

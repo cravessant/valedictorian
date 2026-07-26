@@ -1,9 +1,12 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import { createHttpValedictorianClient, type ValedictorianWorkspaceClient } from '@sparxie/sdk'
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
-import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client.test-harness'
+import {
+  createLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+  createOwnedPgliteTestDataPath,
+} from './local-valedictorian-client.test-harness'
 import {
   createValedictorianHttpServer,
   type CreateValedictorianHttpServerOptions,
@@ -41,8 +44,18 @@ export function startBoundaryServer(client: LocalValedictorianClient): Promise<S
   return createValedictorianHttpServer({ client, host: '127.0.0.1', port: 0 })
 }
 
+/** Workspace-scoped SDK client bound to a started test server. */
+export function workspaceHttpClient(server: StartedValedictorianHttpServer, workspaceId: string) {
+  return createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(workspaceId)
+}
+
 export interface LocalServerHttpTestFixture {
   setup(): void
+  /**
+   * Temporary PGlite directory the test owns for its whole duration, including across
+   * client and database close/reopen boundaries. Removed only after the test.
+   */
+  createPgliteDataPath(prefix?: string): string
   start(options: CreateValedictorianHttpServerOptions): Promise<StartedValedictorianHttpServer>
   teardown(): Promise<void>
 }
@@ -57,6 +70,9 @@ export function createLocalServerHttpTestFixture(): LocalServerHttpTestFixture {
         throw new Error('Local server HTTP test fixture is already set up.')
       }
       restoreEnvironment = isolateReferenceTrackerEnvironment()
+    },
+    createPgliteDataPath(prefix) {
+      return createOwnedPgliteTestDataPath(prefix)
     },
     async start(options) {
       const server = await createValedictorianHttpServer({

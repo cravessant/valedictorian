@@ -1,15 +1,11 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
-import { createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client.test-harness'
-
-function createTempDatabasePath() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-status-skip-'))
-}
+import {
+  createOwnedTestPgliteDataPath,
+  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+} from './local-valedictorian-client.test-harness'
 
 function createFixtureConnector(): AppJobConnector {
   return {
@@ -33,7 +29,7 @@ function createFixtureConnector(): AppJobConnector {
 
 describe('runtime connectors.status.skip coverage', () => {
   it('persists skipped run coverage from the selected earliest date through return and list', async () => {
-    const pgliteDataPath = createTempDatabasePath()
+    const pgliteDataPath = createOwnedTestPgliteDataPath('valedictorian-status-skip-')
     const skipInstant = '2026-07-11T18:45:00.000Z'
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([createFixtureConnector()]),
