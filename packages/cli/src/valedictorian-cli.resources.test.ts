@@ -4,25 +4,45 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { actionQueueListResult, jsonResponse, runCli } from './valedictorian-cli.test-helpers'
 
+const capture = {
+  id: 'capture-1', workspaceId: 'workspace-1', revision: 1, evidenceMode: 'reported',
+  adapter: { id: 'cli-1', kind: 'cli', version: '1.0.0' },
+  observedAt: '2026-07-21T18:00:00.000Z', receivedAt: '2026-07-21T18:00:01.000Z',
+  providerRecordId: null, providerSchema: null, payload: null, evidence: [],
+  createdAt: '2026-07-21T18:00:01.000Z', updatedAt: '2026-07-21T18:00:01.000Z', removedAt: null,
+}
+
+function capturePage(pageInfo: Record<string, unknown>) {
+  return { items: [capture], pageInfo }
+}
+
+const terminalCapturePage = {
+  items: [],
+  pageInfo: { startCursor: null, endCursor: null, hasPreviousPage: false, hasNextPage: false },
+}
+
 describe('valedictorian-cli resource commands', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('routes lifecycle lists with token auth and strict query input', async () => {
-    const payload = { items: [], limit: 25, nextCursor: 'cursor-next' }
+  it('routes a forward lifecycle page with token auth and strict query input', async () => {
+    const payload = capturePage({
+      startCursor: 'capture-page-2-start', endCursor: 'capture-page-2-end',
+      hasPreviousPage: true, hasNextPage: true,
+    })
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
       .mockResolvedValue(jsonResponse(payload))
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await runCli([
       'captures', 'list', '--workspace', 'workspace-1', '--input-json',
-      '{"evidenceMode":"reported","adapterId":"cli-1","includeRemoved":true,"limit":25,"cursor":"cursor-0"}',
+      '{"evidenceMode":"reported","adapterId":"cli-1","includeRemoved":true,"limit":25,"after":"capture-page-1-end"}',
       '--json',
     ], { VALEDICTORIAN_API_TOKEN: 'token-1' })
 
     expect(result.exitCode).toBe(0)
     expect(JSON.parse(result.stdout)).toEqual(payload)
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://valedictorian.test/v1/workspaces/workspace-1/captures?evidenceMode=reported&adapterId=cli-1&includeRemoved=true&limit=25&cursor=cursor-0',
+      'https://valedictorian.test/v1/workspaces/workspace-1/captures?evidenceMode=reported&adapterId=cli-1&includeRemoved=true&limit=25&after=capture-page-1-end',
       {
         headers: { accept: 'application/json', authorization: 'Bearer token-1' },
         method: 'GET',
@@ -30,18 +50,62 @@ describe('valedictorian-cli resource commands', () => {
     )
   })
 
-  it('prints lifecycle pagination cursors in human mode without fabricating an offset', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
-      items: [], limit: 25, nextCursor: 'capture-page-2',
-    })))
+  it('routes a backward lifecycle page and rejects both boundaries at once', async () => {
+    const payload = capturePage({
+      startCursor: 'capture-page-1-start', endCursor: 'capture-page-1-end',
+      hasPreviousPage: false, hasNextPage: true,
+    })
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockResolvedValue(jsonResponse(payload))
+    vi.stubGlobal('fetch', fetchMock)
 
-    const result = await runCli([
-      'captures', 'list', '--workspace', 'workspace-1', '--input-json', '{"limit":25}',
+    const backward = await runCli([
+      'captures', 'list', '--workspace', 'workspace-1',
+      '--input-json', '{"limit":25,"before":"capture-page-2-start"}', '--json',
+    ])
+    const both = await runCli([
+      'captures', 'list', '--workspace', 'workspace-1',
+      '--input-json', '{"after":"capture-page-1-end","before":"capture-page-2-start"}', '--json',
     ])
 
-    expect(result.exitCode).toBe(0)
-    expect(result.stdout).toContain('next cursor capture-page-2')
-    expect(result.stdout).not.toContain('offset')
+    expect(backward.exitCode).toBe(0)
+    expect(JSON.parse(backward.stdout)).toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://valedictorian.test/v1/workspaces/workspace-1/captures?limit=25&before=capture-page-2-start',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(both.exitCode).toBe(2)
+  })
+
+  it('prints only the page boundaries that have another page in human mode', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse(capturePage({
+        startCursor: 'capture-page-1-start', endCursor: 'capture-page-1-end',
+        hasPreviousPage: false, hasNextPage: true,
+      })))
+      .mockResolvedValueOnce(jsonResponse(capturePage({
+        startCursor: 'capture-page-2-start', endCursor: 'capture-page-2-end',
+        hasPreviousPage: true, hasNextPage: false,
+      })))
+      .mockResolvedValueOnce(jsonResponse(terminalCapturePage)))
+
+    const forward = await runCli(['captures', 'list', '--workspace', 'workspace-1'])
+    const backward = await runCli([
+      'captures', 'list', '--workspace', 'workspace-1',
+      '--input-json', '{"before":"capture-page-3-start"}',
+    ])
+    const terminal = await runCli(['captures', 'list', '--workspace', 'workspace-1'])
+
+    expect([forward.exitCode, backward.exitCode, terminal.exitCode]).toEqual([0, 0, 0])
+    expect(forward.stdout).toContain('Next cursor: capture-page-1-end')
+    expect(forward.stdout).not.toContain('Previous cursor:')
+    expect(forward.stdout).not.toContain('End of results.')
+    expect(backward.stdout).toContain('Previous cursor: capture-page-2-start')
+    expect(backward.stdout).not.toContain('Next cursor:')
+    expect(terminal.stdout).toContain('End of results.')
+    expect(terminal.stdout).not.toContain('cursor')
+    expect(`${forward.stdout}${backward.stdout}${terminal.stdout}`).not.toContain('offset')
   })
 
   it('retains the released 200-item limit for existing list commands', async () => {
@@ -72,9 +136,8 @@ describe('valedictorian-cli resource commands', () => {
   })
 
   it('requires an explicit workspace and accepts it before the command', async () => {
-    const payload = { items: [], limit: 25, nextCursor: null }
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
-      .mockResolvedValue(jsonResponse(payload))
+      .mockResolvedValue(jsonResponse(terminalCapturePage))
     vi.stubGlobal('fetch', fetchMock)
 
     const missing = await runCli(['captures', 'list'])
@@ -102,7 +165,7 @@ describe('valedictorian-cli resource commands', () => {
     ] }
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
       .mockResolvedValueOnce(jsonResponse(unique))
-      .mockResolvedValueOnce(jsonResponse({ items: [], limit: 10, nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse(terminalCapturePage))
       .mockResolvedValueOnce(jsonResponse(duplicate))
       .mockResolvedValueOnce(jsonResponse(unique))
     vi.stubGlobal('fetch', fetchMock)

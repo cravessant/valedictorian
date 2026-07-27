@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.0-alpha.20 - Unreleased
+
+- Breaking: adopt the current lifecycle pagination contract for Capture, Job,
+  Opportunity, and Application list/history and for Application attempts and
+  events. Page requests take mutually exclusive `after`/`before` cursors
+  instead of the retired `cursor` field, and page results carry `pageInfo`
+  instead of `limit` and `nextCursor`. Omitting both cursors requests the first
+  page and the request honors the contract default limit of 50.
+- Breaking: human list output prints `Previous cursor: <startCursor>` and
+  `Next cursor: <endCursor>` for the directions that have another page, and
+  `End of results.` when neither does. JSON output passes `pageInfo` through
+  unchanged.
+- Upgrade the frozen dependency to `@sparxie/sdk@0.36.0`.
+
 ## 0.1.0-alpha.19 - Unreleased
 
 - Breaking: remove the `companies capability` command and its

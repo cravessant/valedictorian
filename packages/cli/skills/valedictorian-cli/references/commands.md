@@ -62,11 +62,23 @@ valedictorian-cli --json jobs list --workspace "$VALEDICTORIAN_WORKSPACE" --inpu
 valedictorian-cli --json applications history <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"limit":25}'
 ```
 
+### Lifecycle Paging
+
+Capture, Job, Opportunity, and Application `list` and `history`, plus `applications attempts list` and `applications events list`, page by boundary cursor. `after` continues forward from an `endCursor` and `before` continues backward from a `startCursor`. They are mutually exclusive; sending both is a usage error. Omitting both requests the first page. `limit` accepts 1 to 200 and defaults to 50.
+
+```sh
+valedictorian-cli --json captures list --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"limit":25,"after":"<endCursor>"}'
+valedictorian-cli --json captures list --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"limit":25,"before":"<startCursor>"}'
+valedictorian-cli --json applications attempts list <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"limit":25,"after":"<endCursor>"}'
+```
+
+Read `pageInfo` from the JSON result to advance: continue forward while `hasNextPage` is true using `endCursor`, and backward while `hasPreviousPage` is true using `startCursor`. Human output prints `Previous cursor: <startCursor>` and `Next cursor: <endCursor>` only for the directions that have another page, and `End of results.` when neither does. Do not synthesize a cursor, an offset, or a page number; a cursor is opaque and only valid as returned.
+
 ## Lifecycle Commands
 
-The command groups mirror the `@sparxie/sdk@0.29.1` workspace client:
+The command groups mirror the `@sparxie/sdk@0.36.0` workspace client:
 
-Read `lifecycle.md` for the meaning of each aggregate, the one-boundary-at-a-time promotion protocol, warning/blocker decisions, and lineage verification. Read `promotion-payloads.md` for complete alpha.18 JSON examples.
+Read `lifecycle.md` for the meaning of each aggregate, the one-boundary-at-a-time promotion protocol, warning/blocker decisions, and lineage verification. Read `promotion-payloads.md` for complete promotion JSON examples.
 
 - `captures list|get|create|correct|remove|restore|history|promote-to-job|resolution list|get|retry|replay|complete`
 - `companies list|get|lookup|search|preview-matches|create|update|notes update|aliases add|update|remove|archive|restore|duplicates list|get|mark-distinct|merge|assigned-jobs list|history list`

@@ -49,8 +49,12 @@ const factsCorrection = {
 }
 
 type Case = { name: string; argv: string[]; method: string; path: string }
+
+/** A paged read with no page input requests the first page at the contract default limit. */
+const firstPage = '?limit=50'
+
 const cases: Case[] = [
-  { name: 'captures.list', argv: ['captures', 'list'], method: 'GET', path: '/captures' },
+  { name: 'captures.list', argv: ['captures', 'list'], method: 'GET', path: `/captures${firstPage}` },
   { name: 'captures.get', argv: ['captures', 'get', 'capture-1'], method: 'GET', path: '/captures/capture-1' },
   {
     name: 'captures.create',
@@ -69,14 +73,14 @@ const cases: Case[] = [
   },
   { name: 'captures.remove', argv: ['captures', 'remove', 'capture-1', ...removal], method: 'POST', path: '/captures/capture-1/remove' },
   { name: 'captures.restore', argv: ['captures', 'restore', 'capture-1', ...restore], method: 'POST', path: '/captures/capture-1/restore' },
-  { name: 'captures.history', argv: ['captures', 'history', 'capture-1'], method: 'GET', path: '/captures/capture-1/history' },
+  { name: 'captures.history', argv: ['captures', 'history', 'capture-1'], method: 'GET', path: `/captures/capture-1/history${firstPage}` },
   {
     name: 'captures.promoteToJob', argv: ['captures', 'promote-to-job', 'capture-1', '--input-json', json({
       idempotencyKey: 'promote-capture-1', actor, captureRevision: 1, selectedFacts: facts,
       evidenceReferences, externalIdentities: [identity],
     })], method: 'POST', path: '/captures/capture-1/promote-to-job',
   },
-  { name: 'jobs.list', argv: ['jobs', 'list'], method: 'GET', path: '/jobs' },
+  { name: 'jobs.list', argv: ['jobs', 'list'], method: 'GET', path: `/jobs${firstPage}` },
   { name: 'jobs.get', argv: ['jobs', 'get', jobId], method: 'GET', path: `/jobs/${jobId}` },
   {
     name: 'jobs.create', argv: ['jobs', 'create', '--input-json', json({
@@ -97,14 +101,14 @@ const cases: Case[] = [
   { name: 'jobs.externalIdentities.remove', argv: ['jobs', 'external-identities', 'remove', jobId, '--input-json', json({ actor, identity, rationale: 'Provider retired.' })], method: 'POST', path: `/jobs/${jobId}/external-identities/remove` },
   { name: 'jobs.remove', argv: ['jobs', 'remove', jobId, ...removal], method: 'POST', path: `/jobs/${jobId}/remove` },
   { name: 'jobs.restore', argv: ['jobs', 'restore', jobId, ...restore], method: 'POST', path: `/jobs/${jobId}/restore` },
-  { name: 'jobs.history', argv: ['jobs', 'history', jobId], method: 'GET', path: `/jobs/${jobId}/history` },
+  { name: 'jobs.history', argv: ['jobs', 'history', jobId], method: 'GET', path: `/jobs/${jobId}/history${firstPage}` },
   {
     name: 'jobs.promoteToOpportunity', argv: ['jobs', 'promote-to-opportunity', jobId, '--input-json', json({
       idempotencyKey: 'promote-job-1', actor, expectedFactsRevision: 1,
       evaluation: { fit: 'fit', rank: 1, cutoff: 'above', disposition: 'pursue' },
     })], method: 'POST', path: `/jobs/${jobId}/promote-to-opportunity`,
   },
-  { name: 'opportunities.list', argv: ['opportunities', 'list'], method: 'GET', path: '/opportunities' },
+  { name: 'opportunities.list', argv: ['opportunities', 'list'], method: 'GET', path: `/opportunities${firstPage}` },
   { name: 'opportunities.get', argv: ['opportunities', 'get', 'opportunity-1'], method: 'GET', path: '/opportunities/opportunity-1' },
   {
     name: 'opportunities.create', argv: ['opportunities', 'create', '--input-json', json({
@@ -116,13 +120,13 @@ const cases: Case[] = [
   { name: 'opportunities.updateDisposition', argv: ['opportunities', 'update-disposition', 'opportunity-1', '--input-json', json({ expectedRevision: 1, actor, disposition: 'hold', rationale: 'Waiting for dates.' })], method: 'PATCH', path: '/opportunities/opportunity-1/disposition' },
   { name: 'opportunities.remove', argv: ['opportunities', 'remove', 'opportunity-1', ...removal], method: 'POST', path: '/opportunities/opportunity-1/remove' },
   { name: 'opportunities.restore', argv: ['opportunities', 'restore', 'opportunity-1', ...restore], method: 'POST', path: '/opportunities/opportunity-1/restore' },
-  { name: 'opportunities.history', argv: ['opportunities', 'history', 'opportunity-1'], method: 'GET', path: '/opportunities/opportunity-1/history' },
+  { name: 'opportunities.history', argv: ['opportunities', 'history', 'opportunity-1'], method: 'GET', path: `/opportunities/opportunity-1/history${firstPage}` },
   {
     name: 'opportunities.promoteToApplication', argv: ['opportunities', 'promote-to-application', 'opportunity-1', '--input-json', json({
       idempotencyKey: 'promote-opportunity-1', actor, expectedJobId: jobId, initialLinks: [link],
     })], method: 'POST', path: '/opportunities/opportunity-1/promote-to-application',
   },
-  { name: 'applications.list', argv: ['applications', 'list'], method: 'GET', path: '/applications' },
+  { name: 'applications.list', argv: ['applications', 'list'], method: 'GET', path: `/applications${firstPage}` },
   { name: 'applications.get', argv: ['applications', 'get', 'application-1'], method: 'GET', path: '/applications/application-1' },
   { name: 'applications.create', argv: ['applications', 'create', '--input-json', json({ idempotencyKey: 'create-application-1', actor, opportunityId: 'opportunity-1', jobId, expectedJobFactsRevision: 1, initialLinks: [link] })], method: 'POST', path: '/applications' },
   { name: 'applications.updateStatus', argv: ['applications', 'update-status', 'application-1', '--input-json', json({ expectedRevision: 1, actor, status: 'submitted', rationale: 'Submitted.' })], method: 'PATCH', path: '/applications/application-1/status' },
@@ -134,9 +138,9 @@ const cases: Case[] = [
   { name: 'applications.refreshSnapshot', argv: ['applications', 'refresh-snapshot', 'application-1', '--input-json', json({ expectedRevision: 1, actor, expectedJobFactsRevision: 2, preserveCompanyEdit: true, preserveSourceEdit: true, preserveLinkEdits: true, rationale: 'Refresh verified facts.' })], method: 'POST', path: '/applications/application-1/snapshot/refresh' },
   { name: 'applications.remove', argv: ['applications', 'remove', 'application-1', ...removal], method: 'POST', path: '/applications/application-1/remove' },
   { name: 'applications.restore', argv: ['applications', 'restore', 'application-1', ...restore], method: 'POST', path: '/applications/application-1/restore' },
-  { name: 'applications.history', argv: ['applications', 'history', 'application-1'], method: 'GET', path: '/applications/application-1/history' },
-  { name: 'applications.attempts.list', argv: ['applications', 'attempts', 'list', 'application-1'], method: 'GET', path: '/applications/application-1/attempts' },
-  { name: 'applications.events.list', argv: ['applications', 'events', 'list', 'application-1'], method: 'GET', path: '/applications/application-1/events' },
+  { name: 'applications.history', argv: ['applications', 'history', 'application-1'], method: 'GET', path: `/applications/application-1/history${firstPage}` },
+  { name: 'applications.attempts.list', argv: ['applications', 'attempts', 'list', 'application-1'], method: 'GET', path: `/applications/application-1/attempts${firstPage}` },
+  { name: 'applications.events.list', argv: ['applications', 'events', 'list', 'application-1'], method: 'GET', path: `/applications/application-1/events${firstPage}` },
 ]
 
 describe('lifecycle HTTP routing', () => {
@@ -154,5 +158,42 @@ describe('lifecycle HTTP routing', () => {
       `https://valedictorian.test/v1/workspaces/workspace-cross-route${path}`,
       expect.objectContaining({ method }),
     )
+  })
+})
+
+const pagedCases: { name: string; argv: string[]; path: string }[] = [
+  { name: 'captures.list', argv: ['captures', 'list'], path: '/captures' },
+  { name: 'captures.history', argv: ['captures', 'history', 'capture-1'], path: '/captures/capture-1/history' },
+  { name: 'jobs.list', argv: ['jobs', 'list'], path: '/jobs' },
+  { name: 'jobs.history', argv: ['jobs', 'history', jobId], path: `/jobs/${jobId}/history` },
+  { name: 'opportunities.list', argv: ['opportunities', 'list'], path: '/opportunities' },
+  { name: 'opportunities.history', argv: ['opportunities', 'history', 'opportunity-1'], path: '/opportunities/opportunity-1/history' },
+  { name: 'applications.list', argv: ['applications', 'list'], path: '/applications' },
+  { name: 'applications.history', argv: ['applications', 'history', 'application-1'], path: '/applications/application-1/history' },
+  { name: 'applications.attempts.list', argv: ['applications', 'attempts', 'list', 'application-1'], path: '/applications/application-1/attempts' },
+  { name: 'applications.events.list', argv: ['applications', 'events', 'list', 'application-1'], path: '/applications/application-1/events' },
+]
+
+describe('lifecycle page requests', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it.each(pagedCases)('$name carries one boundary cursor per page request', async ({ argv, path }) => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockImplementation(async () =>
+      jsonResponse({ message: 'Authentication required.' }, { status: 401 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const page = (input: string) =>
+      runCli([...argv, '--workspace', 'workspace-paged', '--input-json', input, '--json'])
+    const forward = await page('{"limit":25,"after":"page-1-end"}')
+    const backward = await page('{"limit":25,"before":"page-2-start"}')
+    const both = await page('{"after":"page-1-end","before":"page-2-start"}')
+
+    const url = `https://valedictorian.test/v1/workspaces/workspace-paged${path}`
+    expect([forward.exitCode, backward.exitCode]).toEqual([3, 3])
+    expect(fetchMock).toHaveBeenNthCalledWith(1, `${url}?limit=25&after=page-1-end`, expect.objectContaining({ method: 'GET' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(2, `${url}?limit=25&before=page-2-start`, expect.objectContaining({ method: 'GET' }))
+    expect(both.exitCode).toBe(2)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

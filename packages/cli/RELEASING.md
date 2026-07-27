@@ -48,7 +48,7 @@ The tag must be `vX.Y.Z-alpha.N` and match `package.json`.
 
 ## Scoped Package Cutover
 
-The CLI consumes the published `@sparxie/sdk@0.29.0` contract. Publish
+The CLI consumes the published `@sparxie/sdk@0.36.0` contract. Publish
 `@sparxie/valedictorian-cli` and verify its `alpha` tag before deprecating the
 unscoped package.
 

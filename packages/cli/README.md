@@ -56,7 +56,7 @@ valedictorian-cli --json secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli secrets run --workspace "$VALEDICTORIAN_WORKSPACE" --env TOKEN=secret://greenhouse_password -- some-tool --flag
 ```
 
-The lifecycle command tree mirrors `@sparxie/sdk@0.29.1`:
+The lifecycle command tree mirrors `@sparxie/sdk@0.36.0`:
 
 - `captures`: `list`, `get`, `create`, `correct`, `remove`, `restore`, `history`, `promote-to-job`, `resolution list|get|retry|replay|complete`
 - `companies`: `list`, `get`, `lookup`, `search`, `preview-matches`, `create`, `update`, `notes update`, `aliases add|update|remove`, `archive`, `restore`, `duplicates list|get|mark-distinct|merge`, `assigned-jobs list`, `history list`
@@ -65,6 +65,18 @@ The lifecycle command tree mirrors `@sparxie/sdk@0.29.1`:
 - `applications`: `list`, `get`, `create`, `update-status`, `update-company`, `update-source`, `links create|update|remove`, `refresh-snapshot`, `remove`, `restore`, `history`, `attempts list`, `events list`
 
 Complex contract-owned inputs use strict JSON. The positional resource id is supplied by the command and must be omitted from `--input-json`. Company writes also derive `workspaceId` from `--workspace`; omit it from the JSON input.
+
+### Lifecycle paging
+
+Capture, Job, Opportunity, and Application `list` and `history`, plus `applications attempts list` and `applications events list`, page by boundary cursor. Pass `{"after":"<endCursor>"}` to continue forward or `{"before":"<startCursor>"}` to continue backward; the two are mutually exclusive and supplying both is a usage error. Omitting both requests the first page. `limit` accepts 1 to 200 and defaults to 50.
+
+```sh
+valedictorian-cli --json jobs list --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"availability":"open","limit":25}'
+valedictorian-cli --json jobs list --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"availability":"open","limit":25,"after":"<endCursor>"}'
+valedictorian-cli --json jobs list --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"availability":"open","limit":25,"before":"<startCursor>"}'
+```
+
+JSON output preserves `pageInfo` exactly: `startCursor`, `endCursor`, `hasPreviousPage`, and `hasNextPage`. Human output prints `Previous cursor: <startCursor>` only when a previous page exists, `Next cursor: <endCursor>` only when a next page exists, and `End of results.` when neither does.
 
 Capture resolution commands preserve exact Capture revision, generation, evidence, and idempotency guards. `companies search` is active-only by default; use `{"scope":"active_and_archived"}` only for explicit archived recovery. `companies duplicates merge <winner-company-id> <loser-company-id>` additionally requires current revisions, the exact loser display-name confirmation, and `acknowledgeNoUndo: true` in its input JSON.
 

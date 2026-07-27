@@ -1,6 +1,6 @@
 {
   "name": "@sparxie/valedictorian-cli",
-  "version": "0.1.0-alpha.19",
+  "version": "0.1.0-alpha.20",
   "description": "Command-line client for Valedictorian.",
   "author": "Sparxie",
   "license": "MIT",
@@ -45,7 +45,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@sparxie/sdk": "0.30.0",
+    "@sparxie/sdk": "0.36.0",
     "@stricli/core": "1.2.7",
     "cosmiconfig": "9.0.2"
   },

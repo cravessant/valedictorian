@@ -113,8 +113,6 @@ function formatList(record: Record<string, unknown>) {
   const limit = typeof record.limit === 'number' ? record.limit : undefined
   const offset = typeof record.offset === 'number' ? record.offset : undefined
   const hasMore = typeof record.hasMore === 'boolean' ? record.hasMore : undefined
-  const hasCursor = Object.prototype.hasOwnProperty.call(record, 'nextCursor')
-  const nextCursor = typeof record.nextCursor === 'string' ? record.nextCursor : null
   const headerParts = [`${total} item${total === 1 ? '' : 's'}`]
 
   if (limit !== undefined) headerParts.push(`limit ${limit}`)
@@ -124,14 +122,14 @@ function formatList(record: Record<string, unknown>) {
     headerParts.push(hasMore ? 'more available' : 'end reached')
   }
 
-  if (hasCursor) {
-    headerParts.push(nextCursor === null ? 'end reached' : `next cursor ${nextCursor}`)
-  }
-
   const lines = [headerParts.join(' - ')]
 
   if (items.length > 0) {
     lines.push(...items.map((item) => `- ${summarizeItem(item)}`))
+  }
+
+  if (isPlainRecord(record.pageInfo)) {
+    lines.push(...formatPageBoundaries(record.pageInfo))
   }
 
   if (isPlainRecord(record.actionBucketCounts)) {
@@ -145,6 +143,30 @@ function formatList(record: Record<string, unknown>) {
   }
 
   return lines.join('\n')
+}
+
+/**
+ * A boundary cursor is only actionable in the direction that reports another
+ * page, so each side is printed only when its flag and cursor agree.
+ */
+function formatPageBoundaries(page: Record<string, unknown>) {
+  const startCursor = primitiveString(page.startCursor)
+  const endCursor = primitiveString(page.endCursor)
+  const lines: string[] = []
+
+  if (page.hasPreviousPage === true && startCursor !== undefined) {
+    lines.push(`Previous cursor: ${startCursor}`)
+  }
+
+  if (page.hasNextPage === true && endCursor !== undefined) {
+    lines.push(`Next cursor: ${endCursor}`)
+  }
+
+  if (page.hasPreviousPage !== true && page.hasNextPage !== true) {
+    lines.push('End of results.')
+  }
+
+  return lines
 }
 
 function isLifecycleResult(record: Record<string, unknown>) {
