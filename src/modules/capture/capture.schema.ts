@@ -1,10 +1,10 @@
 /**
  * Capture aggregate schema (issue #298). Owned by the capture module.
  *
- * The clean cutover owns the canonical `captures` root and its relation tables.
+ * This module owns the canonical `captures` root and its relation tables.
  * Vocabulary mirrors the sparxie contract
  * (src/db/lifecycle-vocabulary.ts). Triggers are installed by the journaled
- * migration and are intentionally not modeled here (Drizzle does not model
+ * baseline and are intentionally not modeled here (Drizzle does not model
  * triggers), matching the baseline pattern.
  */
 import { sql } from 'drizzle-orm'
@@ -32,9 +32,9 @@ export const captures = pgTable(
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     removedAt: text('removed_at'),
-    // #304: create-dedup key. Nullable + excluded from the partial index when null,
-    // so migrated rows and keyless creates are inert; a keyed re-create converges to
-    // the winning row via idx_captures_idempotency.
+    // #304: create-dedup key. Nullable values are excluded from the partial index,
+    // so keyless creates stay distinct while a keyed re-create converges to the
+    // winning row via idx_captures_idempotency.
     idempotencyKey: text('idempotency_key'),
   },
   (table) => ({
@@ -43,17 +43,12 @@ export const captures = pgTable(
       .on(table.workspaceId, table.idempotencyKey)
       .where(sql`${table.idempotencyKey} is not null`),
     idempotencyKeyCheck: check('chk_lifecycle_captures_idempotency_key', sql`${table.idempotencyKey} is null or length(${table.idempotencyKey}) between 1 and 200`),
-    // #299: provenance identity resolves to exactly one Capture id forever. The
-    // key includes provider_schema (coalesced) to match the legacy connector
-    // lineage identity (adapterId, providerSchema, providerRecordId) — so the same
-    // adapter re-observing a provider record under a bumped schema stays a distinct
-    // capture, exactly as legacy semantics treated it, and 0001's schema-divergent
-    // migrated rows do not collide. A partial unique lets manual captures (null
-    // provider_record_id) coexist without colliding; connector/import re-observation
-    // resolves idempotently to the existing Capture, including 0001-migrated rows
-    // (which reused the legacy lineage id). The tombstone is NOT excluded: a removed
-    // Capture keeps owning its provenance identity, so re-intake appends to it
-    // without clearing removed_at.
+    // #299: provenance identity resolves to exactly one Capture id forever. Including
+    // provider_schema (coalesced) keeps the same provider record under a different
+    // schema distinct. A partial unique lets manual captures (null provider_record_id)
+    // coexist, while connector/import re-observation resolves to the existing Capture.
+    // The tombstone is NOT excluded: a removed Capture keeps owning its provenance
+    // identity, so re-intake appends to it without clearing removed_at.
     provenanceIdx: uniqueIndex('idx_lifecycle_captures_provenance')
       .on(table.workspaceId, table.adapterId, sql`coalesce(${table.providerSchema}, '')`, table.providerRecordId)
       .where(sql`${table.providerRecordId} is not null`),

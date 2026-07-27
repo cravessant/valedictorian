@@ -27,8 +27,7 @@
  *    tombstoned Capture appends occurrences/revisions but NEVER clears the
  *    tombstone. Restore is an explicit, deterministic user command.
  *
- * #299 wires NO adapter to this contract for the connector path (that write move
- * is co-sequenced with the read cutover at #304) and enqueues NO scheduled work
+ * #299 wires NO adapter to this contract for the connector path and enqueues NO scheduled work
  * (canonical scheduled-work adoption is #303; promotion + its scheduling is #300).
  * The contract is exercised red-first through its public commands/queries.
  */

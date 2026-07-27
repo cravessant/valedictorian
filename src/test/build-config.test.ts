@@ -118,11 +118,11 @@ describe('build configuration', () => {
     expect(pnpmWorkspaceConfig).not.toContain('- sparxie')
   })
 
-  it('packages PGlite runtime assets without native SQLite rebuild contracts', () => {
+  it('packages the current PGlite runtime contract', () => {
     const packageJson = readPackageJson()
     const config = readElectronBuilderConfig()
-    const scripts = Object.values(packageJson.scripts ?? {})
 
+    expect(packageJson.dependencies?.['@electric-sql/pglite']).toBe('0.5.4')
     expect(config.files).toEqual(
       expect.arrayContaining([
         'drizzle/**/*',
@@ -132,9 +132,6 @@ describe('build configuration', () => {
       ]),
     )
     expect(config.files?.join('\n')).not.toMatch(/better-sqlite3|bindings|file-uri-to-path/)
-    expect(config.asarUnpack ?? []).not.toEqual(
-      expect.arrayContaining([expect.stringContaining('better-sqlite3')]),
-    )
     expect(config.extraResources).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -153,15 +150,6 @@ describe('build configuration', () => {
       allowToChangeInstallationDirectory: true,
       deleteAppDataOnUninstall: false,
     })
-
-    expect(scripts.join('\n')).not.toMatch(/better-sqlite3|install-app-deps|rebuild:native|rebuild:node/)
-    expect(packageJson.scripts?.['rebuild:native']).toBeUndefined()
-    expect(packageJson.scripts?.['rebuild:node']).toBeUndefined()
-    expect(packageJson.scripts?.dev).not.toContain('install-app-deps')
-    expect(packageJson.scripts?.['validate:app']).not.toContain('install-app-deps')
-    expect(packageJson.scripts?.build).not.toContain('better-sqlite3')
-    expect(packageJson.scripts?.['build:mac']).not.toContain('better-sqlite3')
-    expect(packageJson.scripts?.test).not.toContain('better-sqlite3')
     expect(packageJson.scripts?.['smoke:pglite-package']).toBe(
       'node scripts/run-packaged-pglite-smoke.mjs',
     )

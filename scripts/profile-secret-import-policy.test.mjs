@@ -118,14 +118,6 @@ describe('profile/secret import policy', () => {
           source: "import { serializeProfileJsonDocument } from './profile.json.document'\n",
         },
         {
-          path: 'src/modules/profile/profile.migration.ts',
-          source: "import { writeProfileJsonAtomically } from './profile.json.atomic'\n",
-        },
-        {
-          path: 'src/modules/profile/profile.migration.test.ts',
-          source: "import { parseProfileJsonDocument } from './profile.json.document'\n",
-        },
-        {
           path: 'src/modules/secrets/secret.composition.ts',
           source: "import { createPgliteSecretStore } from './secret.pglite.store'\n",
         },

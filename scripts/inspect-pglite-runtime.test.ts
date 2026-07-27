@@ -9,7 +9,8 @@ import {
   inspectPgliteRuntimeArtifactLayout,
   inspectPgliteRuntimeAssets,
   inspectPgliteRuntimeBuilderConfig,
-} from './inspect-pglite-runtime-assets.mjs'
+  inspectPgliteProjectFiles,
+} from './inspect-pglite-runtime.mjs'
 import {
   PGLITE_RUNTIME_BINARY_ASSETS as sourceBinaryAssets,
   PGLITE_RUNTIME_DIRECTORY_NAME as sourceDirectoryName,
@@ -40,7 +41,7 @@ function stageCompleteArtifact(root: string) {
   fs.writeFileSync(path.join(packageDist, 'index.js'), 'export {}\n')
 }
 
-describe('inspect-pglite-runtime-assets', () => {
+describe('inspect-pglite-runtime', () => {
   it('keeps script contract constants aligned with the runtime loader', () => {
     expect([...PGLITE_RUNTIME_BINARY_ASSETS]).toEqual([...sourceBinaryAssets])
     expect(PGLITE_RUNTIME_DIRECTORY_NAME).toBe(sourceDirectoryName)
@@ -98,29 +99,22 @@ describe('inspect-pglite-runtime-assets', () => {
     expect(inspectPgliteRuntimeArtifactLayout(resourcesRoot)).toEqual([])
   })
 
-  it('rejects builder config that still ships better-sqlite3 packaging rules', () => {
+  it('reports an incomplete PGlite builder configuration', () => {
     expect(
       inspectPgliteRuntimeBuilderConfig({
-        files: [
-          'drizzle/**/*',
-          'dist',
-          'dist-electron',
-          'node_modules/better-sqlite3/**/*',
-        ],
-        asarUnpack: ['**/node_modules/better-sqlite3/**'],
+        files: ['drizzle/**/*', 'dist', 'dist-electron'],
         extraResources: [],
       }),
     ).toEqual(
       expect.arrayContaining([
         'electron-builder files must include node_modules/@electric-sql/pglite/**/*',
-        'electron-builder files must not include better-sqlite3/native helper packages',
-        'electron-builder asarUnpack must not include better-sqlite3',
         `electron-builder extraResources must copy assets to ${PGLITE_RUNTIME_DIRECTORY_NAME}`,
       ]),
     )
   })
 
-  it('accepts the repository electron-builder and package-local asset contracts', () => {
+  it('accepts the repository package, lockfile, and Electron runtime contracts', () => {
+    expect(inspectPgliteProjectFiles()).toEqual([])
     expect(inspectPgliteRuntimeAssets()).toEqual([])
   })
 })

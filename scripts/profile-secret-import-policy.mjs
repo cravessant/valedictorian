@@ -143,8 +143,6 @@ function isApprovedImporter(filePath, source) {
   if (
     normalized === 'src/modules/profile/profile.composition.ts' ||
     normalized === 'src/modules/profile/profile.composition.test.ts' ||
-    normalized === 'src/modules/profile/profile.migration.ts' ||
-    normalized === 'src/modules/profile/profile.migration.test.ts' ||
     normalized === 'src/modules/secrets/secret.composition.ts' ||
     normalized === 'src/settings/app-secret.composition.ts'
   ) {

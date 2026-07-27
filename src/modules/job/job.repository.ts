@@ -37,9 +37,7 @@ export const deleteJobCaptureEvidenceReferences = (exec: JobDeleteExecutor) => e
  * Canonical Capture→Job lineage minting conversation (#299 slice 2 seam).
  *
  * `job_capture_evidence_references` is the SOLE owner of the Capture→Job answer:
- * `captures` carries no `job_id`, so there is no competing owner to
- * diverge from (the legacy captures.job_id vs fact-version.job_id divergence the
- * 0001 transform resolved cannot recur). The unique index
+ * `captures` carries no `job_id`, so there is no competing owner. The unique index
  * `(job_id, capture_id, capture_revision)` makes each produced Job's lineage to a
  * Capture revision unambiguous, and the FK to `capture_revisions` forces the link
  * to reference a real capture revision. Job promotion (#300) mints these rows from

@@ -4,8 +4,7 @@
  * Users create, read/list, correct, remove/restore, inspect history, and update
  * availability through this service, which writes the canonical `jobs`
  * and append-only `job_history` tables (Job-owned; see job.repository.ts). Jobs use
- * stable app-side UUIDv7 identities (src/db/uuidv7.ts) — the migration's
- * deterministic mint stays migration-only. Facts and availability are versioned;
+ * stable app-side UUIDv7 identities (src/db/uuidv7.ts). Facts and availability are versioned;
  * every mutation appends a `job_history` row whose `(job_id, sequence)` unique
  * index serializes concurrent mutations.
  *

@@ -8,7 +8,7 @@ import {
   findPackagedAppExecutable,
   resolvePackagedResourcesDirectory,
 } from './run-packaged-pglite-smoke.mjs'
-import { inspectPgliteRuntimeArtifactLayout } from './inspect-pglite-runtime-assets.mjs'
+import { inspectPgliteRuntimeArtifactLayout } from './inspect-pglite-runtime.mjs'
 
 export function packagedManualWorkflowProofEnvironment(environment, resultDirectory, phase, buildIdentity) {
   const result = {

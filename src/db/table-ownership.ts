@@ -9,7 +9,7 @@
  * write.
  *
  * Capture, Job, Opportunity, and Application own their write conversations in
- * their aggregate modules. The final cutover has one physical root per aggregate.
+ * their aggregate modules, with one physical root per aggregate.
  *
  * The aggregate vocabulary and resource shapes mirror the merged sparxie
  * lifecycle contract (KennyKeni/sparxie#84) as the source of truth. #298 does

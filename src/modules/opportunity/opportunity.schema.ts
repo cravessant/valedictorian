@@ -1,12 +1,11 @@
 /**
  * Opportunity aggregate schema (issue #298). Owned by the opportunity module.
  *
- * The clean cutover owns the canonical `opportunities` root.
+ * This module owns the canonical `opportunities` root.
  * "Normalized Opportunity identity" is the direct workspace-scoped Job reference
- * plus a partial unique on (workspace_id, job_id) — replacing the legacy
- * JSON-scanned projection aliases. Vocabulary mirrors the sparxie contract
+ * plus a partial unique on (workspace_id, job_id). Vocabulary mirrors the sparxie contract
  * (src/db/lifecycle-vocabulary.ts). The Job-workspace and append-only history
- * triggers are installed by the journaled migration and not modeled here.
+ * triggers are installed by the operational baseline and not modeled here.
  */
 import { sql } from 'drizzle-orm'
 import { check, foreignKey, index, integer, pgTable, primaryKey, text, uniqueIndex } from 'drizzle-orm/pg-core'

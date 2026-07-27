@@ -1,12 +1,12 @@
 /**
  * Application aggregate schema (issue #298). Owned by the application module.
  *
- * The clean cutover owns the canonical `applications` root.
+ * This module owns the canonical `applications` root.
  * Relation tables use distinct canonical names (`pursuit_links`,
  * `application_attempt_records`, `application_event_records`, `application_history`),
  * so they need no rename. Vocabulary mirrors the sparxie contract
  * (src/db/lifecycle-vocabulary.ts). The Opportunity-and-Job lineage and
- * append-only history triggers are installed by the journaled migration.
+ * append-only history triggers are installed by the operational baseline.
  */
 import { sql } from 'drizzle-orm'
 import { boolean, check, foreignKey, index, integer, pgTable, primaryKey, text, uniqueIndex } from 'drizzle-orm/pg-core'

@@ -12,8 +12,7 @@ import { lifecyclePhysicalTableOwnership, lifecycleTableOwnership } from '../db/
  *   - dynamic table access inside a write call (`schema['jobs']`, `schema[expr]`),
  *     which cannot be statically resolved and is therefore flagged conservatively;
  *   - raw SQL DML (`insert into <t>`, `update <t> set`, `delete from <t>`) in a
- *     sql-template or execute string, matched against the physical table names
- *     (legacy and canonical).
+ *     sql-template or execute string, matched against canonical physical table names.
  *
  * Known limit: a computed/interpolated physical table name in raw SQL (a
  * string-concatenated or template-substituted table name) is not detected, since
@@ -30,15 +29,6 @@ export interface OwnershipSourceFile {
   readonly module: string | null
   readonly source: string
 }
-
-/**
- * Test-infrastructure helpers exempted from the write rule ONLY because nothing
- * in production imports them. If a production module imports one, remove it here
- * and route the write through the owning module's repository instead.
- */
-export const testInfrastructureAllowlist: ReadonlySet<string> = new Set([
-  'src/modules/sourcing/canonical-candidate.projection.pglite-test-helpers.ts',
-])
 
 const writeCallPattern = /\.(?:insert|update|delete)\(\s*([A-Za-z_$][\w$]*)(?:\.([A-Za-z_$][\w$]*))?\s*\)/g
 const dynamicWritePattern = /\.(?:insert|update|delete)\(\s*[A-Za-z_$][\w$]*\s*\[/g
@@ -77,7 +67,6 @@ export function findLifecycleStateOwnershipViolations(
   const violations: string[] = []
 
   for (const file of files) {
-    if (testInfrastructureAllowlist.has(file.path)) continue
     const writerModule = file.module ?? moduleForPath(file.path)
     const bindings = lifecycleImportBindings(file.source)
     const report = (table: string, owner: string, kind: string) => {

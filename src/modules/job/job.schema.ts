@@ -1,10 +1,10 @@
 /**
  * Job aggregate schema (issue #298). Owned by the job module.
  *
- * The clean cutover owns the canonical `jobs` root. Vocabulary mirrors the sparxie contract
+ * This module owns the canonical `jobs` root. Vocabulary mirrors the sparxie contract
  * (src/db/lifecycle-vocabulary.ts). Append-only,
  * one-way-removal, and Capture-to-Job workspace-lineage triggers are installed
- * by the journaled migration and not modeled here.
+ * by the operational baseline and not modeled here.
  */
 import { sql } from 'drizzle-orm'
 import { check, foreignKey, index, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core'

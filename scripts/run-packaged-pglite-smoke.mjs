@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
-import { inspectPgliteRuntimeArtifactLayout } from './inspect-pglite-runtime-assets.mjs'
+import { inspectPgliteRuntimeArtifactLayout } from './inspect-pglite-runtime.mjs'
 
 export function findPackagedAppExecutable(releaseRoot, platform = process.platform) {
   const expectedSuffix = platform === 'darwin'
