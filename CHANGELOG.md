@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.0-alpha.55
+
+- Replace the incremental pre-release migration history with one generated PGlite baseline; existing
+  alpha workspaces must be recreated rather than upgraded.
+- Move lifecycle renderer state to TanStack React Query and share the proven controller mechanics
+  across Jobs, Opportunities, and Applications.
+- Adopt the current Sparxie SDK and vendored Valedictorian CLI contracts, including current
+  lifecycle pagination and canonical connector admission.
+- Make Capture completion exits state-aware, adopt URL-only destinations, and present precise
+  Jobright destination outcomes in the desktop workflow.
+- Remove retired compatibility readers, Company coverage migration, obsolete cutover scaffolding,
+  unreachable source, and redundant test arrangements while preserving the canonical behavior.
+- Add deterministic isolated validation, CLI/UI development proof, and Electron-native geometry and
+  packaging coverage.
+
 ## 0.1.0-alpha.54
 
 - Add addressable workspace resources and complete workspace Company management, including
