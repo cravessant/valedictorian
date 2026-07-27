@@ -21,7 +21,7 @@ import { opportunityConfig } from './configs/opportunity-config'
 import { applicationConfig } from './configs/application-config'
 import { useCaptureController } from './configs/capture-controller'
 import { useJobController } from './configs/job-controller'
-import { useJobCompanyAssignmentController } from './job-company-assignment-controller'
+import { useJobEditController } from './job-edit-controller'
 import { useOpportunityController } from './configs/opportunity-controller'
 import { useApplicationController } from './configs/application-controller'
 import { LifecycleTable, type LifecycleTableConfig } from './lifecycle-table'
@@ -246,7 +246,7 @@ function LifecycleWorkbenchSession({
     refreshDestination: invalidate.opportunities,
     refreshAll: invalidate.workspace,
   })
-  const jobCompanyAssignmentController = useJobCompanyAssignmentController({
+  const jobEditController = useJobEditController({
     assignments: jobAssignments,
     client,
     refresh: invalidate.jobs,
@@ -324,15 +324,15 @@ function LifecycleWorkbenchSession({
       extensions: {
         ...jobController.extensions,
         formActions: [
+          jobEditController.action,
           ...(jobController.extensions.formActions ?? []),
-          jobCompanyAssignmentController.action,
         ],
       },
     }),
     [
       jobAssignments,
-      jobCompanyAssignmentController.action,
       jobController,
+      jobEditController.action,
       onOpenResource,
       onWorkspaceNavigate,
     ],
@@ -525,7 +525,7 @@ function LifecycleWorkbenchSession({
         removalPending={captureController.removalPending}
       />
       {jobController.modalLayer}
-      {jobCompanyAssignmentController.modalLayer}
+      {jobEditController.modalLayer}
       {opportunityController.modalLayer}
       {applicationController.modalLayer}
     </div>

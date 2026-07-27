@@ -1,7 +1,6 @@
 import { useRef, useState, type ReactElement } from 'react'
 import type {
   CreateJobInput,
-  CorrectJobFactsInput,
   Job,
   JobHistoryResult,
   JobMutationResult,
@@ -44,18 +43,6 @@ interface JobCreateDraft {
   availabilityState: string
 }
 
-interface JobCorrectDraft {
-  companyName: string
-  roleTitle: string
-  sourceName: string
-  roleKind: string
-  timingMode: string
-  workMode: string
-  employmentType: string
-  seniority: string
-  rationale: string
-}
-
 interface JobAvailabilityDraft {
   availabilityState: string
 }
@@ -95,7 +82,6 @@ export function useJobController(params: {
   const { client, scope, refresh, refreshDestination, refreshAll } = params
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [correctTarget, setCorrectTarget] = useState<Job | null>(null)
   const [availabilityTarget, setAvailabilityTarget] = useState<Job | null>(null)
   const [removeTarget, setRemoveTarget] = useState<Job | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<Job | null>(null)
@@ -112,7 +98,6 @@ export function useJobController(params: {
   const promotionKey = useRef('')
 
   const [createDraft, setCreateDraft] = useState<JobCreateDraft>(emptyCreateDraft())
-  const [correctDraft, setCorrectDraft] = useState<JobCorrectDraft>(emptyCorrectDraft())
   const [availabilityDraft, setAvailabilityDraft] = useState<JobAvailabilityDraft>(emptyAvailabilityDraft())
   const [removeDraft, setRemoveDraft] = useState<JobRemoveDraft>(emptyRemoveDraft())
   const [restoreDraft, setRestoreDraft] = useState<JobRestoreDraft>(emptyRestoreDraft())
@@ -133,21 +118,6 @@ export function useJobController(params: {
     outcome.clear()
     setCreateOpen(true)
   }
-  function openCorrect(row: Job) {
-    setCorrectDraft({
-      companyName: row.facts.companyName,
-      roleTitle: row.facts.roleTitle,
-      sourceName: row.facts.sourceName,
-      roleKind: row.facts.roleKind,
-      timingMode: row.facts.timingMode,
-      workMode: row.facts.workMode,
-      employmentType: row.facts.employmentType,
-      seniority: row.facts.seniority,
-      rationale: '',
-    })
-    outcome.clear()
-    setCorrectTarget(row)
-  }
   function openAvailability(row: Job) {
     setAvailabilityDraft({ availabilityState: row.availability.state })
     outcome.clear()
@@ -162,7 +132,6 @@ export function useJobController(params: {
     setPromoteTarget(row)
   }
 
-
   function validateJobFacts<T extends JobFactsDraft>(d: T): FieldErrors<T> | null {
     const fieldErrors: Record<string, string> = {}
     if (!d.companyName.trim()) fieldErrors.companyName = 'Company name is required.'
@@ -170,13 +139,6 @@ export function useJobController(params: {
     if (!d.sourceName.trim()) fieldErrors.sourceName = 'Source name is required.'
     if (!d.roleKind) fieldErrors.roleKind = 'Role kind is required.'
     return Object.keys(fieldErrors).length > 0 ? { fieldErrors: fieldErrors as Partial<Record<keyof T & string, string>> } : null
-  }
-
-  function validateJobCorrection(d: JobCorrectDraft): FieldErrors<JobCorrectDraft> | null {
-    const facts = validateJobFacts(d)
-    const rationale = requireRationale(d)
-    if (!facts && !rationale) return null
-    return { fieldErrors: { ...facts?.fieldErrors, ...rationale?.fieldErrors } }
   }
 
   function validatePromote(d: JobPromoteDraft): FieldErrors<JobPromoteDraft> | null {
@@ -233,45 +195,6 @@ export function useJobController(params: {
               targetResourceId: choice.targetResourceId as NonNullable<CreateJobInput['duplicateResolution']>['targetResourceId'],
             },
           }))
-      }
-    })
-  }
-
-  function submitCorrect(row: Job, d: JobCorrectDraft) {
-    outcome.run(async () => {
-      const input: CorrectJobFactsInput = {
-        jobId: row.id,
-        expectedFactsRevision: row.factsRevision,
-        actor: DESKTOP_USER_ACTOR,
-        rationale: d.rationale.trim(),
-        facts: {
-          companyName: d.companyName.trim(),
-          roleTitle: d.roleTitle.trim(),
-          sourceName: d.sourceName.trim(),
-          roleKind: d.roleKind as CorrectJobFactsInput['facts']['roleKind'],
-          ...jobFactsTiming({
-            terms: row.facts.terms,
-            timingMode: d.timingMode as CorrectJobFactsInput['facts']['timingMode'],
-            startDate: row.facts.startDate,
-            endDate: row.facts.endDate,
-          }),
-          location: row.facts.location,
-          workMode: d.workMode as CorrectJobFactsInput['facts']['workMode'],
-          employmentType: d.employmentType as CorrectJobFactsInput['facts']['employmentType'],
-          seniority: d.seniority as CorrectJobFactsInput['facts']['seniority'],
-          compensation: row.facts.compensation,
-          postedAt: row.facts.postedAt,
-          destination: row.facts.destination,
-        },
-        evidenceReferences: row.captureEvidenceReferences,
-      }
-      const result = await requireClient().jobs.correctFacts(input)
-      if (result.status === 'succeeded') {
-        await refresh()
-        outcome.show({ kind: 'succeeded' })
-        setCorrectTarget(null)
-      } else {
-        outcome.showBlocker(result.blocker)
       }
     })
   }
@@ -400,7 +323,6 @@ export function useJobController(params: {
     }),
     formActions: [
       { key: 'add', label: 'Add job', modal: true, onActivate: () => openCreate() },
-      { key: 'correct', label: 'Correct facts', modal: true, disabled: (row) => Boolean(row.removedAt), onActivate: (row) => openCorrect(row) },
       { key: 'availability', label: 'Update availability', modal: true, disabled: (row) => Boolean(row.removedAt), onActivate: (row) => openAvailability(row) },
       { key: 'remove', label: 'Remove job', modal: true, destructive: true, disabled: (row) => Boolean(row.removedAt), onActivate: (row) => openRemove(row) },
       { key: 'restore', label: 'Restore job', modal: true, disabled: (row) => !row.removedAt, onActivate: (row) => openRestore(row) },
@@ -411,17 +333,6 @@ export function useJobController(params: {
     ],
   }
 
-  const factsFields: ReadonlyArray<FieldSpec<JobCorrectDraft>> = [
-    { key: 'companyName', label: 'Company name', inputType: 'text', required: true },
-    { key: 'roleTitle', label: 'Role title', inputType: 'text', required: true },
-    { key: 'sourceName', label: 'Source name', inputType: 'text', required: true },
-    { key: 'roleKind', label: 'Role kind', inputType: 'select', choices: ROLE_KIND_CHOICES, required: true },
-    { key: 'timingMode', label: 'Timing mode', inputType: 'select', choices: TIMING_MODE_CHOICES, required: true },
-    { key: 'workMode', label: 'Work mode', inputType: 'select', choices: WORK_MODE_CHOICES, required: true },
-    { key: 'employmentType', label: 'Employment type', inputType: 'select', choices: EMPLOYMENT_TYPE_CHOICES, required: true },
-    { key: 'seniority', label: 'Seniority', inputType: 'select', choices: SENIORITY_CHOICES, required: true },
-    { key: 'rationale', label: 'Rationale', inputType: 'textarea', required: true },
-  ]
   const createFields: ReadonlyArray<FieldSpec<JobCreateDraft>> = [
     { key: 'companyName', label: 'Company name', inputType: 'text', required: true },
     { key: 'roleTitle', label: 'Role title', inputType: 'text', required: true },
@@ -464,19 +375,6 @@ export function useJobController(params: {
         validate={validateJobFacts}
         pending={pending}
         submitLabel="Create"
-      />
-      <FormModal
-        open={correctTarget !== null}
-        title="Correct job facts"
-        description={correctTarget ? `Correcting ${correctTarget.id} at facts revision ${correctTarget.factsRevision}` : ''}
-        fields={factsFields}
-        value={correctDraft}
-        onChange={setCorrectDraft}
-        onSubmit={(d) => { if (correctTarget) submitCorrect(correctTarget, d) }}
-        onCancel={() => setCorrectTarget(null)}
-        validate={validateJobCorrection}
-        pending={pending}
-        submitLabel="Correct"
       />
       <FormModal
         open={availabilityTarget !== null}
@@ -565,9 +463,6 @@ const DISPOSITION_CHOICES_LOCAL = [
 
 function emptyCreateDraft(): JobCreateDraft {
   return { companyName: '', roleTitle: '', sourceName: '', roleKind: 'new_grad', timingMode: 'unknown', workMode: 'unknown', employmentType: 'full_time', seniority: 'entry', availabilityState: 'unknown' }
-}
-function emptyCorrectDraft(): JobCorrectDraft {
-  return { companyName: '', roleTitle: '', sourceName: '', roleKind: 'new_grad', timingMode: 'unknown', workMode: 'unknown', employmentType: 'full_time', seniority: 'entry', rationale: '' }
 }
 function emptyAvailabilityDraft(): JobAvailabilityDraft {
   return { availabilityState: 'unknown' }

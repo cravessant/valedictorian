@@ -638,14 +638,14 @@ describe('CaptureCompletionModal', () => {
     const reassignment = await screen.findByRole('dialog', { name: 'Reassign Job Company' })
     expect(screen.getByRole('dialog', { name: 'Complete Capture into a Job' })).toBeInTheDocument()
     expect(screen.getByLabelText('Role title')).toHaveValue('Principal Engineer')
-    await user.type(within(reassignment).getByLabelText('Find Company'), 'Destination')
+    await user.type(
+      within(reassignment).getByRole('combobox', { name: 'Destination Company' }),
+      'Destination',
+    )
     await waitFor(() => expect(within(reassignment).getByRole('option', {
       name: 'Destination Company',
     })).toBeInTheDocument())
-    await user.selectOptions(
-      within(reassignment).getByLabelText('Destination Company'),
-      'company-destination',
-    )
+    await user.click(within(reassignment).getByRole('option', { name: 'Destination Company' }))
     await user.type(within(reassignment).getByLabelText('Rationale'), 'Correct assignment')
     await user.click(within(reassignment).getByRole('button', { name: 'Reassign Company' }))
 

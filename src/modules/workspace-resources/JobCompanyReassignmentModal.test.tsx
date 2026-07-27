@@ -52,16 +52,16 @@ function makeClient(result: unknown) {
 
 async function completeForm(user: ReturnType<typeof userEvent.setup>) {
   const dialog = screen.getByRole('dialog', { name: 'Reassign Job Company' })
-  await user.type(within(dialog).getByLabelText('Find Company'), 'Destination')
+  await user.type(
+    within(dialog).getByRole('combobox', { name: 'Destination Company' }),
+    'Destination',
+  )
   await waitFor(() => {
     expect(within(dialog).getByRole('option', {
       name: 'Destination Company',
     })).toBeInTheDocument()
   })
-  await user.selectOptions(
-    within(dialog).getByLabelText('Destination Company'),
-    destination.companyId,
-  )
+  await user.click(within(dialog).getByRole('option', { name: 'Destination Company' }))
   await user.type(within(dialog).getByLabelText('Rationale'), 'Correct assignment')
   await user.click(within(dialog).getByRole('button', { name: 'Reassign Company' }))
 }

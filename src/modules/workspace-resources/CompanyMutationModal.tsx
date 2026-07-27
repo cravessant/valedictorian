@@ -16,7 +16,7 @@ import {
 } from '@/modules/lifecycle-table/lifecycle-actor'
 
 export type CompanyModalAction =
-  | { readonly kind: 'create' }
+  | { readonly kind: 'create'; readonly displayName?: string }
   | { readonly kind: 'identity'; readonly company: WorkspaceCompany }
   | { readonly kind: 'notes'; readonly company: WorkspaceCompany }
   | { readonly kind: 'alias_add'; readonly company: WorkspaceCompany }
@@ -30,7 +30,7 @@ export type CompanyModalAction =
 interface CompanyMutationModalProps {
   readonly action: CompanyModalAction | null
   readonly client: WorkspaceCompaniesClient
-  readonly onChanged: (companyId: string) => void
+  readonly onChanged: (companyId: string) => void | Promise<void>
   readonly onClose: () => void
   readonly workspaceId: string
 }
@@ -126,7 +126,7 @@ function CompanyMutationForm({
             idempotencyKey,
             workspaceId,
           })
-          onChanged(companyId)
+          await onChanged(companyId)
           onClose()
         } finally {
           setPending(false)
@@ -143,7 +143,7 @@ function CompanyMutationForm({
 }
 
 function modalActionKey(action: CompanyModalAction): string {
-  if (action.kind === 'create') return action.kind
+  if (action.kind === 'create') return `create:${action.displayName ?? ''}`
   const aliasId = 'alias' in action ? action.alias.id : ''
   return `${action.kind}:${action.company.id}:${action.company.revision}:${aliasId}`
 }
@@ -227,7 +227,7 @@ function modalPresentation(action: CompanyModalAction): {
 }
 
 function draftFor(action: CompanyModalAction): CompanyDraft {
-  if (action.kind === 'create') return emptyDraft
+  if (action.kind === 'create') return { ...emptyDraft, displayName: action.displayName ?? '' }
   return {
     ...emptyDraft,
     displayName: action.company.displayName,

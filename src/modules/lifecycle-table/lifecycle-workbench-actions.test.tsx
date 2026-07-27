@@ -132,6 +132,7 @@ interface MockClient {
   captures: Record<string, ReturnType<typeof vi.fn>>
   captureResolution: Record<string, ReturnType<typeof vi.fn>>
   jobs: Record<string, ReturnType<typeof vi.fn>>
+  companies: Record<string, ReturnType<typeof vi.fn>>
   companyAssignments: Record<string, ReturnType<typeof vi.fn>>
   opportunities: Record<string, ReturnType<typeof vi.fn>>
   applications: Record<string, ReturnType<typeof vi.fn>>
@@ -225,10 +226,15 @@ function makeClient(seed: {
     }),
     reassign: vi.fn(),
   }
+  const companies = {
+    search: vi.fn(async () => ({ items: [], truncated: false })),
+    previewMatches: vi.fn(async () => ({ items: [], truncated: false })),
+  }
   const client = {
     captures,
     captureResolutionV2: captureResolution,
     jobs,
+    companies,
     companyAssignments,
     opportunities,
     applications,
@@ -238,6 +244,7 @@ function makeClient(seed: {
     captures,
     captureResolution,
     jobs,
+    companies,
     companyAssignments,
     opportunities,
     applications,
@@ -646,20 +653,25 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     })
   })
 
-  it('offers Company reassignment from the Job row only after its assignment loads', async () => {
+  it('offers one Job edit entry point that owns both facts and Company assignment', async () => {
     const user = userEvent.setup()
     const { client } = makeClient({ jobs: [makeJob('job-1')] })
     renderWithQueryClient(<LifecycleWorkbench client={client} workspaceId="ws" />)
     await user.click(await screen.findByRole('button', { name: /^Jobs/ }))
 
     const menu = await openRowMenu(user, /Acme.*Engineer/)
-    await user.click(within(menu).getByRole('menuitem', { name: 'Reassign Company' }))
+    expect(within(menu).queryByRole('menuitem', { name: 'Correct facts' })).not.toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: 'Reassign Company' })).not.toBeInTheDocument()
+    await user.click(within(menu).getByRole('menuitem', { name: 'Edit job' }))
 
-    expect(await screen.findByRole('dialog', {
-      name: 'Reassign Job Company',
-    })).toHaveTextContent(
-      'Currently assigned to Assigned Company. Job facts will not change.',
-    )
+    const dialog = await screen.findByRole('dialog', { name: 'Edit job' })
+    expect(dialog).toHaveTextContent('Assigned to Assigned Company at assignment revision 1.')
+    expect(within(dialog).getByRole('combobox', { name: 'Assigned Company' })).toBeInTheDocument()
+    expect(within(dialog).getByText('Selected Company: Assigned Company')).toBeInTheDocument()
+    expect(within(dialog).getByRole('textbox', { name: 'Posting company text' })).toHaveValue('Acme')
+    expect(within(dialog).getByText(
+      'Source text the posting asserted. Correcting it never changes the assigned Company.',
+    )).toBeInTheDocument()
   })
 
   it('Opportunity promote routes to opportunities.promoteToApplication', async () => {
@@ -772,7 +784,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     await waitFor(() => expect(opportunities.list).toHaveBeenCalledTimes(3))
   })
 
-  it('seeds Job corrections from the row and preserves non-edited facts and evidence references', async () => {
+  it('seeds Job edits from the row and preserves non-edited facts and evidence references', async () => {
     const user = userEvent.setup()
     const job = makeJob('job-1', {
       facts: {
@@ -790,15 +802,19 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await user.click(await screen.findByRole('button', { name: /^Jobs/ }))
     const menu = await openRowMenu(user, /Acme.*Engineer/)
-    await user.click(within(menu).getByRole('menuitem', { name: 'Correct facts' }))
-    expect(screen.getByRole('textbox', { name: 'Company name' })).toHaveValue('Acme')
+    await user.click(within(menu).getByRole('menuitem', { name: 'Edit job' }))
+    expect(screen.getByRole('textbox', { name: 'Posting company text' })).toHaveValue('Acme')
+    const roleTitle = screen.getByRole('textbox', { name: 'Role title' })
+    await user.clear(roleTitle)
+    await user.type(roleTitle, 'Senior Engineer')
     await user.type(screen.getByRole('textbox', { name: 'Rationale' }), 'Title verified.')
-    await user.click(screen.getByRole('button', { name: 'Correct' }))
+    await user.click(screen.getByRole('button', { name: 'Save job' }))
 
     await waitFor(() => expect(jobs.correctFacts).toHaveBeenCalledTimes(1))
     expect(jobs.correctFacts).toHaveBeenCalledWith(expect.objectContaining({
       rationale: 'Title verified.',
       facts: expect.objectContaining({
+        roleTitle: 'Senior Engineer',
         term: 'Fall 2026',
         terms: [{ season: 'fall', year: 2026 }],
         startDate: '2026-09-01',

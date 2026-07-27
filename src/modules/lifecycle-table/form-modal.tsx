@@ -25,7 +25,15 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 
-export type FieldInputType = 'text' | 'textarea' | 'select' | 'datetime-local' | 'number'
+export type FieldInputType = 'text' | 'textarea' | 'select' | 'datetime-local' | 'number' | 'custom'
+
+export interface CustomFieldControlProps {
+  readonly id: string
+  readonly value: string
+  readonly onChange: (next: string) => void
+  readonly disabled: boolean
+  readonly invalid: boolean
+}
 
 export interface FieldSelectChoice {
   readonly value: string
@@ -43,6 +51,8 @@ export interface FieldSpec<T> {
   readonly choices?: ReadonlyArray<FieldSelectChoice>
   /** When true the field is rendered as a readonly text representation. */
   readonly readOnly?: boolean
+  /** Custom control that participates in the shared form draft and validation. */
+  readonly render?: (props: CustomFieldControlProps) => ReactNode
 }
 
 /** Every lifecycle command that records why it happened requires a rationale. */
@@ -218,7 +228,15 @@ export function FormModal<T>({
                 return (
                   <Field key={field.key}>
                     <FieldLabel htmlFor={inputId}>{field.label}</FieldLabel>
-                    {renderFieldInput(field, raw, inputId, (next) => handleFieldChange(field.key, next), pending)}
+                    {field.inputType === 'custom'
+                      ? field.render?.({
+                          id: inputId,
+                          value: raw,
+                          onChange: (next) => handleFieldChange(field.key, next),
+                          disabled: pending,
+                          invalid: Boolean(fieldError),
+                        })
+                      : renderFieldInput(field, raw, inputId, (next) => handleFieldChange(field.key, next), pending)}
                     {field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
                     {fieldError ? <FieldError>{fieldError}</FieldError> : null}
                   </Field>

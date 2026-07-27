@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type {
-  CompanySearchResult,
   JobCompanyAssignmentPresentation,
+  ReassignJobCompanyInput,
 } from '@sparxie/sdk'
 import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 import {
@@ -13,13 +13,17 @@ import {
   DESKTOP_USER_ACTOR,
   newIdempotencyKey,
 } from '@/modules/lifecycle-table/lifecycle-actor'
+import {
+  CompanyAssignmentField,
+  type CompanySelection,
+} from './CompanyAssignmentField'
 
 interface ReassignmentDraft {
-  readonly query: string
   readonly destinationCompanyId: string
   readonly rationale: string
 }
 
+/** Standalone reassignment recovery that leaves Job facts untouched. */
 export function JobCompanyReassignmentModal({
   assignment,
   client,
@@ -34,65 +38,34 @@ export function JobCompanyReassignmentModal({
   readonly workspaceId: string
 }) {
   const [draft, setDraft] = useState<ReassignmentDraft>({
-    query: '',
     destinationCompanyId: '',
     rationale: '',
   })
-  const [matches, setMatches] = useState<readonly CompanySearchResult[]>([])
-  const [searchFailure, setSearchFailure] = useState<string | null>(null)
+  const [selected, setSelected] = useState<CompanySelection | null>(null)
   const [pending, setPending] = useState(false)
   const [idempotencyKey] = useState(() => newIdempotencyKey('job-company-reassign'))
 
-  useEffect(() => {
-    const query = draft.query.trim()
-    if (!query) {
-      setMatches([])
-      setSearchFailure(null)
-      return
-    }
-    let current = true
-    const timer = window.setTimeout(() => {
-      void client.companies.search({
-        query,
-        scope: 'active',
-        limit: 20,
-      }).then((page) => {
-        if (!current) return
-        setMatches(page.items.filter((item) =>
-          item.companyId !== assignment.workspaceCompany.companyId))
-        setSearchFailure(null)
-      }, () => {
-        if (!current) return
-        setMatches([])
-        setSearchFailure('Company search could not be loaded.')
-      })
-    }, 200)
-    return () => {
-      current = false
-      window.clearTimeout(timer)
-    }
-  }, [assignment.workspaceCompany.companyId, client, draft.query])
-
   const fields = useMemo<readonly FieldSpec<ReassignmentDraft>[]>(() => [
-    {
-      key: 'query',
-      label: 'Find Company',
-      inputType: 'text',
-      required: true,
-      description: 'Searches active workspace Companies.',
-    },
     {
       key: 'destinationCompanyId',
       label: 'Destination Company',
-      inputType: 'select',
+      inputType: 'custom',
       required: true,
-      choices: [
-        { value: '', label: matches.length === 0 ? 'No matches' : 'Choose a Company' },
-        ...matches.map((match) => ({
-          value: match.companyId,
-          label: match.displayName,
-        })),
-      ],
+      description: 'Searches active workspace Companies.',
+      render: ({ id, onChange, disabled, invalid }) => (
+        <CompanyAssignmentField
+          inputId={id}
+          client={client.companies}
+          workspaceId={workspaceId}
+          selected={selected}
+          disabled={disabled}
+          invalid={invalid}
+          onSelect={(next) => {
+            setSelected(next)
+            onChange(next.companyId)
+          }}
+        />
+      ),
     },
     {
       key: 'rationale',
@@ -101,7 +74,7 @@ export function JobCompanyReassignmentModal({
       required: true,
       description: 'Recorded in assignment history.',
     },
-  ], [matches])
+  ], [client, selected, workspaceId])
 
   return (
     <FormModal
@@ -112,14 +85,13 @@ export function JobCompanyReassignmentModal({
       value={draft}
       onChange={setDraft}
       onCancel={onClose}
-      validate={(value) => validate(value, matches)}
-      error={searchFailure}
+      validate={(value) => validate(value, assignment, selected)}
       pending={pending}
       submitLabel="Reassign Company"
       onSubmit={async (value) => {
-        const destination = matches.find((match) =>
-          match.companyId === value.destinationCompanyId)
-        if (!destination) throw new Error('Choose a current Company search result.')
+        if (!selected || selected.companyId !== value.destinationCompanyId) {
+          throw new Error('Choose a Company from the suggestions.')
+        }
         setPending(true)
         try {
           const result = await client.companyAssignments.reassign({
@@ -129,8 +101,8 @@ export function JobCompanyReassignmentModal({
             idempotencyKey,
             jobId: assignment.jobId,
             expectedAssignmentRevision: assignment.assignmentRevision,
-            destinationCompanyId: destination.companyId,
-            expectedDestinationCompanyRevision: destination.revision,
+            destinationCompanyId: selected.companyId as ReassignJobCompanyInput['destinationCompanyId'],
+            expectedDestinationCompanyRevision: selected.revision,
           })
           if (result.status === 'blocked') {
             throw new Error(result.failure.blocker.message)
@@ -147,12 +119,14 @@ export function JobCompanyReassignmentModal({
 
 function validate(
   draft: ReassignmentDraft,
-  matches: readonly CompanySearchResult[],
+  assignment: JobCompanyAssignmentPresentation,
+  selected: CompanySelection | null,
 ): FieldErrors<ReassignmentDraft> | null {
   const fieldErrors: Partial<Record<keyof ReassignmentDraft, string>> = {}
-  if (!draft.query.trim()) fieldErrors.query = 'Enter a Company search.'
-  if (!matches.some((match) => match.companyId === draft.destinationCompanyId)) {
-    fieldErrors.destinationCompanyId = 'Choose a Company from the current results.'
+  if (!selected || selected.companyId !== draft.destinationCompanyId) {
+    fieldErrors.destinationCompanyId = 'Choose a Company from the suggestions.'
+  } else if (selected.companyId === assignment.workspaceCompany.companyId) {
+    fieldErrors.destinationCompanyId = 'Choose a Company other than the current assignment.'
   }
   if (!draft.rationale.trim()) fieldErrors.rationale = 'Rationale is required.'
   return Object.keys(fieldErrors).length > 0 ? { fieldErrors } : null
