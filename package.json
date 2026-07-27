@@ -23,7 +23,6 @@
     "lint:profile-secret-import-policy": "node scripts/profile-secret-import-policy.mjs",
     "inspect:electron-runtime": "node scripts/inspect-electron-runtime.mjs",
     "inspect:pglite-runtime": "node scripts/inspect-pglite-runtime.mjs",
-    "smoke:capture-table-containment": "node scripts/run-capture-table-containment-probe.mjs",
     "smoke:connector-modal-scroll": "node scripts/run-connector-modal-scroll-probe.mjs",
     "smoke:capture-completion-dialog-layout": "tsx scripts/run-electron-native-ui-proof.ts --capture-completion-layout",
     "smoke:manual-workflow-package": "node scripts/run-packaged-manual-workflow-proof.mjs",

@@ -1,3 +1,0 @@
-/* Vite's root is this directory, so Tailwind would otherwise miss the app's utilities. */
-@import "../../src/index.css";
-@source "../../src";
