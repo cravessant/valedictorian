@@ -5,7 +5,67 @@ import type {
   ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import type { LifecycleTableConfig } from '../lifecycle-table'
+
+/** Fixed layout so no value can resize a column; below the minimum the viewport scrolls. */
+const captureTableClassName = 'min-w-[64rem] table-fixed'
+
+export const captureColumnWidths = {
+  lead: 'w-[20%]',
+  source: 'w-[9%]',
+  destination: 'w-[12%]',
+  status: 'w-[10%]',
+  'linked-job': 'w-[20%]',
+  observedAt: 'w-[13%]',
+  'next-action': 'w-[12%]',
+} as const
+
+const clampedLabel = 'line-clamp-2 break-words'
+
+/** Hosts and identifiers have no word boundary to break on. */
+const clampedIdentifier = 'line-clamp-2 [overflow-wrap:anywhere]'
+
+const clampedControlLabel = `${clampedLabel} min-w-0 whitespace-normal`
+/** `max-w-full`, not `w-full`: a short label keeps its own hit area. */
+const clampedControl = 'h-auto max-w-full justify-start p-0 text-left'
+
+/** The clamp keeps the full accessible name; the tooltip discloses it visually. */
+function ClampedControl({
+  className,
+  id,
+  label,
+  onActivate,
+}: {
+  readonly className?: string
+  readonly id?: string
+  readonly label: string
+  readonly onActivate: () => void
+}) {
+  return (
+    <TooltipProvider delayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            id={id}
+            type="button"
+            variant="link"
+            className={className ? `${clampedControl} ${className}` : clampedControl}
+            onClick={onActivate}
+          >
+            <span className={clampedControlLabel}>{label}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-72">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
 
 export interface CaptureConfig {
   readonly table: LifecycleTableConfig<CaptureListPresentation>
@@ -37,6 +97,7 @@ export function createCaptureConfig(options: {
 } = {}): CaptureConfig {
   const table: LifecycleTableConfig<CaptureListPresentation> = {
   caption: 'Captures',
+  tableClassName: captureTableClassName,
   rowId: (row) => row.captureId,
   rowLabel: (row) => row.lead.fallbackLabel,
   empty: {
@@ -47,13 +108,14 @@ export function createCaptureConfig(options: {
     {
       key: 'lead',
       header: 'Lead',
+      className: captureColumnWidths.lead,
       render: (row) => (
-        <div className="min-w-44">
-          <p className="font-medium text-foreground">
+        <div className="min-w-0">
+          <p className={`${clampedLabel} font-medium text-foreground`}>
             {row.lead.roleTitle ?? row.lead.fallbackLabel}
           </p>
           {row.lead.companyName ? (
-            <p className="text-xs text-muted-foreground">{row.lead.companyName}</p>
+            <p className={`${clampedLabel} text-xs text-muted-foreground`}>{row.lead.companyName}</p>
           ) : null}
         </div>
       ),
@@ -61,26 +123,25 @@ export function createCaptureConfig(options: {
     {
       key: 'source',
       header: 'Source',
-      render: (row) => row.source.displayName,
+      className: captureColumnWidths.source,
+      render: (row) => <span className={clampedLabel}>{row.source.displayName}</span>,
     },
     {
       key: 'destination',
       header: 'Destination',
+      className: captureColumnWidths.destination,
       render: (row) => {
         if (!options.onViewResolution || !hasUnexplainedDestinationOutcome(row)) {
-          return destinationLabel(row)
+          return <span className={clampedIdentifier}>{destinationLabel(row)}</span>
         }
         return (
           <div className="min-w-0">
-            <p>{destinationLabel(row)}</p>
-            <Button
-              type="button"
-              variant="link"
-              className="h-auto p-0 text-xs"
-              onClick={() => options.onViewResolution?.(row)}
-            >
-              View resolution details
-            </Button>
+            <p className={clampedIdentifier}>{destinationLabel(row)}</p>
+            <ClampedControl
+              className="text-xs"
+              label="View resolution details"
+              onActivate={() => options.onViewResolution?.(row)}
+            />
           </div>
         )
       },
@@ -88,45 +149,47 @@ export function createCaptureConfig(options: {
     {
       key: 'status',
       header: 'Status',
-      render: (row) => statusLabel(row),
+      className: captureColumnWidths.status,
+      render: (row) => <span className={clampedLabel}>{statusLabel(row)}</span>,
     },
     {
       key: 'linked-job',
       header: 'Linked Job',
+      className: captureColumnWidths['linked-job'],
       render: (row) => {
         if (!row.linkedJob) return '—'
-        if (!options.onOpenJob) return linkedJobLabel(row)
+        const label = linkedJobLabel(row)
+        if (!options.onOpenJob) return <span className={clampedLabel}>{label}</span>
         const anchor = `capture-job-link-${row.captureId}`
         return (
-          <Button
+          <ClampedControl
             id={anchor}
-            type="button"
-            variant="link"
-            className="h-auto max-w-56 justify-start p-0 text-left"
-            onClick={() => options.onOpenJob?.(row.linkedJob!.jobId, anchor)}
-          >
-            {linkedJobLabel(row)}
-          </Button>
+            label={label}
+            onActivate={() => options.onOpenJob?.(row.linkedJob!.jobId, anchor)}
+          />
         )
       },
     },
     {
       key: 'observedAt',
       header: 'Observed',
-      render: (row) => formatObservedAt(row.observedAt),
+      className: captureColumnWidths.observedAt,
+      render: (row) => <span className={clampedLabel}>{formatObservedAt(row.observedAt)}</span>,
     },
     {
       key: 'next-action',
       header: 'Next action',
+      className: captureColumnWidths['next-action'],
       render: (row) => {
         const intent = row.primaryIntent
         if (!intent || !isCaptureCompletionIntent(intent) || !options.onComplete) {
-          return primaryIntentLabel(row)
+          return <span className={clampedLabel}>{primaryIntentLabel(row)}</span>
         }
         return (
-          <Button type="button" variant="link" className="h-auto p-0" onClick={() => options.onComplete?.(row.captureId, intent, row)}>
-            {primaryIntentLabel(row)}
-          </Button>
+          <ClampedControl
+            label={primaryIntentLabel(row)}
+            onActivate={() => options.onComplete?.(row.captureId, intent, row)}
+          />
         )
       },
     },

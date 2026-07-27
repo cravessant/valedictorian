@@ -6,6 +6,9 @@ type TableProps = React.HTMLAttributes<HTMLTableElement> & {
   containerProps?: React.HTMLAttributes<HTMLDivElement>
 }
 
+/** Phase-neutral: containment only, so no table inherits another's column budget. */
+const cellContainment = 'min-w-0 overflow-hidden [&>*]:min-w-0'
+
 const Table = React.forwardRef<
   HTMLTableElement,
   TableProps
@@ -16,7 +19,10 @@ const Table = React.forwardRef<
     <div
       {...restContainerProps}
       data-slot="table-container"
-      className={cn('relative w-full overflow-x-auto', containerClassName)}
+      className={cn(
+        'relative w-full overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+        containerClassName,
+      )}
     >
       <table
         ref={ref}
@@ -95,6 +101,7 @@ const TableHead = React.forwardRef<
     ref={ref}
     data-slot="table-head"
     className={cn(
+      cellContainment,
       'h-10 px-3 text-left align-middle text-xs font-medium uppercase text-muted-foreground',
       className,
     )}
@@ -110,7 +117,7 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     data-slot="table-cell"
-    className={cn('px-3 py-3 align-middle text-sm', className)}
+    className={cn(cellContainment, 'px-3 py-3 align-middle text-sm', className)}
     {...props}
   />
 ))

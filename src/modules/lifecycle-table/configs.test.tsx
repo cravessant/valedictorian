@@ -4,7 +4,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CaptureListPresentation, ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
 
 import { LifecycleTable } from './lifecycle-table'
-import { captureConfig, createCaptureConfig } from './configs/capture-config'
+import {
+  captureColumnWidths,
+  captureConfig,
+  createCaptureConfig,
+} from './configs/capture-config'
+import {
+  captureContainmentDestinationHost,
+  captureContainmentLinkedJobLabel,
+  captureContainmentRows,
+} from './capture-containment.fixture'
 import { jobConfig, createJobConfig } from './configs/job-config'
 import { opportunityConfig, createOpportunityConfig } from './configs/opportunity-config'
 import { applicationConfig, createApplicationConfig } from './configs/application-config'
@@ -242,6 +251,121 @@ describe('lifecycle typed configs', () => {
 
     expect(screen.queryByRole('button', { name: 'View resolution details' }))
       .not.toBeInTheDocument()
+  })
+})
+
+describe('Capture column containment', () => {
+  const clampedControlNames = [
+    captureContainmentLinkedJobLabel,
+    'View resolution details',
+    'Complete Job information',
+  ] as const
+
+  function renderContainmentRows(options: Parameters<typeof createCaptureConfig>[0] = {}) {
+    render(
+      <LifecycleTable
+        config={createCaptureConfig({
+          onComplete: vi.fn(),
+          onOpenJob: vi.fn(),
+          onViewResolution: vi.fn(),
+          ...options,
+        }).table}
+        data={captureContainmentRows}
+        state={{ status: 'loaded' }}
+      />,
+    )
+    return screen.getByRole('button', { name: captureContainmentLinkedJobLabel })
+  }
+
+  it('budgets every Capture column under a fixed layout with a useful minimum width', () => {
+    const config = captureConfig.table
+    expect(config.tableClassName).toContain('table-fixed')
+    expect(config.tableClassName).toMatch(/min-w-\[\d+rem\]/)
+    expect(Object.fromEntries(config.columns.map((column) => [column.key, column.className])))
+      .toEqual(captureColumnWidths)
+
+    const share = (key: keyof typeof captureColumnWidths) =>
+      Number(/\[(\d+)%\]/.exec(captureColumnWidths[key])?.[1])
+    const compact = ['source', 'destination', 'status', 'observedAt', 'next-action'] as const
+    for (const key of compact) {
+      expect(share('lead')).toBeGreaterThan(share(key))
+      expect(share('linked-job')).toBeGreaterThan(share(key))
+    }
+    const keys = Object.keys(captureColumnWidths) as (keyof typeof captureColumnWidths)[]
+    expect(keys.reduce((total, key) => total + share(key), 0)).toBeLessThanOrEqual(100)
+  })
+
+  it('clamps Capture values to two lines and breaks unbroken hosts inside their own cell', () => {
+    const linkedJob = renderContainmentRows()
+
+    expect(linkedJob.firstElementChild)
+      .toHaveClass('line-clamp-2', 'break-words', 'whitespace-normal')
+    expect(screen.getByText(captureContainmentDestinationHost))
+      .toHaveClass('line-clamp-2', '[overflow-wrap:anywhere]')
+    for (const cell of screen.getAllByRole('cell')) {
+      expect(cell).toHaveClass('min-w-0', 'overflow-hidden')
+    }
+  })
+
+  it('keeps Observed and Next action independently legible beside a long linked-Job value', async () => {
+    const user = userEvent.setup()
+    const onComplete = vi.fn()
+    renderContainmentRows({ onComplete })
+
+    const rows = screen.getAllByRole('row')
+    const linkedJobRow = rows.find((row) => within(row).queryByRole('button', {
+      name: captureContainmentLinkedJobLabel,
+    }))
+    expect(within(linkedJobRow!).getByText(/2026/)).toBeInTheDocument()
+    expect(within(linkedJobRow!).getByText('View Job')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Complete Job information' }))
+    expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(clampedControlNames)('reveals the full "%s" label on keyboard focus', async (name) => {
+    renderContainmentRows()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    const control = screen.getByRole('button', { name })
+    control.focus()
+    expect(control).toHaveFocus()
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(name)
+  })
+
+  it.each(clampedControlNames)('reveals the full "%s" label on pointer hover', async (name) => {
+    const user = userEvent.setup()
+    renderContainmentRows()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    await user.hover(screen.getByRole('button', { name }))
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(name)
+  })
+
+  it('keeps the activation payload and focus of every disclosed Capture control', async () => {
+    const user = userEvent.setup()
+    const onComplete = vi.fn()
+    const onOpenJob = vi.fn()
+    const onViewResolution = vi.fn()
+    const linkedJob = renderContainmentRows({ onComplete, onOpenJob, onViewResolution })
+
+    await user.click(linkedJob)
+    expect(onOpenJob).toHaveBeenCalledWith(
+      'job-long-linked',
+      'capture-job-link-capture-long-linked-job',
+    )
+    expect(screen.getByRole('button', { name: captureContainmentLinkedJobLabel }))
+      .toBe(linkedJob)
+
+    await user.click(screen.getByRole('button', { name: 'Complete Job information' }))
+    expect(onComplete).toHaveBeenCalledWith(
+      'capture-needs-information',
+      { kind: 'complete_job_information' },
+      captureContainmentRows[1],
+    )
+
+    await user.click(screen.getByRole('button', { name: 'View resolution details' }))
+    expect(onViewResolution).toHaveBeenCalledWith(captureContainmentRows[2])
   })
 })
 

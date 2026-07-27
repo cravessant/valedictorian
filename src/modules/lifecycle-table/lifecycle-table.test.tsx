@@ -338,6 +338,39 @@ describe('LifecycleTable shared component', () => {
     expect(container).toHaveAttribute('tabIndex', '0')
   })
 
+  it('contains every header and body cell without imposing any aggregate proportion', () => {
+    const data: Row[] = [{ id: 'r1', label: 'Alpha', count: 1 }]
+    render(
+      <LifecycleTable
+        config={makeConfig()}
+        data={data}
+        state={{ status: 'loaded' }}
+      />,
+    )
+    const table = screen.getByRole('table', { name: 'Test table' })
+    for (const cell of [
+      ...within(table).getAllByRole('columnheader'),
+      ...within(table).getAllByRole('cell'),
+    ]) {
+      expect(cell).toHaveClass('min-w-0', 'overflow-hidden')
+    }
+    expect(table.className).not.toMatch(/table-fixed|min-w-\[/)
+  })
+
+  it('applies the aggregate table sizing to the table element and marks the viewport focusable', () => {
+    render(
+      <LifecycleTable
+        config={makeConfig({ tableClassName: 'min-w-[64rem] table-fixed' })}
+        data={[]}
+        state={{ status: 'loaded' }}
+      />,
+    )
+    const table = screen.getByRole('table', { name: 'Test table' })
+    expect(table).toHaveClass('min-w-[64rem]', 'table-fixed')
+    expect(table.closest('[data-slot="table-container"]'))
+      .toHaveClass('overflow-x-auto', 'focus-visible:outline-2', 'focus-visible:outline-ring')
+  })
+
   it('does not branch on phase name: lifecycle table contains no capture/job/opportunity/application string literals', () => {
     const source = lifecycleTableSource()
     expect(source).not.toMatch(/\b(capture|job|opportunity|application)\b/i)

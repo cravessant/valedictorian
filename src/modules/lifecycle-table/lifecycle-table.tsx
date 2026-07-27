@@ -83,6 +83,7 @@ export interface LifecycleTableConfig<Row> {
   readonly rowLabel: (row: Row) => string
   readonly caption: string
   readonly empty: { readonly title: string; readonly description: string }
+  readonly tableClassName?: string
   readonly extensions?: LifecycleAggregateExtensions<Row>
 }
 
@@ -173,6 +174,7 @@ export function LifecycleTable<Row>({
       {toolbar}
       <Table
         aria-label={config.caption}
+        className={config.tableClassName}
         containerProps={{
           'aria-label': `${config.caption} viewport`,
           role: 'region',

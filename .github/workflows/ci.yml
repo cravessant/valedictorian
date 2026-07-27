@@ -141,7 +141,7 @@ jobs:
     name: CLI/UI Development Proof
     if: github.event.pull_request.draft == false
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -181,6 +181,10 @@ jobs:
       - name: Prove Capture completion dialog layout
         working-directory: valedictorian-app
         run: pnpm run smoke:capture-completion-dialog-layout
+
+      - name: Prove Capture table containment
+        working-directory: valedictorian-app
+        run: pnpm run smoke:capture-table-containment
 
   package-smoke:
     name: Package Smoke (${{ matrix.name }})

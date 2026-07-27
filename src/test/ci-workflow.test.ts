@@ -88,6 +88,11 @@ describe('CI workflow', () => {
     expect(workflow).toMatch(/package-smoke:[\s\S]*?timeout-minutes: 5/)
     expect(workflow).toContain('name: Run macOS package checks')
     expect(devProof).toContain('run: pnpm lint')
+    expect(devProof).toContain('run: pnpm run smoke:capture-completion-dialog-layout')
+    expect(devProof).toContain('run: pnpm run smoke:capture-table-containment')
+    expect(devProof).toContain('run: command -v xvfb-run')
+    expect(devProof).toMatch(/timeout-minutes: 2[5-9]|timeout-minutes: [3-9]\d/)
+    expect(packageSmoke).not.toContain('smoke:capture-table-containment')
     expect(packageSmoke).not.toContain('pnpm lint')
     expect(workflow).toMatch(
       /- name: Build Windows application bundles\n\s+if: runner\.os == 'Windows'/,
@@ -100,8 +105,11 @@ describe('CI workflow', () => {
     const draftOnly = "if: github.event_name == 'pull_request' && github.event.pull_request.draft"
     const readyOnly = 'if: github.event.pull_request.draft == false'
 
+    const quality = sectionBetween(workflow, '\n  quality:\n', '\n  test:\n')
+
     expect(workflow).toMatch(/quality:\n[\s\S]*?name: Draft Quality/)
     expect(workflow).toContain(draftOnly)
+    expect(quality).not.toContain('pnpm run smoke:')
     expect(workflow.match(new RegExp(readyOnly.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')))
       .toHaveLength(3)
   })
@@ -110,6 +118,10 @@ describe('CI workflow', () => {
     const workflow = fs.readFileSync(workflowPath, 'utf8')
 
     expect(workflow).toContain('ci:\n    name: CI\n    if: always()')
+    expect(workflow).toContain('needs:\n      - dev-proof\n')
+    expect(workflow).toContain('DEV_PROOF_RESULT: ${{ needs.dev-proof.result }}')
+    expect(workflow).toContain('[ "$DEV_PROOF_RESULT" != "success" ]')
+    expect(workflow).toContain('[ "$DEV_PROOF_RESULT" != "skipped" ]')
     expect(workflow).toContain('PACKAGE_SMOKE_RESULT: ${{ needs.package-smoke.result }}')
     expect(workflow).toContain('QUALITY_RESULT: ${{ needs.quality.result }}')
     expect(workflow).toContain('TEST_RESULT: ${{ needs.test.result }}')
