@@ -6,14 +6,6 @@ export function buildCompaniesRoute() {
     return buildRouteMap({
         docs: { brief: 'Manage Workspace Companies' },
         routes: {
-            capability: makeCommand({
-                docs: { brief: 'Get Workspace Company capability' },
-                flags: optionFlags(['workspace']),
-                run: async (context, flags) => {
-                    const client = await workspaceClient(context, flags);
-                    writeJson(context, await client.companies.capability.get());
-                },
-            }),
             list: directoryList(),
             get: companyRead('Get a Workspace Company', (client, companyId) => client.companies.get(companyId)),
             lookup: companyRead('Get a Workspace Company and canonical merge target', (client, companyId) => client.companies.lookup(companyId)),

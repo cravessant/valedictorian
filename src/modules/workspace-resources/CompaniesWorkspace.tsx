@@ -11,6 +11,7 @@ import {
   type CompanyDuplicateFilter,
   type CompanyDuplicateListInput,
   type CompanyDuplicatePage,
+  type WorkspaceCompaniesClient,
 } from '@sparxie/sdk'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -20,7 +21,6 @@ import type {
   WorkspaceHistoryEntry,
   WorkspaceLocation,
 } from '@/app/workspace-location'
-import type { LocalWorkspaceCompaniesClient } from '../../runtime/local-connector-client.contract'
 import { CompanyDetailView } from './CompanyDetailView'
 import { CompanyDirectoryView } from './CompanyDirectoryView'
 import { CompanyDuplicateQueueView } from './CompanyDuplicateQueueView'
@@ -66,7 +66,7 @@ const emptyDuplicatePage: CompanyDuplicatePage = {
 
 
 interface CompaniesWorkspaceProps {
-  readonly client: LocalWorkspaceCompaniesClient | null
+  readonly client: WorkspaceCompaniesClient | null
   readonly workspaceId?: string | null
   readonly entry: WorkspaceHistoryEntry
   readonly onBack: () => void

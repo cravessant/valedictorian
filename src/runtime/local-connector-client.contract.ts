@@ -9,7 +9,6 @@ import type {
   UpdateConnectorInstanceInput,
   ValedictorianWorkspaceClient,
   ValedictorianWorkspaceClientV2,
-  WorkspaceCompaniesClient,
 } from '@sparxie/sdk'
 import type { AppConnectorAuthGrant, AppConnectorAuthValidationResult } from '../modules/connectors/connector.runner'
 import type { ConnectorAuthMode } from '../modules/connectors/connector.repository'
@@ -168,22 +167,11 @@ export interface LocalConnectorClient {
   }
 }
 
-/**
- * Workspace Companies are available as soon as a workspace opens, so the App
- * exposes no Company capability. The pinned SDK still declares one; drop it here
- * until the App consumes an SDK release without it.
- */
-export type LocalWorkspaceCompaniesClient = Omit<WorkspaceCompaniesClient, 'capability'>
-
 /** The SDK workspace client as the App implements and serves it. */
-export type LocalWorkspaceClient =
-  Omit<ValedictorianWorkspaceClient, 'companies'>
-  & { companies: LocalWorkspaceCompaniesClient }
+export type LocalWorkspaceClient = ValedictorianWorkspaceClient
 
 /** The V2 workspace client as the App implements, serves, and renders it. */
-export type LocalWorkspaceClientV2 =
-  Omit<ValedictorianWorkspaceClientV2, 'companies'>
-  & { companies: LocalWorkspaceCompaniesClient }
+export type LocalWorkspaceClientV2 = ValedictorianWorkspaceClientV2
 
 export type LocalValedictorianClient = LocalWorkspaceClientV2 & {
   /** Bound workspace identity used only by the local HTTP adapter. */

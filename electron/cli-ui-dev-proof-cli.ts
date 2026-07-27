@@ -5,11 +5,11 @@ import path from 'node:path'
 import type { IsolatedValidationManifest } from '../src/runtime/isolated-validation'
 
 export const cliUiDevProofCompanyName = 'Validation Company CLI Proof'
-export const expectedCliCommit = '147eadc5fa84c560f32c0392e68f8c7627ccec47'
+export const expectedCliCommit = 'd576ebfa84119e809666faac668ccd33b5fa3946'
 export const expectedCliDependency = 'file:vendor/valedictorian-cli'
 export const expectedCliPackageSha256 =
-  'sha256:368c39360cf7b0268759ae7f261651519cc6f0573be2674c9e2116364e83a37b'
-export const expectedCliVersion = '0.1.0-alpha.18'
+  'sha256:bce852c571c7f9bcdefdaa1de2eba6d5369fffe419c0129d39bcc9f6cb3b052b'
+export const expectedCliVersion = '0.1.0-alpha.20'
 
 const cliOutputLimit = 32_768
 const cliTimeoutMs = 10_000

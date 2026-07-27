@@ -6,6 +6,7 @@ import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
 import { loadPgliteRuntimeAssets } from './pglite-runtime-assets'
 import { schema } from './schema'
+import { DEFAULT_WORKSPACE_ID, workspaces } from './workspaces.schema'
 
 export type PgliteClient = PGlite
 export type PgliteDatabase = ReturnType<typeof createPgliteDatabase>
@@ -72,5 +73,12 @@ export async function migratePgliteDatabase(
   await migrate(database, {
     migrationsFolder: resolvePgliteMigrationsFolder(options.migrationsFolder),
   })
+  const migratedAt = new Date().toISOString()
+  await database.insert(workspaces).values({
+    id: DEFAULT_WORKSPACE_ID,
+    name: 'default',
+    createdAt: migratedAt,
+    updatedAt: migratedAt,
+  }).onConflictDoNothing()
   return database
 }

@@ -326,9 +326,7 @@ export function createCaptureMaterializationService(
       captureId: head.id,
       captureRevision: head.revision,
       ordinal: (ordinalRow?.ordinal ?? 0) + 1,
-      trigger: promoted
-        ? 'legacy_promotion'
-        : triggerForCurrentRevision(await currentRevisionKind(tx, head)),
+      trigger: triggerForCurrentRevision(await currentRevisionKind(tx, head)),
       status: promoted ? 'promoted' : 'active',
       processingSummary,
       inputFingerprint,

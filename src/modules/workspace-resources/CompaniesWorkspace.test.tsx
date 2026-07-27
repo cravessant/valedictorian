@@ -6,8 +6,8 @@ import type {
   CompanyDirectoryPage,
   CompanyDuplicateCandidateRow,
   CompanyDuplicatePage,
+  WorkspaceCompaniesClient,
 } from '@sparxie/sdk'
-import type { LocalWorkspaceCompaniesClient } from '../../runtime/local-connector-client.contract'
 import { CompaniesWorkspace } from './CompaniesWorkspace'
 
 afterEach(() => {
@@ -137,7 +137,7 @@ function makeClient() {
           totalCount: 0,
         })),
       },
-    } as unknown as LocalWorkspaceCompaniesClient,
+    } as unknown as WorkspaceCompaniesClient,
     duplicateGet,
     duplicateList,
     get,

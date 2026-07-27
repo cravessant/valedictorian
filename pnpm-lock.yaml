@@ -60,8 +60,8 @@ importers:
         specifier: ^1.2.12
         version: 1.2.12(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@sparxie/sdk':
-        specifier: 0.34.0
-        version: 0.34.0
+        specifier: 0.36.0
+        version: 0.36.0
       '@sparxie/valedictorian-connectors-jobright':
         specifier: 0.18.2
         version: 0.18.2
@@ -1813,12 +1813,8 @@ packages:
     resolution: {integrity: sha512-ghTgwAVhBr/cVgE5z0m6chHt0C04784Wil+IRq6UmqY0nOMAg1afnDdQOXx367e8oYKBUfEDkVkvNoGIgar+MA==}
     engines: {node: '>=22.12.0'}
 
-  '@sparxie/sdk@0.29.1':
-    resolution: {integrity: sha512-LfoX7FA0pJOQj7qkKOR2Epihk9zgRHbbhmXWtvGY0SXRzB/rEhaZhi2aQ63JAAvoYBKlMsOdEP2J4X+jl9n+6w==}
-    engines: {node: '>=22.12.0'}
-
-  '@sparxie/sdk@0.34.0':
-    resolution: {integrity: sha512-DHiVFfhi7+aSr7y/aS7Z7xKxXv8MGDU+u6fSiX6lFWEF3zVD5uqNLqNQ/dL2ZJ6zZP9aP39ifitUAyqnC6IHmA==}
+  '@sparxie/sdk@0.36.0':
+    resolution: {integrity: sha512-KYU9i32RmFDgkkVphpUW+qUXhWfskBBPJvtbUgCA0JYrVolCVaayZjouUhm2oAQxerIcbpKaQPHvNhsQ/fK67A==}
     engines: {node: '>=22.12.0'}
 
   '@sparxie/valedictorian-cli@file:vendor/valedictorian-cli':
@@ -5073,17 +5069,13 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
-  '@sparxie/sdk@0.29.1':
-    dependencies:
-      zod: 4.4.3
-
-  '@sparxie/sdk@0.34.0':
+  '@sparxie/sdk@0.36.0':
     dependencies:
       zod: 4.4.3
 
   '@sparxie/valedictorian-cli@file:vendor/valedictorian-cli(typescript@7.0.2)':
     dependencies:
-      '@sparxie/sdk': 0.29.1
+      '@sparxie/sdk': 0.36.0
       '@stricli/core': 1.2.7
       cosmiconfig: 9.0.2(typescript@7.0.2)
     transitivePeerDependencies:

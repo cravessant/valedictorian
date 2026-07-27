@@ -1,5 +1,5 @@
 import { type CommandContext, type StricliProcess } from '@stricli/core';
-import { type ProfileSecretKind, type ValedictorianClient, type ValedictorianWorkspaceClient } from '@sparxie/sdk';
+import { type ProfileSecretKind, type ValedictorianClientV2, type ValedictorianWorkspaceClient, type ValedictorianWorkspaceClientV2 } from '@sparxie/sdk';
 import { type HumanOutputOptions } from './valedictorian-cli.output.js';
 import type { SecretsRunSpawnAdapter } from './valedictorian-cli.secrets-run-spawn.js';
 export { mapStricliExitCode } from './valedictorian-cli.failures.js';
@@ -11,7 +11,7 @@ export interface ValedictorianCliContext extends CommandContext {
      * when the escape marker is absent.
      */
     readonly argvEscapeSuffix: readonly string[] | null;
-    readonly client: ValedictorianClient;
+    readonly client: ValedictorianClientV2;
     readonly cwd: string;
     readonly env: Record<string, string | undefined>;
     outputJson?: boolean;
@@ -36,9 +36,9 @@ export declare function makeCommand({ docs, flags, positionalCount, run, }: {
 export declare function optionFlags(optional?: string[], required?: string[]): Record<string, unknown>;
 export declare function booleanFlags(names: string[]): Record<string, unknown>;
 export declare function toArgvWithoutWorkspace(flags: RawFlags): string[];
-export declare function workspaceClient(context: ValedictorianCliContext, flags: RawFlags): Promise<ValedictorianWorkspaceClient>;
+export declare function workspaceClient(context: ValedictorianCliContext, flags: RawFlags): Promise<ValedictorianWorkspaceClientV2>;
 export declare function workspaceClientWithId(context: ValedictorianCliContext, flags: RawFlags): Promise<{
-    client: ValedictorianWorkspaceClient;
+    client: ValedictorianWorkspaceClientV2;
     workspaceId: string;
 }>;
 export declare function workspaceConnectorClient(context: ValedictorianCliContext, flags: RawFlags): Promise<ValedictorianWorkspaceClient['connectors']>;

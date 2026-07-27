@@ -2,13 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from './pglite'
 
 /**
- * #298 red-first schema proof for the journaled lifecycle aggregates (Capture,
- * Job, Opportunity, Application) at the PGlite public seam. Uses one migrated
- * in-memory database and raw SQL so it asserts the physical constraints the
- * journaled migration must install, independent of any Drizzle query layer.
- *
- * The clean-cutover migration renames the canonical roots to their final
- * physical names, so these assertions exercise the installed production shape.
+ * #298 schema proof for the lifecycle aggregates (Capture, Job, Opportunity,
+ * Application) at the PGlite public seam. Uses one migrated in-memory database and
+ * raw SQL so it asserts the physical constraints the baseline must install,
+ * independent of any Drizzle query layer.
  */
 const T = '2026-07-19T00:00:00.000Z'
 

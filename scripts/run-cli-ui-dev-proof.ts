@@ -64,12 +64,12 @@ function hasPinnedCli(value: unknown) {
     actual
     && typeof actual === 'object'
     && 'version' in actual
-    && actual.version === '0.1.0-alpha.18'
+    && actual.version === '0.1.0-alpha.20'
     && 'commit' in actual
-    && actual.commit === '147eadc5fa84c560f32c0392e68f8c7627ccec47'
+    && actual.commit === 'd576ebfa84119e809666faac668ccd33b5fa3946'
     && 'packageSha256' in actual
     && actual.packageSha256
-      === 'sha256:368c39360cf7b0268759ae7f261651519cc6f0573be2674c9e2116364e83a37b',
+      === 'sha256:bce852c571c7f9bcdefdaa1de2eba6d5369fffe419c0129d39bcc9f6cb3b052b',
   )
 }
 

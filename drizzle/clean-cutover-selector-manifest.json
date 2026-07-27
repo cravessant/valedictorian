@@ -12,255 +12,24 @@
   "dispositions": [
     {
       "repo": "app",
-      "file": "drizzle/0000_pglite_operational_baseline.sql",
+      "file": "scripts/lifecycle-cutover-selectors.test.mjs",
       "category": "collapsed_retry_work",
-      "count": 53,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0000_pglite_operational_baseline.sql",
-      "category": "legacy_capture_root",
-      "count": 26,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0000_pglite_operational_baseline.sql",
-      "category": "normalization_projection",
-      "count": 6,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0001_lifecycle_capture_job.sql",
-      "category": "collapsed_retry_work",
-      "count": 8,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0001_lifecycle_capture_job.sql",
-      "category": "legacy_capture_root",
-      "count": 25,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0001_lifecycle_capture_job.sql",
-      "category": "temporary_lifecycle_root",
-      "count": 92,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0002_capture_provenance_idempotency.sql",
-      "category": "raw_source",
       "count": 1,
-      "disposition": "journaled-migration-or-history"
+      "disposition": "selector-self-proof"
     },
     {
       "repo": "app",
-      "file": "drizzle/0002_capture_provenance_idempotency.sql",
-      "category": "retired_sourcing_path",
-      "count": 1,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0002_capture_provenance_idempotency.sql",
-      "category": "temporary_lifecycle_root",
-      "count": 7,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0003_lifecycle_idempotency_key.sql",
-      "category": "temporary_lifecycle_root",
-      "count": 24,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0004_capture-revision-provenance.sql",
-      "category": "legacy_capture_root",
-      "count": 2,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0005_clean_lifecycle_cutover.sql",
-      "category": "collapsed_retry_work",
-      "count": 6,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0005_clean_lifecycle_cutover.sql",
-      "category": "legacy_capture_root",
-      "count": 3,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0005_clean_lifecycle_cutover.sql",
-      "category": "normalization_projection",
-      "count": 1,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/0005_clean_lifecycle_cutover.sql",
-      "category": "temporary_lifecycle_root",
-      "count": 16,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/lifecycle-migration.md",
-      "category": "collapsed_retry_work",
-      "count": 5,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/lifecycle-migration.md",
-      "category": "legacy_capture_root",
-      "count": 4,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/lifecycle-migration.md",
+      "file": "scripts/lifecycle-cutover-selectors.test.mjs",
       "category": "raw_record",
-      "count": 1,
-      "disposition": "journaled-migration-or-history"
+      "count": 12,
+      "disposition": "selector-self-proof"
     },
     {
       "repo": "app",
-      "file": "drizzle/lifecycle-migration.md",
-      "category": "raw_source",
-      "count": 3,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/lifecycle-migration.md",
+      "file": "scripts/lifecycle-cutover-selectors.test.mjs",
       "category": "sourcing_finding",
-      "count": 1,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/lifecycle-migration.md",
-      "category": "temporary_lifecycle_root",
-      "count": 8,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0000_snapshot.json",
-      "category": "collapsed_retry_work",
-      "count": 45,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0000_snapshot.json",
-      "category": "legacy_capture_root",
-      "count": 24,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0000_snapshot.json",
-      "category": "normalization_projection",
-      "count": 5,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0001_snapshot.json",
-      "category": "collapsed_retry_work",
-      "count": 45,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0001_snapshot.json",
-      "category": "legacy_capture_root",
-      "count": 24,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0001_snapshot.json",
-      "category": "normalization_projection",
-      "count": 5,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0001_snapshot.json",
-      "category": "temporary_lifecycle_root",
-      "count": 67,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0002_snapshot.json",
-      "category": "collapsed_retry_work",
-      "count": 45,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0002_snapshot.json",
-      "category": "legacy_capture_root",
-      "count": 24,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0002_snapshot.json",
-      "category": "normalization_projection",
-      "count": 5,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0002_snapshot.json",
-      "category": "temporary_lifecycle_root",
-      "count": 68,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0004_snapshot.json",
-      "category": "collapsed_retry_work",
-      "count": 45,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0004_snapshot.json",
-      "category": "legacy_capture_root",
-      "count": 24,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0004_snapshot.json",
-      "category": "normalization_projection",
-      "count": 5,
-      "disposition": "journaled-migration-or-history"
-    },
-    {
-      "repo": "app",
-      "file": "drizzle/meta/0004_snapshot.json",
-      "category": "temporary_lifecycle_root",
-      "count": 80,
-      "disposition": "journaled-migration-or-history"
+      "count": 2,
+      "disposition": "selector-self-proof"
     },
     {
       "repo": "app",
@@ -274,90 +43,6 @@
       "file": "src/db/operational-migration-cutover.boundary.test.ts",
       "category": "raw_source",
       "count": 1,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.baseline.test.ts",
-      "category": "canonical_candidate",
-      "count": 1,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.baseline.test.ts",
-      "category": "collapsed_retry_work",
-      "count": 1,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.baseline.test.ts",
-      "category": "legacy_capture_root",
-      "count": 2,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.baseline.test.ts",
-      "category": "raw_record",
-      "count": 1,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.baseline.test.ts",
-      "category": "sourcing_finding",
-      "count": 1,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.baseline.test.ts",
-      "category": "temporary_lifecycle_root",
-      "count": 4,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.lifecycle-migration.representative.test.ts",
-      "category": "collapsed_retry_work",
-      "count": 3,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.lifecycle-migration.representative.test.ts",
-      "category": "legacy_capture_root",
-      "count": 2,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.lifecycle-migration.representative.test.ts",
-      "category": "temporary_lifecycle_root",
-      "count": 1,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.lifecycle-migration.test.ts",
-      "category": "collapsed_retry_work",
-      "count": 2,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.lifecycle-migration.test.ts",
-      "category": "legacy_capture_root",
-      "count": 1,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/db/pglite.lifecycle-migration.test.ts",
-      "category": "temporary_lifecycle_root",
-      "count": 9,
       "disposition": "historical-or-migration-proof"
     },
     {
@@ -453,20 +138,6 @@
     },
     {
       "repo": "app",
-      "file": "src/test/lifecycle-migration-harness.ts",
-      "category": "collapsed_retry_work",
-      "count": 4,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "src/test/lifecycle-migration-harness.ts",
-      "category": "legacy_capture_root",
-      "count": 11,
-      "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
       "file": "src/test/lifecycle-state-ownership.ts",
       "category": "canonical_candidate",
       "count": 1,
@@ -478,27 +149,6 @@
       "category": "retired_sourcing_path",
       "count": 1,
       "disposition": "historical-or-migration-proof"
-    },
-    {
-      "repo": "app",
-      "file": "scripts/lifecycle-cutover-selectors.test.mjs",
-      "category": "collapsed_retry_work",
-      "count": 1,
-      "disposition": "selector-self-proof"
-    },
-    {
-      "repo": "app",
-      "file": "scripts/lifecycle-cutover-selectors.test.mjs",
-      "category": "raw_record",
-      "count": 12,
-      "disposition": "selector-self-proof"
-    },
-    {
-      "repo": "app",
-      "file": "scripts/lifecycle-cutover-selectors.test.mjs",
-      "category": "sourcing_finding",
-      "count": 2,
-      "disposition": "selector-self-proof"
     },
     {
       "repo": "sparxie",

@@ -21,7 +21,9 @@ export function buildCaptureResolutionRoute() {
                 positionalCount: 1,
                 run: async (context, flags, captureId) => {
                     const client = await workspaceClient(context, flags);
-                    writeJson(context, await client.captureResolution.get(captureId));
+                    writeJson(context, context.outputJson
+                        ? await client.captureResolution.get(captureId)
+                        : await client.captureResolutionV2.get(captureId));
                 },
             }),
             retry: identifiedMutation('Retry unpromoted capture processing', retryCaptureProcessingInputSchema, (client, input) => client.captureResolution.retry(input)),

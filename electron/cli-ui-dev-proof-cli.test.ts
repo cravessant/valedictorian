@@ -53,7 +53,7 @@ describe('CLI/UI development proof CLI boundary', () => {
       commit: expectedCliCommit,
       dependency: expectedCliDependency,
       packageSha256: fixture.packageSha256,
-      version: '0.1.0-alpha.18',
+      version: '0.1.0-alpha.20',
     })
     expect(session.diagnostics().map((entry) => entry.label)).toEqual([
       'capture-before',
@@ -72,7 +72,7 @@ describe('CLI/UI development proof CLI boundary', () => {
     const fixture = cliFixture()
     fs.writeFileSync(path.join(fixture.root, 'package.json'), JSON.stringify({
       devDependencies: {
-        '@sparxie/valedictorian-cli': '0.1.0-alpha.18',
+        '@sparxie/valedictorian-cli': '0.1.0-alpha.20',
       },
     }))
 
@@ -171,7 +171,7 @@ function cliFixture() {
     bin: { 'valedictorian-cli': 'dist/valedictorian.mjs' },
     name: '@sparxie/valedictorian-cli',
     valedictorianSourceCommit: expectedCliCommit,
-    version: '0.1.0-alpha.18',
+    version: '0.1.0-alpha.20',
   }))
   const statePath = path.join(packageDirectory, 'state.json')
   fs.writeFileSync(statePath, JSON.stringify(defaultState()))

@@ -89,8 +89,6 @@ function formatList(record) {
     const limit = typeof record.limit === 'number' ? record.limit : undefined;
     const offset = typeof record.offset === 'number' ? record.offset : undefined;
     const hasMore = typeof record.hasMore === 'boolean' ? record.hasMore : undefined;
-    const hasCursor = Object.prototype.hasOwnProperty.call(record, 'nextCursor');
-    const nextCursor = typeof record.nextCursor === 'string' ? record.nextCursor : null;
     const headerParts = [`${total} item${total === 1 ? '' : 's'}`];
     if (limit !== undefined)
         headerParts.push(`limit ${limit}`);
@@ -99,12 +97,12 @@ function formatList(record) {
     if (hasMore !== undefined) {
         headerParts.push(hasMore ? 'more available' : 'end reached');
     }
-    if (hasCursor) {
-        headerParts.push(nextCursor === null ? 'end reached' : `next cursor ${nextCursor}`);
-    }
     const lines = [headerParts.join(' - ')];
     if (items.length > 0) {
         lines.push(...items.map((item) => `- ${summarizeItem(item)}`));
+    }
+    if (isPlainRecord(record.pageInfo)) {
+        lines.push(...formatPageBoundaries(record.pageInfo));
     }
     if (isPlainRecord(record.actionBucketCounts)) {
         const counts = Object.entries(record.actionBucketCounts)
@@ -115,6 +113,25 @@ function formatList(record) {
         }
     }
     return lines.join('\n');
+}
+/**
+ * A boundary cursor is only actionable in the direction that reports another
+ * page, so each side is printed only when its flag and cursor agree.
+ */
+function formatPageBoundaries(page) {
+    const startCursor = primitiveString(page.startCursor);
+    const endCursor = primitiveString(page.endCursor);
+    const lines = [];
+    if (page.hasPreviousPage === true && startCursor !== undefined) {
+        lines.push(`Previous cursor: ${startCursor}`);
+    }
+    if (page.hasNextPage === true && endCursor !== undefined) {
+        lines.push(`Next cursor: ${endCursor}`);
+    }
+    if (page.hasPreviousPage !== true && page.hasNextPage !== true) {
+        lines.push('End of results.');
+    }
+    return lines;
 }
 function isLifecycleResult(record) {
     const status = String(record.status);
@@ -249,18 +266,48 @@ function formatCompletionDetail(record) {
     const source = record.sourceSummary;
     const destination = isPlainRecord(record.destination) ? record.destination : {};
     const evidence = Array.isArray(record.rawEvidence) ? record.rawEvidence.length : 0;
+    const providerStatus = primitiveString(destination.providerStatus);
     const lines = [
         `Capture ${String(record.captureId)} revision ${String(record.captureRevision)}`,
         `Expected generation: ${String(record.expectedGenerationId)}`,
         `Source: ${String(source.displayName)} (${String(source.provider)})`,
-        `Destination: ${String(destination.status ?? 'unknown')}`,
+        `Destination: ${String(destination.status ?? 'unknown')}${providerStatus ? ` (provider status: ${providerStatus})` : ''}`,
         `Evidence items: ${evidence}`,
     ];
     lines.push(...formatExactEvidenceReferences(record.exactEvidenceReferences));
-    if (isPlainRecord(record.lastIssue)) {
-        lines.push(`Issue: ${String(record.lastIssue.code)}${record.lastIssue.action ? ` (${String(record.lastIssue.action)})` : ''}`);
-    }
+    lines.push(...formatProcessingIssue(record.lastIssue));
     return lines.join('\n');
+}
+/**
+ * Issue details are an open app-authored record, so only these keys are ever
+ * rendered and always in this order. Anything outside the list - rejected
+ * destination URLs, provider record identifiers, credentials - stays out of
+ * CLI output.
+ */
+const safeIssueDetailKeys = [
+    'resolverId',
+    'resolverVersion',
+    'providerReason',
+    'providerEvidenceKind',
+    'providerField',
+    'parserChanged',
+    'safetyReason',
+];
+function formatProcessingIssue(value) {
+    if (!isPlainRecord(value))
+        return ['Issue: none'];
+    const action = primitiveString(value.action) ?? 'none';
+    const lines = [`Issue: ${String(value.code)} - ${String(value.message)} (action: ${action})`];
+    const details = isPlainRecord(value.details) ? value.details : {};
+    const safeKeys = safeIssueDetailKeys.filter((key) => details[key] === null || isDisplayablePrimitive(details[key]));
+    if (safeKeys.length > 0) {
+        lines.push('Issue details:');
+        lines.push(...safeKeys.map((key) => `- ${issueDetailLabel(key)}: ${String(details[key])}`));
+    }
+    return lines;
+}
+function issueDetailLabel(key) {
+    return labelize(key).replace(/^./, (character) => character.toUpperCase());
 }
 function formatCompanyMergeIdentity(company) {
     return `${String(company.displayName)} id=${String(company.id)} revision=${String(company.revision)} status=${String(company.status)}`;

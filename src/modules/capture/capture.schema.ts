@@ -337,7 +337,7 @@ export const captureResolutionGenerations = pgTable(
       'chk_capture_resolution_generations_trigger',
       sql`${table.trigger} in (
         'intake','correction','restore','retry_destination','replay',
-        'manual_completion','legacy_promotion'
+        'manual_completion'
       )`,
     ),
     statusCheck: check(

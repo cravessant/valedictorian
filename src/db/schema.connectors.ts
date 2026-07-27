@@ -1,5 +1,6 @@
-import { boolean, index, integer, primaryKey, pgTable, text, unique, uniqueIndex } from 'drizzle-orm/pg-core'
+import { boolean, check, foreignKey, index, integer, primaryKey, pgTable, text, unique, uniqueIndex } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
+import { sourceExecutionScopes } from './source-execution.schema'
 
 const timestamps = {
   createdAt: text('created_at').notNull(),
@@ -25,6 +26,11 @@ export const connectorInstances = pgTable(
   (table) => ({
     connectorIdx: index('idx_connector_instances_connector').on(table.connectorId),
     enabledIdx: index('idx_connector_instances_enabled').on(table.enabled),
+    executionScopeFk: foreignKey({
+      name: 'fk_connector_instances_execution_scope',
+      columns: [table.executionScopeId],
+      foreignColumns: [sourceExecutionScopes.id],
+    }),
   }),
 )
 
@@ -67,6 +73,15 @@ export const connectorRuns = pgTable(
       table.connectorInstanceId,
       table.status,
       table.startedAt,
+    ),
+    executionScopeFk: foreignKey({
+      name: 'fk_connector_runs_execution_scope',
+      columns: [table.executionScopeId],
+      foreignColumns: [sourceExecutionScopes.id],
+    }),
+    statusCheck: check(
+      'chk_connector_runs_status',
+      sql`${table.status} in ('queued','running','completed','failed','cancelled','skipped')`,
     ),
   }),
 )

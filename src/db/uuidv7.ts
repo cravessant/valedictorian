@@ -1,10 +1,9 @@
 /**
  * App-side UUIDv7 generator + clock port (issue #300).
  *
- * Runtime Job minting uses this; the migration's deterministic `mint_job_uuid`
- * stays migration-only. Layout (RFC 9562): 48-bit big-endian unix-ms timestamp,
- * 4-bit version (7), 12 bits rand_a, 2-bit variant (0b10), 62 bits rand_b — 74
- * random bits total. Lowercase hex, matching the sparxie contract's
+ * Runtime Job minting uses this. Layout (RFC 9562): 48-bit big-endian unix-ms
+ * timestamp, 4-bit version (7), 12 bits rand_a, 2-bit variant (0b10), 62 bits
+ * rand_b — 74 random bits total. Lowercase hex, matching the sparxie contract's
  * case-insensitive UUIDv7 regex.
  *
  * Deliberately no monotonic counter: intra-millisecond collision odds across 74

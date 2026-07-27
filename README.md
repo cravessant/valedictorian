@@ -31,6 +31,13 @@ New projects can provide workspace defaults in `valedictorian.config.json`,
 
 Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.
 
+## Database
+
+The schema ships as one generated baseline (see `drizzle/README.md`). Because this
+is a pre-release schema with no installed databases, the baseline is regenerated in
+place rather than extended, so a database created before a regeneration is not
+supported: delete it and let the app recreate it.
+
 ## Development
 
 ```sh

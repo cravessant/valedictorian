@@ -2,11 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from './pglite'
 
 /**
- * #304 (stage 2) red-first schema proof for the create-dedup `idempotency_key`
- * column + partial unique index that migration 0003 installs on the four canonical
- * lifecycle aggregates. Raw SQL at the PGlite seam so it asserts the physical
- * constraint the journaled migration must ship, independent of the Drizzle query
- * layer. Red before 0003 exists; green once it is journaled.
+ * #304 (stage 2) schema proof for the create-dedup `idempotency_key` column and
+ * partial unique index on the four canonical lifecycle aggregates. Raw SQL at the
+ * PGlite seam so it asserts the physical constraint the baseline must ship,
+ * independent of the Drizzle query layer.
  */
 const T = '2026-07-20T00:00:00.000Z'
 const jobId = (index: number) => `017f22e2-79b0-7cc3-98c4-dc0c0c07${index.toString(16).padStart(4, '0')}`

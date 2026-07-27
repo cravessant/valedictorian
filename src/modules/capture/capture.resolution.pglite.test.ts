@@ -275,7 +275,7 @@ describe.sequential('Capture resolution materialization and projections', () => 
       summary: captureResolutionGenerations.processingSummary,
     }).from(captureResolutionGenerations)
     expect(generation).toEqual({
-      trigger: 'legacy_promotion',
+      trigger: 'intake',
       status: 'promoted',
       summary: 'promoted',
     })
@@ -344,7 +344,7 @@ describe.sequential('Capture resolution materialization and projections', () => 
     }).from(captureResolutionGenerations)).toEqual([{
       linkedJobId: jobId,
       status: 'promoted',
-      trigger: 'legacy_promotion',
+      trigger: 'intake',
     }])
   })
 

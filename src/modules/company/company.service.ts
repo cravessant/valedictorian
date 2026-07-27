@@ -1,6 +1,6 @@
+import type { WorkspaceCompaniesClient } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import type { Clock, UuidV7Generator } from '../../db/uuidv7'
-import type { LocalWorkspaceCompaniesClient } from '../../runtime/local-connector-client.contract'
 import { createCompanyCommands } from './company.commands'
 import { createCompanyDuplicateService } from './company.duplicates'
 import { createCompanyMergeService } from './company.merge'
@@ -16,7 +16,7 @@ export interface CompanyServiceOptions {
 export function createPgliteCompanyService(
   database: PgliteDatabase,
   options: CompanyServiceOptions,
-): LocalWorkspaceCompaniesClient {
+): WorkspaceCompaniesClient {
   const commands = createCompanyCommands(database, options.workspaceId, {
     ...(options.now ? { now: options.now } : {}),
     ...(options.newId ? { newId: options.newId } : {}),
