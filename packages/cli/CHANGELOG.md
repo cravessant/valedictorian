@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.19 - Unreleased
+
+- Breaking: remove the `companies capability` command and its
+  `client.companies.capability.get()` call. The Company capability endpoint is
+  retired; no alias or fallback replaces the command.
+
 ## 0.1.0-alpha.18 - Unreleased
 
 - Expose the complete Capture to Job to Opportunity to Application lifecycle

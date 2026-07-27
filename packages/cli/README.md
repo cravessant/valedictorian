@@ -59,7 +59,7 @@ valedictorian-cli secrets run --workspace "$VALEDICTORIAN_WORKSPACE" --env TOKEN
 The lifecycle command tree mirrors `@sparxie/sdk@0.29.1`:
 
 - `captures`: `list`, `get`, `create`, `correct`, `remove`, `restore`, `history`, `promote-to-job`, `resolution list|get|retry|replay|complete`
-- `companies`: `capability`, `list`, `get`, `lookup`, `search`, `preview-matches`, `create`, `update`, `notes update`, `aliases add|update|remove`, `archive`, `restore`, `duplicates list|get|mark-distinct|merge`, `assigned-jobs list`, `history list`
+- `companies`: `list`, `get`, `lookup`, `search`, `preview-matches`, `create`, `update`, `notes update`, `aliases add|update|remove`, `archive`, `restore`, `duplicates list|get|mark-distinct|merge`, `assigned-jobs list`, `history list`
 - `jobs`: `list`, `get`, `create`, `correct-facts`, `update-availability`, `company get|reassign`, `external-identities add|remove`, `remove`, `restore`, `history`, `promote-to-opportunity`
 - `opportunities`: `list`, `get`, `create`, `update-evaluation`, `update-disposition`, `remove`, `restore`, `history`, `promote-to-application`
 - `applications`: `list`, `get`, `create`, `update-status`, `update-company`, `update-source`, `links create|update|remove`, `refresh-snapshot`, `remove`, `restore`, `history`, `attempts list`, `events list`

@@ -1,6 +1,6 @@
 {
   "name": "@sparxie/valedictorian-cli",
-  "version": "0.1.0-alpha.18",
+  "version": "0.1.0-alpha.19",
   "description": "Command-line client for Valedictorian.",
   "author": "Sparxie",
   "license": "MIT",

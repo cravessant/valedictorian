@@ -137,6 +137,11 @@ export function actionQueueListResult(overrides: Record<string, unknown> = {}) {
   }
 }
 
+export function publishedCommandNames(help: string): string[] {
+  const commands = help.split(/^COMMANDS$/m)[1] ?? ''
+  return [...commands.matchAll(/^ {2}(\S+)/gm)].map((match) => match[1] ?? '')
+}
+
 export function parseCliError(stderr: string): Record<string, unknown> {
   return (JSON.parse(stderr) as { error: Record<string, unknown> }).error
 }

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { jsonResponse, runCli } from './valedictorian-cli.test-helpers'
+import { jsonResponse, publishedCommandNames, runCli } from './valedictorian-cli.test-helpers'
 import { formatHumanOutput } from './valedictorian-cli.output'
 
 const workspaceId = 'workspace-1'
@@ -93,8 +93,10 @@ describe('Capture completion and Workspace Company commands', () => {
     expect(capture.stdout).toContain('complete')
     expect(capture.stdout).toContain('retry')
     expect(capture.stdout).toContain('replay')
-    expect(companies.stdout).toContain('duplicates')
-    expect(companies.stdout).toContain('search')
+    expect(publishedCommandNames(companies.stdout)).toEqual([
+      'list', 'get', 'lookup', 'search', 'preview-matches', 'create', 'update', 'notes',
+      'aliases', 'archive', 'restore', 'duplicates', 'assigned-jobs', 'history',
+    ])
     expect(jobs.stdout).toContain('reassign')
   })
 
