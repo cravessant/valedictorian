@@ -1,5 +1,6 @@
 import type http from 'node:http'
 import type { ConnectorOptionQueryErrorCode, ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { LocalWorkspaceClient } from '../runtime/local-connector-client.contract'
 import {
   connectorOptionQueryBodySchema,
   connectorOptionQueryErrorBodies,
@@ -13,7 +14,7 @@ export async function handleConnectorCapabilityRoutes({
   requestUrl,
   response,
 }: {
-  client: ValedictorianWorkspaceClient
+  client: LocalWorkspaceClient
   request: http.IncomingMessage
   requestUrl: URL
   response: http.ServerResponse
@@ -112,7 +113,7 @@ async function writeOptionQueryThroughClient({
   response,
 }: {
   body: Parameters<ValedictorianWorkspaceClient['connectors']['options']['query']>[0]['body']
-  client: ValedictorianWorkspaceClient
+  client: LocalWorkspaceClient
   connectorInstanceId: string
   expectedIdentity: Parameters<ValedictorianWorkspaceClient['connectors']['options']['query']>[0]['expectedIdentity']
   request: http.IncomingMessage

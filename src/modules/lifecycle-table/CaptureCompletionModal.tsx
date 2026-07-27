@@ -7,8 +7,8 @@ import type {
   CompleteCaptureManuallyV2Result,
   JobCompanyAssignmentPresentation,
   ManualCompanyResolution,
-  ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,7 +81,7 @@ type Recovery =
 interface Props {
   readonly captureId: string | null
   readonly client: Pick<
-    ValedictorianWorkspaceClientV2,
+    LocalWorkspaceClientV2,
     'captureResolutionV2' | 'companies' | 'jobs' | 'companyAssignments'
   > | null
   readonly intent: CaptureCompletionIntent | null

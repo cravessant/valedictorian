@@ -2,8 +2,8 @@ import { useState } from 'react'
 import type {
   CompanyDuplicateCandidateRow,
   MergeCompaniesResult,
-  WorkspaceCompaniesClient,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceCompaniesClient } from '../../runtime/local-connector-client.contract'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -36,7 +36,7 @@ export function CompanyDuplicateReviewModal({
   workspaceId,
 }: {
   readonly candidate: CompanyDuplicateCandidateRow
-  readonly client: WorkspaceCompaniesClient
+  readonly client: LocalWorkspaceCompaniesClient
   readonly onChanged: () => void
   readonly onClose: () => void
   readonly onOpenCompany: (companyId: string) => void

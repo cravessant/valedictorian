@@ -73,8 +73,8 @@ export interface CreateJobInput {
 
 /**
  * Lifecycle-only creation seam for a transaction that will establish this
- * explicit assignment before commit. It intentionally skips coverage's default
- * baseline Company rather than creating and immediately replacing one.
+ * explicit assignment before commit. It intentionally skips the facts-derived
+ * default Company rather than creating and immediately replacing one.
  */
 export interface CreateJobForCompanyAssignmentInput extends CreateJobInput {
   readonly selectedCompanyId: string
@@ -139,8 +139,14 @@ export type MutateJobResult = { readonly ok: true; readonly job: JobRecord } | J
 /** A read+write executor — the workspace database OR an open transaction. */
 export type JobExec = Pick<PgliteDatabase, 'select' | 'insert' | 'update'>
 
-export interface JobCreationCoveragePort {
-  ensureAssignmentOn(
+/**
+ * The Company-owned operation that establishes a newly created Job's canonical
+ * Company assignment. Injected so the Job aggregate stays Company-agnostic, and
+ * always invoked on the caller's executor so the Job and its assignment commit
+ * together.
+ */
+export interface InitialCompanyAssignmentPort {
+  establishInitialCompanyOn(
     exec: JobExec,
     input: {
       readonly workspaceId: string
@@ -188,7 +194,7 @@ export interface JobService {
 export interface JobServiceOptions {
   readonly now?: Clock
   readonly newId?: UuidV7Generator
-  readonly creationCoverage: JobCreationCoveragePort
+  readonly initialCompanyAssignment: InitialCompanyAssignmentPort
 }
 
 const FACTS_MAX = 262_144
@@ -249,7 +255,7 @@ export function createPgliteJobService(
   const clock = options.now ?? (() => new Date())
   const nowIso = () => clock().toISOString()
   const newId = options.newId ?? createUuidV7Generator(clock)
-  const creationCoverage = options.creationCoverage
+  const initialCompanyAssignment = options.initialCompanyAssignment
 
   async function selectByIdOn(exec: JobExec, workspaceId: string, jobId: string): Promise<JobRow | null> {
     const [row] = await exec
@@ -417,7 +423,7 @@ export function createPgliteJobService(
   async function createOnInternal(
     exec: JobExec,
     input: CreateJobInput,
-    establishCoverage: boolean,
+    establishInitialCompany: boolean,
   ): Promise<CreateJobResult> {
     let workspaceId: string
     let factsJson: BoundedJson<typeof FACTS_MAX>
@@ -448,8 +454,8 @@ export function createPgliteJobService(
     if (idempotencyKey !== null) {
       const existing = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
       if (existing) {
-        if (establishCoverage) {
-          await creationCoverage.ensureAssignmentOn(exec, {
+        if (establishInitialCompany) {
+          await initialCompanyAssignment.establishInitialCompanyOn(exec, {
             workspaceId,
             jobId: existing.id,
             facts: safeParse(existing.factsJson),
@@ -493,8 +499,8 @@ export function createPgliteJobService(
       auditJson: auditJson(actor),
       createdAt,
     })
-    if (establishCoverage) {
-      await creationCoverage.ensureAssignmentOn(exec, {
+    if (establishInitialCompany) {
+      await initialCompanyAssignment.establishInitialCompanyOn(exec, {
         workspaceId,
         jobId: row.id,
         facts: input.facts,

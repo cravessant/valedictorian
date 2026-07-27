@@ -1,7 +1,6 @@
-import type { WorkspaceCompaniesClient } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import type { Clock, UuidV7Generator } from '../../db/uuidv7'
-import type { CompanyCoverageService } from './company.coverage'
+import type { LocalWorkspaceCompaniesClient } from '../../runtime/local-connector-client.contract'
 import { createCompanyCommands } from './company.commands'
 import { createCompanyDuplicateService } from './company.duplicates'
 import { createCompanyMergeService } from './company.merge'
@@ -10,7 +9,6 @@ import { createCompanyRelatedQueries } from './company.related-queries'
 
 export interface CompanyServiceOptions {
   readonly workspaceId: string
-  readonly coverage: Pick<CompanyCoverageService, 'getCapability'>
   readonly now?: Clock
   readonly newId?: UuidV7Generator
 }
@@ -18,7 +16,7 @@ export interface CompanyServiceOptions {
 export function createPgliteCompanyService(
   database: PgliteDatabase,
   options: CompanyServiceOptions,
-): WorkspaceCompaniesClient {
+): LocalWorkspaceCompaniesClient {
   const commands = createCompanyCommands(database, options.workspaceId, {
     ...(options.now ? { now: options.now } : {}),
     ...(options.newId ? { newId: options.newId } : {}),
@@ -35,9 +33,6 @@ export function createPgliteCompanyService(
   })
 
   return {
-    capability: {
-      get: () => options.coverage.getCapability(options.workspaceId),
-    },
     create: (...args) => commands.create(...args),
     get: (...args) => queries.get(...args),
     lookup: (...args) => queries.lookup(...args),

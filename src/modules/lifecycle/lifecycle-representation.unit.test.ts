@@ -181,8 +181,8 @@ describe('actor provenance stays distinct', () => {
   })
 
   it('serializes the command-actor envelope, not the internal-origin envelope', () => {
-    // Capture materialization / company backfill persist `{id,type}` into their own
-    // columns; the lifecycle audit envelope is `{actor:{type,id}}` and stays separate.
+    // Capture materialization / initial Company assignment persist `{id,type}` into
+    // their own columns; the lifecycle audit envelope is `{actor:{type,id}}` and stays separate.
     expect(actorAuditJson(admitCommandActor({ type: 'agent', id: 'a-1' }))).toBe('{"actor":{"type":"agent","id":"a-1"}}')
     expect(JSON.stringify({ id: 'capture-materializer', type: 'system' })).not.toContain('"actor"')
   })

@@ -5,13 +5,10 @@ import {
 } from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { workspaces } from '../../db/workspaces.schema'
-import { createCoveredPgliteJobService } from '../../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { assignInitialCompanyOn } from '../company/company.assignment.service'
 import {
-  companyCapabilityState,
-  companyHistory,
-  jobCompanyAssignmentHistory,
   jobCompanyAssignments,
   workspaceCompanies,
 } from '../company/company.schema'
@@ -81,19 +78,9 @@ async function setup() {
     createdAt: '2026-07-23T00:00:00.000Z',
     updatedAt: '2026-07-23T00:00:00.000Z',
   })
-  await database.insert(companyCapabilityState).values({
-    workspaceId: WORKSPACE,
-    status: 'ready',
-    completed: 0,
-    total: 0,
-    issueCount: 0,
-    blockedReason: null,
-    message: null,
-    updatedAt: '2026-07-23T00:00:00.000Z',
-  })
   const now = monotonicClock()
   const captures = createPgliteCaptureService(database, { now })
-  const jobService = createCoveredPgliteJobService(database, { now })
+  const jobService = createPgliteJobServiceWithCompanies(database, { now })
   const jobIdentityService = createPgliteJobIdentityService(database, { now })
   const promotion = createPgliteJobPromotion(database, captures, jobService, {
     now,
@@ -244,22 +231,6 @@ async function countRows(database: Awaited<ReturnType<typeof setup>>['database']
   }
 }
 
-async function countCompletionWrites(
-  database: Awaited<ReturnType<typeof setup>>['database'],
-) {
-  const rows = await countRows(database)
-  const [companyHistoryRows] = await database.select({ value: count() }).from(companyHistory)
-  const [assignmentHistoryRows] = await database.select({ value: count() })
-    .from(jobCompanyAssignmentHistory)
-  const [jobHistoryRows] = await database.select({ value: count() }).from(jobHistory)
-  return {
-    ...rows,
-    assignmentHistory: assignmentHistoryRows!.value,
-    companyHistory: companyHistoryRows!.value,
-    jobHistory: jobHistoryRows!.value,
-  }
-}
-
 describe.sequential('manual Capture completion', () => {
   it('replays immutable success and blocked receipts and rejects a changed fingerprint', async () => {
     const { captures, completion, database } = await setup()
@@ -376,58 +347,6 @@ describe.sequential('manual Capture completion', () => {
       .where(eq(captureResolutionCommandReceipts.idempotencyKey, idempotencyKey))
       .orderBy(captureResolutionCommandReceipts.operation))
       .toEqual([{ operation: 'complete' }, { operation: 'retry' }])
-  })
-
-  it.each([
-    {
-      status: 'migrating' as const,
-      blockedReason: null,
-      message: null,
-      expectedMessage: 'Workspace Companies are still being prepared.',
-    },
-    {
-      status: 'blocked' as const,
-      blockedReason: 'migration_failed' as const,
-      message: 'Workspace Company migration failed.',
-      expectedMessage: 'Workspace Company migration failed.',
-    },
-  ])('blocks completion while Company capability is $status without lifecycle writes', async ({
-    status,
-    blockedReason,
-    message,
-    expectedMessage,
-  }) => {
-    const { captures, completion, database } = await setup()
-    await database.update(companyCapabilityState).set({
-      status,
-      blockedReason,
-      message,
-      issueCount: status === 'blocked' ? 1 : 0,
-    }).where(eq(companyCapabilityState.workspaceId, WORKSPACE))
-    const capture = await acceptCapture(captures, `company-capability-${status}`)
-    const before = await countCompletionWrites(database)
-    const request = completionInput(
-      capture,
-      `manual-company-capability-${status}`,
-    )
-
-    const result = await completion.complete(request)
-
-    expect(result).toMatchObject({
-      status: 'blocked',
-      failure: {
-        kind: 'lifecycle_failure',
-        blocker: {
-          code: 'impossible_state',
-          message: expectedMessage,
-        },
-      },
-    })
-    expect(await completion.complete(request)).toEqual(result)
-    expect(await countCompletionWrites(database)).toEqual(before)
-    expect(await database.select({ value: count() })
-      .from(captureResolutionCommandReceipts))
-      .toEqual([{ value: 1 }])
   })
 
   it('creates a null-generation completion with destination-only identity and terminal stages', async () => {

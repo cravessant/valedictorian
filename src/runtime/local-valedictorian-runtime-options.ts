@@ -17,11 +17,9 @@ export interface LocalValedictorianClientOptions {
   connectorRuntime?: AppConnectorRuntimePorts
   /** Explicit scheduling capability; shared with server capability reporting when injected. */
   connectorScheduling?: ConnectorSchedulingCapability
-  deferCompanyCoverageMigration?: boolean
   now?: () => Date
   onScheduledWorkChanged?: () => void
   registerScheduledWorkSource?: (source: LocalScheduledWorkSource) => void
-  scheduleCompanyCoverageMigration?: (run: () => Promise<void>) => void
   referenceTrackerPath?: string
   seedDataMode?: ValedictorianSeedDataMode
   secretCodec?: SecretCodec

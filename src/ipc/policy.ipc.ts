@@ -15,7 +15,7 @@ interface IpcMainLike {
   ): void
 }
 
-export function registerPolicyIpc(client: ValedictorianWorkspaceClient, ipcMain: IpcMainLike) {
+export function registerPolicyIpc(client: Pick<ValedictorianWorkspaceClient, 'policy'>, ipcMain: IpcMainLike) {
   ipcMain.handle('policy:config:get', () => client.policy.config.get())
   ipcMain.handle('policy:config:update', (_event, patch) =>
     client.policy.config.update(patch as PolicyConfigPatch),

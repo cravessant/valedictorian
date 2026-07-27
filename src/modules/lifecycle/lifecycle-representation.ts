@@ -100,7 +100,7 @@ export interface LifecycleActorInput {
  * The only trusted actor type, produced by `admitCommandActor` and nothing else — no
  * in-process cast enters this brand, so an audit port cannot receive an actor whose id
  * was never bounded. Internally originated audit writers (capture materialization,
- * company backfill) serialize a different envelope into different columns.
+ * initial Company assignment) serialize a different envelope into different columns.
  */
 export type AdmittedCommandActor = {
   readonly type: LifecycleActorType

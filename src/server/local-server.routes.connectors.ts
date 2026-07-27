@@ -2,8 +2,8 @@ import type http from 'node:http'
 import {
   connectorOverviewListResultSchema,
   connectorRetirementResultSchema,
-  type ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceClient } from '../runtime/local-connector-client.contract'
 import { publicConnectorStatusSummary } from '../runtime/local-connector-public-status'
 import {
   publicConnectorRunsListResult,
@@ -28,7 +28,7 @@ export async function handleConnectorRoutes({
   requestUrl,
   response,
 }: {
-  client: ValedictorianWorkspaceClient
+  client: LocalWorkspaceClient
   request: http.IncomingMessage
   requestUrl: URL
   response: http.ServerResponse
@@ -177,14 +177,14 @@ export async function handleConnectorRoutes({
   return handleConnectorScheduleRoutes({ client, request, requestUrl, response })
 }
 
-type ConnectorExtensionsClient = ValedictorianWorkspaceClient & {
+type ConnectorExtensionsClient = LocalWorkspaceClient & {
   connectors: {
     list(): Promise<unknown>
     create(input: unknown): Promise<unknown>
     update(input: unknown): Promise<unknown>
     remove(input: { connectorInstanceId: string }): Promise<unknown>
     inspect(connectorInstanceId: string): Promise<unknown>
-    overview: ValedictorianWorkspaceClient['connectors']['overview']
+    overview: LocalWorkspaceClient['connectors']['overview']
     runs: {
       list(input: unknown): Promise<unknown>
       trigger(input: unknown): Promise<unknown>
@@ -198,6 +198,6 @@ type ConnectorExtensionsClient = ValedictorianWorkspaceClient & {
   }
 }
 
-function connectorExtensions(client: ValedictorianWorkspaceClient) {
+function connectorExtensions(client: LocalWorkspaceClient) {
   return (client as ConnectorExtensionsClient).connectors
 }

@@ -20,7 +20,6 @@ import { createUuidV7Generator, type Clock, type UuidV7Generator } from '../../d
 import {
   admitCompanyCommand,
   appendCompanyHistory,
-  capabilityFailure,
   companyCommandFingerprint,
   runCompanyCommand,
   successCompany,
@@ -63,8 +62,6 @@ export function createCompanyMergeService(
         'The Companies do not belong to this workspace.',
       ))
     }
-    const unavailable = await capabilityFailure(database, workspaceId)
-    if (unavailable) return blocked(parsed, unavailable)
     return runCompanyCommand(database, {
       workspaceId,
       idempotencyKey: parsed.idempotencyKey,

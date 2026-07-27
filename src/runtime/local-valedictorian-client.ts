@@ -111,8 +111,10 @@ import {
 } from './local-connector-overview.cursor'
 import { createPgliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 import { assertSeedOptions, seedLocalData } from './local-valedictorian-seeding'
-import { createCompanyCoverageService } from '../modules/company/company.coverage'
-import { createPgliteCompanyAssignmentService } from '../modules/company/company.assignment.service'
+import {
+  createInitialCompanyAssignment,
+  createPgliteCompanyAssignmentService,
+} from '../modules/company/company.assignment.service'
 import { createPgliteCompanyService } from '../modules/company/company.service'
 import { createPgliteJobIdentityService } from '../modules/job/job.identity'
 import { createPgliteJobService } from '../modules/job/job.service'
@@ -162,11 +164,9 @@ export async function createLocalValedictorianClient({
   connectorRegistry = createDefaultLocalConnectorRegistry(),
   connectorRuntime,
   connectorScheduling: connectorSchedulingOption,
-  deferCompanyCoverageMigration = false,
   now = () => new Date(),
   onScheduledWorkChanged,
   registerScheduledWorkSource,
-  scheduleCompanyCoverageMigration = scheduleCompanyCoverageInBackground,
   referenceTrackerPath,
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
@@ -191,14 +191,10 @@ export async function createLocalValedictorianClient({
     referenceTrackerPath,
     seedDataMode,
   })
-  const companyCoverage = createCompanyCoverageService(database, {
+  const initialCompanyAssignment = createInitialCompanyAssignment({
     now,
     ...(newId ? { newId } : {}),
   })
-  await companyCoverage.prepare(workspaceId)
-  if (!deferCompanyCoverageMigration) {
-    await companyCoverage.migrateToReady(workspaceId)
-  }
   const scoringRepository = createPgliteScoringRepository(database)
   const profileService = preparedProfileService
     ?? createJsonProfileService(profilePath ?? path.join(path.dirname(pgliteDataPath ?? '.'), 'profile.json'))
@@ -342,11 +338,11 @@ export async function createLocalValedictorianClient({
   const lifecycle = createLocalLifecycleMethods(database, {
     workspaceId,
     now,
-    jobCreationCoverage: companyCoverage.jobCreationCoverage,
+    initialCompanyAssignment,
   })
   const manualCompletionJobService = createPgliteJobService(database, {
     now,
-    creationCoverage: companyCoverage.jobCreationCoverage,
+    initialCompanyAssignment,
   })
   const manualCompletionJobIdentityService = createPgliteJobIdentityService(database, { now })
   const manualCaptureCompletion = createManualCaptureCompletionService(database, {
@@ -373,7 +369,6 @@ export async function createLocalValedictorianClient({
     captureResolutionV2: createCaptureResolutionV2Service(database, captureResolutionOptions),
     companies: createPgliteCompanyService(database, {
       workspaceId,
-      coverage: companyCoverage,
       now,
       ...(newId ? { newId } : {}),
     }),
@@ -722,18 +717,7 @@ export async function createLocalValedictorianClient({
   } else {
     await recoverInterruptedRuns()
   }
-  if (deferCompanyCoverageMigration) {
-    scheduleCompanyCoverageMigration(async () => {
-      await companyCoverage.migrateToReady(workspaceId)
-    })
-  }
   return client
-}
-
-function scheduleCompanyCoverageInBackground(run: () => Promise<void>) {
-  queueMicrotask(() => {
-    void run().catch(() => undefined)
-  })
 }
 
 async function reconnectConnectorStatus({

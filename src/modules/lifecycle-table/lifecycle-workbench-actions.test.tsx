@@ -8,8 +8,8 @@ import type {
   CaptureListPresentation,
   Job,
   Opportunity,
-  ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
 import { renderWithQueryClient } from '@/test/query-client'
@@ -128,7 +128,7 @@ function makeOpportunity(id: string, overrides: Partial<Opportunity> = {}): Oppo
 }
 
 interface MockClient {
-  client: ValedictorianWorkspaceClientV2
+  client: LocalWorkspaceClientV2
   captures: Record<string, ReturnType<typeof vi.fn>>
   captureResolution: Record<string, ReturnType<typeof vi.fn>>
   jobs: Record<string, ReturnType<typeof vi.fn>>
@@ -232,7 +232,7 @@ function makeClient(seed: {
     companyAssignments,
     opportunities,
     applications,
-  } as unknown as ValedictorianWorkspaceClientV2
+  } as unknown as LocalWorkspaceClientV2
   return {
     client,
     captures,

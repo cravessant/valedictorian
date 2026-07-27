@@ -96,7 +96,7 @@ import {
   JOBRIGHT_PROVIDER_FIELD_RESOLVER_ID,
   JOBRIGHT_PROVIDER_FIELD_RESOLVER_VERSION,
 } from '../modules/connectors/jobright.constants'
-import { createPgliteJobService, type JobCreationCoveragePort } from '../modules/job/job.service'
+import { createPgliteJobService, type InitialCompanyAssignmentPort } from '../modules/job/job.service'
 import { createPgliteJobReadModel } from '../modules/job/job.read-model'
 import { createPgliteJobIdentityService } from '../modules/job/job.identity'
 import { createLifecycleJobOrchestration, type JobWriteFailure } from '../modules/lifecycle/job.orchestration'
@@ -183,7 +183,7 @@ function parseInput<T>(schema: { parse(value: unknown): T }, input: unknown): T 
 export interface LocalLifecycleMethodsOptions {
   readonly workspaceId: string
   readonly now?: () => Date
-  readonly jobCreationCoverage: JobCreationCoveragePort
+  readonly initialCompanyAssignment: InitialCompanyAssignmentPort
 }
 
 /** The aggregate surface implemented so far (captures + jobs + opportunities + applications). */
@@ -198,7 +198,7 @@ export function createLocalLifecycleMethods(
   const nowIso = () => now().toISOString()
 
   const captureService = createPgliteCaptureService(database, { now })
-  const jobService = createPgliteJobService(database, { now, creationCoverage: options.jobCreationCoverage })
+  const jobService = createPgliteJobService(database, { now, initialCompanyAssignment: options.initialCompanyAssignment })
   const jobIdentityService = createPgliteJobIdentityService(database, { now })
   const opportunityService = createPgliteOpportunityService(database, { now })
   const applicationService = createPgliteApplicationAggregateService(database, { now })

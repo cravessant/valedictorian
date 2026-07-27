@@ -1,5 +1,6 @@
 import type http from 'node:http'
 import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { LocalWorkspaceClient } from '../runtime/local-connector-client.contract'
 import { readJsonBody, writeEmpty, writeJson } from './local-server.http'
 import {
   parseDeleteConnectorScheduleInput,
@@ -10,13 +11,13 @@ import {
   parseUpsertConnectorScheduleInput,
 } from './local-server.parsers.connector-schedules'
 
-type ConnectorScheduleExtensionsClient = ValedictorianWorkspaceClient & {
+type ConnectorScheduleExtensionsClient = LocalWorkspaceClient & {
   connectors: ValedictorianWorkspaceClient['connectors'] & {
     schedules: ValedictorianWorkspaceClient['connectors']['schedules']
   }
 }
 
-function scheduleExtensions(client: ValedictorianWorkspaceClient) {
+function scheduleExtensions(client: LocalWorkspaceClient) {
   return (client as ConnectorScheduleExtensionsClient).connectors.schedules
 }
 
@@ -26,7 +27,7 @@ export async function handleConnectorScheduleRoutes({
   requestUrl,
   response,
 }: {
-  client: ValedictorianWorkspaceClient
+  client: LocalWorkspaceClient
   request: http.IncomingMessage
   requestUrl: URL
   response: http.ServerResponse

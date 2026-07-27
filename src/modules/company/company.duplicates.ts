@@ -26,7 +26,6 @@ import type { PgliteDatabase } from '../../db/pglite'
 import { createUuidV7Generator, type Clock, type UuidV7Generator } from '../../db/uuidv7'
 import {
   admitCompanyCommand,
-  capabilityFailure,
   companyCommandFingerprint,
   runCompanyCommand,
   type CompanyTx,
@@ -115,8 +114,6 @@ export function createCompanyDuplicateService(
         'The duplicate candidate does not belong to this workspace.',
       ))
     }
-    const unavailable = await capabilityFailure(database, workspaceId)
-    if (unavailable) return blockedMarkDistinct(parsed, unavailable)
     return runCompanyCommand(database, {
       workspaceId,
       idempotencyKey: parsed.idempotencyKey,

@@ -1,5 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import {
+  jobFactsSchema,
+  jobFactsV2Schema,
   reassignJobCompanyInputSchema,
   type CompanyCommandFailure,
   type JobCompanyAssignmentPresentation,
@@ -9,14 +11,16 @@ import {
 import type { PgliteDatabase } from '../../db/pglite'
 import { createUuidV7Generator, type Clock, type UuidV7Generator } from '../../db/uuidv7'
 import { jobs } from '../job/job.schema'
+import type { InitialCompanyAssignmentPort, JobExec, JsonValue } from '../job/job.service'
 import {
   admitCompanyCommand,
   companyCommandFingerprint,
-  capabilityFailure,
+  lockCompanyWorkspace,
   runCompanyCommand,
   type CompanyTx,
 } from './company.command-support'
 import {
+  companyHistory,
   jobCompanyAssignmentHistory,
   jobCompanyAssignments,
   workspaceCompanies,
@@ -29,9 +33,88 @@ export interface CompanyAssignmentServiceOptions {
   readonly newId?: UuidV7Generator
 }
 
+const UNKNOWN_COMPANY = 'Unknown company'
+const JOB_CREATION_ACTOR = { id: 'job-creation', type: 'system' } as const
+const JOB_CREATION_RATIONALE = 'Established the canonical Company for a new Job.'
+const CREATED_FIELDS = JSON.stringify(['display_name'])
+const NO_AFFECTED_JOBS = JSON.stringify([])
+
+/**
+ * Company-owned canonical assignment for a Job created without an explicit
+ * Company selection: mint the Company named by the Job's facts and assign it.
+ * The Company id is the Job id, so a re-issued create converges on the same
+ * canonical record instead of minting a second one.
+ */
+export function createInitialCompanyAssignment(
+  options: { readonly now?: Clock; readonly newId?: UuidV7Generator } = {},
+): InitialCompanyAssignmentPort {
+  const clock = options.now ?? (() => new Date())
+  const newId = options.newId ?? createUuidV7Generator(clock)
+
+  return {
+    async establishInitialCompanyOn(exec: JobExec, input): Promise<void> {
+      await lockCompanyWorkspace(exec, input.workspaceId)
+      const [existing] = await exec
+        .select({ jobId: jobCompanyAssignments.jobId })
+        .from(jobCompanyAssignments)
+        .where(eq(jobCompanyAssignments.jobId, input.jobId))
+        .limit(1)
+      if (existing) return
+
+      const companyId = input.jobId
+      const displayName = companyNameFromFacts(input.facts)
+      const timestamp = clock().toISOString()
+      await exec.insert(workspaceCompanies).values({
+        id: companyId,
+        workspaceId: input.workspaceId,
+        displayName,
+        normalizedDisplayName: normalizeCompanyText(displayName),
+        websiteUrl: null,
+        websiteHost: null,
+        notes: null,
+        revision: 1,
+        status: 'active',
+        mergedIntoCompanyId: null,
+        createdAt: input.createdAt,
+        updatedAt: input.createdAt,
+      }).onConflictDoNothing()
+      await exec.insert(companyHistory).values({
+        id: newId(),
+        workspaceId: input.workspaceId,
+        companyId,
+        sequence: 1,
+        companyRevision: 1,
+        kind: 'created',
+        changedFieldsJson: CREATED_FIELDS,
+        actorJson: JSON.stringify(JOB_CREATION_ACTOR),
+        rationale: JOB_CREATION_RATIONALE,
+        relatedCompanyId: null,
+        affectedJobIdsJson: NO_AFFECTED_JOBS,
+        createdAt: timestamp,
+      }).onConflictDoNothing()
+      await assignInitialCompanyOn(exec, {
+        workspaceId: input.workspaceId,
+        jobId: input.jobId,
+        companyId,
+        actor: JOB_CREATION_ACTOR,
+        rationale: JOB_CREATION_RATIONALE,
+        now: timestamp,
+        newId,
+      })
+    },
+  }
+}
+
+function companyNameFromFacts(facts: JsonValue): string {
+  const v2 = jobFactsV2Schema.safeParse(facts)
+  if (v2.success) return v2.data.companyName
+  const v1 = jobFactsSchema.safeParse(facts)
+  return v1.success ? v1.data.companyName : UNKNOWN_COMPANY
+}
+
 /** Company-owned initial assignment conversation for an atomically created Job. */
 export async function assignInitialCompanyOn(
-  tx: CompanyTx,
+  tx: JobExec,
   input: {
     readonly workspaceId: string
     readonly jobId: string
@@ -102,8 +185,6 @@ export function createPgliteCompanyAssignmentService(
         'The Job assignment does not belong to this workspace.',
       ))
     }
-    const unavailable = await capabilityFailure(database, workspaceId)
-    if (unavailable) return blocked(parsed, unavailable)
     return runCompanyCommand(database, {
       workspaceId,
       idempotencyKey: parsed.idempotencyKey,

@@ -15,10 +15,10 @@
 import { describe, expect, it } from 'vitest'
 import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import { workspaces } from '../db/workspaces.schema'
-import { createCoveredPgliteJobService } from '../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../test/job-service-with-companies'
 import { jobCaptureEvidenceReferences } from '../modules/job/job.schema'
 import { LifecycleHttpError } from './local-lifecycle-methods'
-import { createCoveredLocalLifecycleMethods } from '../test/covered-lifecycle-methods'
+import { createLocalLifecycleMethodsWithCompanies } from '../test/lifecycle-methods-with-companies'
 
 const resettableOwner = useResettablePgliteTestOwner()
 
@@ -38,7 +38,7 @@ async function setup(workspaceId = 'ws-a') {
     })
   }
   const now = monotonicClock()
-  const methods = createCoveredLocalLifecycleMethods(database, { workspaceId, now })
+  const methods = createLocalLifecycleMethodsWithCompanies(database, { workspaceId, now })
   return { database, methods, now }
 }
 
@@ -171,7 +171,7 @@ describe.sequential('local lifecycle facade — captures', () => {
     if (created.status !== 'succeeded') throw new Error('unreachable')
     const captureId = created.resource.id
 
-    const jobService = createCoveredPgliteJobService(database, { now })
+    const jobService = createPgliteJobServiceWithCompanies(database, { now })
     const job = await jobService.create({ workspaceId: 'ws-a', facts: { title: 'Dependent' }, actor: USER })
     if (!job.ok) throw new Error('failed to seed dependent job')
     await database.insert(jobCaptureEvidenceReferences).values({
@@ -239,8 +239,8 @@ describe.sequential('local lifecycle facade — captures', () => {
 
   it('isolates captures across workspaces (a foreign workspace cannot read the capture)', async () => {
     const { database, now } = await setup()
-    const wsA = createCoveredLocalLifecycleMethods(database, { workspaceId: 'ws-a', now })
-    const wsB = createCoveredLocalLifecycleMethods(database, { workspaceId: 'ws-b', now })
+    const wsA = createLocalLifecycleMethodsWithCompanies(database, { workspaceId: 'ws-a', now })
+    const wsB = createLocalLifecycleMethodsWithCompanies(database, { workspaceId: 'ws-b', now })
     const created = await wsA.captures.create(CREATE_INPUT)
     if (created.status !== 'succeeded') throw new Error('unreachable')
 

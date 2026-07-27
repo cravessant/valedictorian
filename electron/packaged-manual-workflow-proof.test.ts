@@ -5,15 +5,14 @@ import { describe, expect, it } from 'vitest'
 import { runPackagedManualWorkflowProof } from './packaged-manual-workflow-proof'
 
 describe.sequential('packaged manual workflow proof', () => {
-  it('proves fresh and migrated Company coverage through a restart-safe local client', async () => {
+  it('proves Company assignment across two workspaces through a restart-safe local client', async () => {
     const dataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'package-manual-workflow-proof-'))
     try {
       const write = await runPackagedManualWorkflowProof({ dataDirectory, phase: 'write' })
       expect(write).toMatchObject({
         phase: 'write',
         workspace: {
-          fresh: { companyCapability: 'ready' },
-          migrated: { assignmentCount: 1, companyCapability: 'ready', completed: 1, total: 1 },
+          second: { assignmentCount: 1, jobCount: 1 },
         },
         observables: {
           companyArchiveAndRestoreRevisioned: true,
@@ -28,9 +27,8 @@ describe.sequential('packaged manual workflow proof', () => {
           duplicateReviewMarkedDistinct: true,
           jobrightIntermediaryRecorded: true,
           jobrightRecordedDetailResolverUsed: true,
-          migratedOneAssignmentPerJob: true,
-          migratedWriteAvailableAfterBackfill: true,
-          migratedWriteRejectedBeforeBackfill: true,
+          secondWorkspaceCompanyWriteAvailableAtOpen: true,
+          secondWorkspaceJobCompanyEstablishedOnCreate: true,
         },
       })
 
@@ -38,14 +36,13 @@ describe.sequential('packaged manual workflow proof', () => {
       expect(verify).toMatchObject({
         phase: 'verify',
         workspace: {
-          fresh: { companyCapability: 'ready' },
-          migrated: { assignmentCount: 1, companyCapability: 'ready', completed: 1, total: 1 },
+          second: { assignmentCount: 1, jobCount: 1 },
         },
         observables: {
           companyHistoryPersistedAcrossRestart: true,
           completedCapturePersistedAcrossRestart: true,
           freshOneAssignmentPerJobAfterRestart: true,
-          migratedOneAssignmentPerJobAfterRestart: true,
+          secondWorkspaceOneAssignmentPerJobAfterRestart: true,
         },
       })
     } finally {

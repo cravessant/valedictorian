@@ -22,7 +22,6 @@ import {
   admitCompanyCommand,
   appendCompanyHistory,
   blockedMutation,
-  capabilityFailure,
   companyCommandFingerprint,
   guardedCompany,
   runCompanyCommand,
@@ -125,8 +124,6 @@ export function createCompanyCommands(
         'The Company cannot be created in another workspace.',
       ))
     }
-    const unavailable = await capabilityFailure(database, workspaceId)
-    if (unavailable) return blockedCreate(parsed, unavailable)
     return runCompanyCommand(database, {
       workspaceId,
       idempotencyKey: parsed.idempotencyKey,
@@ -375,8 +372,6 @@ async function mutateCompany<Result extends UpdateCompanyResult | ArchiveCompany
     ) => Promise<typeof workspaceCompanies.$inferSelect>
   },
 ): Promise<Result> {
-  const unavailable = await capabilityFailure(database, workspaceId)
-  if (unavailable) return blockedMutation(input, unavailable) as Result
   return runCompanyCommand(database, {
     workspaceId,
     idempotencyKey: input.idempotencyKey,
@@ -438,8 +433,6 @@ async function mutateAlias(
     ) => Promise<{ duplicate: boolean; aliasId?: string | null }>
   },
 ): Promise<UpdateCompanyResult> {
-  const unavailable = await capabilityFailure(database, workspaceId)
-  if (unavailable) return blockedMutation(input, unavailable)
   return runCompanyCommand(database, {
     workspaceId,
     idempotencyKey: input.idempotencyKey,

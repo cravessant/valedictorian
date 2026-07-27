@@ -49,31 +49,6 @@ describe.sequential('canonical lifecycle HTTP and typed client', () => {
     return { client, server }
   }
 
-  it('serves Company migration progress and readiness through the typed client', async () => {
-    let migrate: (() => Promise<void>) | null = null
-    const local = await createTestLocalValedictorianClient({
-      deferCompanyCoverageMigration: true,
-      workspaceId: WORKSPACE_ID,
-      scheduleCompanyCoverageMigration(run) {
-        migrate = run
-      },
-    })
-    const server = await fixture.start({ client: local })
-    const client = createHttpValedictorianClient({
-      baseUrl: server.url,
-    }).forWorkspace(WORKSPACE_ID)
-
-    expect(await client.companies.capability.get()).toEqual({
-      status: 'migrating',
-      completed: 0,
-      total: 0,
-      issueCount: 0,
-    })
-    if (!migrate) throw new Error('Company coverage migration was not scheduled')
-    await migrate()
-    expect(await client.companies.capability.get()).toEqual({ status: 'ready' })
-  })
-
   it('round-trips complete CRUD/history surfaces for all four canonical aggregates', async () => {
     const { client } = await setup()
     const capture = await client.captures.create(CAPTURE_INPUT)

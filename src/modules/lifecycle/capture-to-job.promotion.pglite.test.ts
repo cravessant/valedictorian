@@ -14,7 +14,7 @@ import { workspaces } from '../../db/workspaces.schema'
 import { captureEvidenceItems, captures as captureRows } from '../capture/capture.schema'
 import { jobCaptureEvidenceReferences, jobExternalIdentities, jobs as jobRows } from '../job/job.schema'
 import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
-import { createCoveredPgliteJobService } from '../../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { createPgliteJobIdentityService } from '../job/job.identity'
 import {
   createPgliteJobPromotion,
@@ -38,7 +38,7 @@ async function setup() {
   }
   const clock = monotonicClock()
   const captures = createPgliteCaptureService(database, { now: clock })
-  const jobs = createCoveredPgliteJobService(database, { now: clock })
+  const jobs = createPgliteJobServiceWithCompanies(database, { now: clock })
   let resolution: DestinationResolution = { status: 'unavailable' }
   const resolveSpy = vi.fn(async () => resolution)
   const port: JobResolutionPort = { resolveDestination: resolveSpy }

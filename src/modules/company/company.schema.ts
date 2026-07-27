@@ -438,45 +438,6 @@ export const companyHistory = pgTable(
   }),
 )
 
-export const companyCapabilityState = pgTable(
-  'company_capability_state',
-  {
-    workspaceId: text('workspace_id').primaryKey().references(() => workspaces.id),
-    status: text('status').notNull(),
-    completed: integer('completed').notNull(),
-    total: integer('total').notNull(),
-    issueCount: integer('issue_count').notNull(),
-    blockedReason: text('blocked_reason'),
-    message: text('message'),
-    updatedAt: text('updated_at').notNull(),
-  },
-  (table) => ({
-    statusCheck: check(
-      'chk_company_capability_status',
-      sql`${table.status} in ('migrating','blocked','ready')`,
-    ),
-    countsCheck: check(
-      'chk_company_capability_counts',
-      sql`${table.completed} >= 0 and ${table.total} >= 0
-        and ${table.completed} <= ${table.total} and ${table.issueCount} >= 0`,
-    ),
-    blockedCheck: check(
-      'chk_company_capability_blocked',
-      sql`(${table.status} = 'blocked') =
-        (${table.blockedReason} is not null and ${table.message} is not null)`,
-    ),
-    reasonCheck: check(
-      'chk_company_capability_reason',
-      sql`${table.blockedReason} is null or ${table.blockedReason} in
-        ('migration_failed','invalid_legacy_data','integrity_check_failed')`,
-    ),
-    messageCheck: check(
-      'chk_company_capability_message',
-      sql`${table.message} is null or length(btrim(${table.message})) between 1 and 500`,
-    ),
-  }),
-)
-
 export const companyCommandReceipts = pgTable(
   'company_command_receipts',
   {
@@ -506,36 +467,6 @@ export const companyCommandReceipts = pgTable(
     resultCheck: check(
       'chk_company_command_receipts_result',
       sql`length(${table.resultJson}) between 2 and 65536`,
-    ),
-  }),
-)
-
-export const companyBackfillJournal = pgTable(
-  'company_backfill_journal',
-  {
-    workspaceId: text('workspace_id').notNull(),
-    jobId: text('job_id').notNull(),
-    companyId: text('company_id').notNull(),
-    usedUnknownName: integer('used_unknown_name').notNull(),
-    completedAt: text('completed_at').notNull(),
-  },
-  (table) => ({
-    primaryKey: primaryKey({ columns: [table.workspaceId, table.jobId] }),
-    companyKey: uniqueIndex('idx_company_backfill_journal_company')
-      .on(table.workspaceId, table.companyId),
-    jobFk: foreignKey({
-      name: 'fk_company_backfill_journal_job',
-      columns: [table.jobId],
-      foreignColumns: [jobs.id],
-    }),
-    companyFk: foreignKey({
-      name: 'fk_company_backfill_journal_company',
-      columns: [table.workspaceId, table.companyId],
-      foreignColumns: [workspaceCompanies.workspaceId, workspaceCompanies.id],
-    }),
-    unknownCheck: check(
-      'chk_company_backfill_journal_unknown',
-      sql`${table.usedUnknownName} in (0, 1)`,
     ),
   }),
 )

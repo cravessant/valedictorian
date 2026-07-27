@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -6,8 +6,8 @@ import type {
   CompanyDirectoryPage,
   CompanyDuplicateCandidateRow,
   CompanyDuplicatePage,
-  WorkspaceCompaniesClient,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceCompaniesClient } from '../../runtime/local-connector-client.contract'
 import { CompaniesWorkspace } from './CompaniesWorkspace'
 
 afterEach(() => {
@@ -115,10 +115,8 @@ function makeClient() {
     },
     reassignedJobCount: 2,
   }) as never)
-  const capability = vi.fn(async () => ({ status: 'ready' as const }))
   return {
     client: {
-      capability: { get: capability },
       directory: { list },
       duplicates: {
         list: duplicateList,
@@ -139,8 +137,7 @@ function makeClient() {
           totalCount: 0,
         })),
       },
-    } as unknown as WorkspaceCompaniesClient,
-    capability,
+    } as unknown as LocalWorkspaceCompaniesClient,
     duplicateGet,
     duplicateList,
     get,
@@ -151,87 +148,6 @@ function makeClient() {
 }
 
 describe('CompaniesWorkspace', () => {
-  it('keeps Company data and writes unavailable while migration is incomplete', async () => {
-    const { client, capability, get, list } = makeClient()
-    capability.mockResolvedValueOnce({
-      status: 'migrating',
-      completed: 4,
-      total: 9,
-      issueCount: 0,
-    })
-    render(
-      <CompaniesWorkspace
-        client={client}
-        entry={{
-          location: { view: 'companies', resourceId: 'company-not-on-page' },
-
-        }}
-        onBack={vi.fn()}
-        onNavigate={vi.fn()}
-      />,
-    )
-
-    expect(await screen.findByText('Preparing Workspace Companies')).toBeInTheDocument()
-    expect(screen.getByText(/4 of 9 Jobs/)).toBeInTheDocument()
-    expect(list).not.toHaveBeenCalled()
-    expect(get).not.toHaveBeenCalled()
-  })
-
-  it('renders bounded blocked capability information without repair controls', async () => {
-    const { client, capability, get, list } = makeClient()
-    capability.mockResolvedValueOnce({
-      status: 'blocked',
-      issueCount: 2,
-      reason: 'integrity_check_failed',
-      message: 'Workspace Company coverage verification failed.',
-      remediation: null,
-    })
-    render(
-      <CompaniesWorkspace
-        client={client}
-        entry={{ location: { view: 'companies' } }}
-        onBack={vi.fn()}
-        onNavigate={vi.fn()}
-      />,
-    )
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Workspace Company coverage verification failed.',
-    )
-    expect(screen.getByRole('button', { name: 'New Company' })).toBeDisabled()
-    expect(list).not.toHaveBeenCalled()
-    expect(get).not.toHaveBeenCalled()
-  })
-
-  it('refreshes a migrating capability until the mounted workspace becomes ready', async () => {
-    vi.useFakeTimers()
-    const { client, capability, list } = makeClient()
-    capability
-      .mockResolvedValueOnce({
-        status: 'migrating',
-        completed: 4,
-        total: 9,
-        issueCount: 0,
-      })
-      .mockResolvedValueOnce({ status: 'ready' })
-    render(
-      <CompaniesWorkspace
-        client={client}
-        workspaceId="workspace-company"
-        entry={{ location: { view: 'companies' } }}
-        onBack={vi.fn()}
-        onNavigate={vi.fn()}
-      />,
-    )
-
-    await act(async () => { await Promise.resolve() })
-    expect(screen.getByText('Preparing Workspace Companies')).toBeInTheDocument()
-    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
-    expect(capability).toHaveBeenCalledTimes(2)
-    expect(list).toHaveBeenCalledOnce()
-    expect(screen.getByText('On Page Inc.')).toBeInTheDocument()
-  })
-
   it('returns focus to New Company when its modal unmounts on cancel', async () => {
     const user = userEvent.setup()
     const { client } = makeClient()

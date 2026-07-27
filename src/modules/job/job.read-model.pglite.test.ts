@@ -17,7 +17,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
 import type { JobService } from './job.service'
-import { createCoveredPgliteJobService } from '../../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { jobCaptureEvidenceReferences, jobExternalIdentities } from './job.schema'
 import { createPgliteJobReadModel } from './job.read-model'
 
@@ -58,7 +58,7 @@ async function setup(workspaceIds: readonly string[] = ['ws-a', 'ws-b']) {
   }
   const clock = monotonicClock()
   const captures = createPgliteCaptureService(database, { now: clock })
-  const jobs = createCoveredPgliteJobService(database, { now: clock })
+  const jobs = createPgliteJobServiceWithCompanies(database, { now: clock })
   const readModel = createPgliteJobReadModel(database)
   return { database, captures, jobs, readModel }
 }

@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import type {
   CompanyAlias,
   CompanyMatchPreviewPage,
-  WorkspaceCompaniesClient,
   WorkspaceCompany,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceCompaniesClient } from '../../runtime/local-connector-client.contract'
 import {
   FormModal,
   type FieldErrors,
@@ -29,7 +29,7 @@ export type CompanyModalAction =
 
 interface CompanyMutationModalProps {
   readonly action: CompanyModalAction | null
-  readonly client: WorkspaceCompaniesClient
+  readonly client: LocalWorkspaceCompaniesClient
   readonly onChanged: (companyId: string) => void
   readonly onClose: () => void
   readonly workspaceId: string
@@ -270,7 +270,7 @@ function validateDraft(
 
 async function submitAction(input: {
   readonly action: CompanyModalAction
-  readonly client: WorkspaceCompaniesClient
+  readonly client: LocalWorkspaceCompaniesClient
   readonly draft: CompanyDraft
   readonly idempotencyKey: string
   readonly workspaceId: string

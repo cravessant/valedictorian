@@ -13,7 +13,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteCaptureService } from '../capture/capture.service'
 import { createCaptureFieldOutcomeStore } from '../capture/capture.field-outcomes'
-import { createCoveredPgliteJobService } from '../../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { jobs } from '../job/job.schema'
 import { createPgliteJobPromotion } from './capture-to-job.promotion'
 import {
@@ -80,7 +80,7 @@ async function resolveAndPersist(database: Database, seeded: { capture: { id: st
 
 function promotion(database: Database, fieldOutcomes: ReturnType<typeof createCaptureFieldOutcomeStore>) {
   const captureService = createPgliteCaptureService(database, { now: clock })
-  const jobService = createCoveredPgliteJobService(database, { now: clock })
+  const jobService = createPgliteJobServiceWithCompanies(database, { now: clock })
   return {
     jobService,
     promotion: createPgliteJobPromotion(database, captureService, jobService, {

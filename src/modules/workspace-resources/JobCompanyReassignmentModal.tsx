@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import type {
   CompanySearchResult,
   JobCompanyAssignmentPresentation,
-  ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 import {
   FormModal,
   type FieldErrors,
@@ -28,7 +28,7 @@ export function JobCompanyReassignmentModal({
   workspaceId,
 }: {
   readonly assignment: JobCompanyAssignmentPresentation
-  readonly client: Pick<ValedictorianWorkspaceClient, 'companies' | 'companyAssignments'>
+  readonly client: Pick<LocalWorkspaceClientV2, 'companies' | 'companyAssignments'>
   readonly onChanged: () => Promise<void> | void
   readonly onClose: () => void
   readonly workspaceId: string

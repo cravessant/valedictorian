@@ -26,7 +26,7 @@ import {
 } from '../modules/scheduling/scheduling.schema'
 import { lifecycleMigrationReport, workspaces } from './workspaces.schema'
 import {
-  companyAliases, companyBackfillJournal, companyCapabilityState, companyCommandReceipts,
+  companyAliases, companyCommandReceipts,
   companyDuplicateCandidateReviews, companyDuplicateCandidates, companyDuplicateIndexState,
   companyDuplicateMaintenanceWork, companyHistory,
   jobCompanyAssignmentHistory, jobCompanyAssignments, workspaceCompanies,
@@ -57,7 +57,7 @@ export {
 } from '../modules/scheduling/scheduling.schema'
 export { DEFAULT_WORKSPACE_ID, lifecycleMigrationReport, workspaces } from './workspaces.schema'
 export {
-  companyAliases, companyBackfillJournal, companyCapabilityState, companyCommandReceipts,
+  companyAliases, companyCommandReceipts,
   companyDuplicateCandidateReviews, companyDuplicateCandidates, companyDuplicateIndexState,
   companyDuplicateMaintenanceWork, companyHistory,
   jobCompanyAssignmentHistory, jobCompanyAssignments, workspaceCompanies,
@@ -188,7 +188,7 @@ export const schema = {
   hostedSubmissionWork, hostedResultPollingWork, workspaces, lifecycleMigrationReport,
   workspaceCompanies, companyAliases, companyHistory, companyCommandReceipts,
   jobCompanyAssignments,
-  jobCompanyAssignmentHistory, companyCapabilityState, companyBackfillJournal,
+  jobCompanyAssignmentHistory,
   companyDuplicateCandidates, companyDuplicateCandidateReviews,
   companyDuplicateMaintenanceWork, companyDuplicateIndexState,
 }

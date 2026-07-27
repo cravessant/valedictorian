@@ -7,7 +7,6 @@ import type {
 } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
-  companyCapabilityState,
   companyCommandReceipts,
   companyHistory,
   workspaceCompanies,
@@ -68,27 +67,6 @@ export function admitCompanyCommand<Command>(parse: () => Command): Command {
 
 export function companyCommandFingerprint(input: unknown): string {
   return createHash('sha256').update(stableJson(input)).digest('hex')
-}
-
-export async function capabilityFailure(
-  database: PgliteDatabase,
-  workspaceId: string,
-): Promise<CompanyCommandFailure | null> {
-  const [state] = await database
-    .select({
-      status: companyCapabilityState.status,
-      message: companyCapabilityState.message,
-    })
-    .from(companyCapabilityState)
-    .where(eq(companyCapabilityState.workspaceId, workspaceId))
-    .limit(1)
-  if (state?.status === 'ready') return null
-  return lifecycleFailure(
-    'impossible_state',
-    state?.status === 'blocked'
-      ? state.message ?? 'Workspace Companies are unavailable.'
-      : 'Workspace Companies are still being prepared.',
-  )
 }
 
 export async function guardedCompany(

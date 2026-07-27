@@ -2,7 +2,7 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 
 import App from './App'
 import { renderWithQueryClient } from './test/query-client'
@@ -256,9 +256,6 @@ describe('App sidebar navigation', () => {
       opportunities: { list: vi.fn(emptyLifecyclePage) },
       applications: { list: vi.fn(emptyLifecyclePage) },
       companies: {
-        capability: {
-          get: vi.fn(async () => ({ status: 'ready' as const })),
-        },
         get: companiesGet,
         directory: {
           list: vi.fn(async () => ({
@@ -285,7 +282,7 @@ describe('App sidebar navigation', () => {
           })),
         },
       },
-    } as unknown as ValedictorianWorkspaceClient
+    } as unknown as LocalWorkspaceClientV2
     const { settingsApi, workspaceApi } = installAppApis()
     renderWithQueryClient(
       <App

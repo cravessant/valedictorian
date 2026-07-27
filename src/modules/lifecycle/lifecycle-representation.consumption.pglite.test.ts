@@ -13,7 +13,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { jobExternalIdentities, jobHistory } from '../job/job.schema'
 import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
-import { createCoveredPgliteJobService } from '../../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
 import { createPgliteApplicationAggregateService } from '../applications/application.aggregate.service'
 import { createPgliteJobPromotion } from './capture-to-job.promotion'
@@ -35,7 +35,7 @@ async function setup() {
   await database.insert(workspaces).values({ id: 'ws-a', name: 'ws-a', createdAt: '2026-07-21T00:00:00.000Z', updatedAt: '2026-07-21T00:00:00.000Z' })
   const clock = monotonicClock()
   const captures = createPgliteCaptureService(database, { now: clock })
-  const jobs = createCoveredPgliteJobService(database, { now: clock })
+  const jobs = createPgliteJobServiceWithCompanies(database, { now: clock })
   const opportunities = createPgliteOpportunityService(database, { now: clock })
   const applications = createPgliteApplicationAggregateService(database, { now: clock })
   const promotion = createPgliteJobPromotion(database, captures, jobs, {

@@ -6,7 +6,6 @@ import type {
   Job,
   JobCompanyAssignmentPresentation,
   Opportunity,
-  ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
 
 import { Button } from '@/components/ui/button'
@@ -33,6 +32,7 @@ import {
   jobProjectionQuery,
   lifecycleLoadState,
   opportunityProjectionQuery,
+  type LifecycleClient,
   type LifecycleScope,
 } from './lifecycle-queries'
 import { useLifecycleInvalidation } from './use-lifecycle-invalidation'
@@ -74,7 +74,7 @@ const initialView: WorkbenchView = {
 }
 
 interface WorkbenchProps {
-  readonly client?: ValedictorianWorkspaceClientV2 | null
+  readonly client?: LifecycleClient | null
   readonly workspaceId?: string | null
   readonly onSelectedPhaseChange?: (phase: LifecyclePhase) => void
   readonly selectedPhase?: LifecyclePhase
@@ -107,7 +107,7 @@ export function LifecycleWorkbench({
   // the renderer-managed client needs state, and it resolves once in the
   // initializer: resolving again below would hand back a fresh client object,
   // bump the scope, and make every lifecycle list fetch twice on startup.
-  const [rendererClient, setRendererClient] = useState<ValedictorianWorkspaceClientV2 | null>(
+  const [rendererClient, setRendererClient] = useState<LifecycleClient | null>(
     () => suppliedClient === undefined ? getRendererHttpWorkspaceClient() : null)
   const [view, setView] = useState<WorkbenchView>(initialView)
   const client = suppliedClient === undefined ? rendererClient : suppliedClient
@@ -137,7 +137,7 @@ export function LifecycleWorkbench({
 }
 
 interface SessionProps extends Omit<WorkbenchProps, 'client' | 'workspaceId'> {
-  readonly client: ValedictorianWorkspaceClientV2 | null
+  readonly client: LifecycleClient | null
   readonly scope: LifecycleScope
   readonly view: WorkbenchView
   readonly workspaceId: string | null

@@ -49,7 +49,7 @@ const unavailableConnectorsApi: ConnectorsPreloadApi = {
 
 export function createRendererConnectorsApi(
   preloadApi: ConnectorsPreloadApi,
-  requireWorkspaceClient: () => ValedictorianWorkspaceClient = requireRendererHttpWorkspaceClient,
+  requireWorkspaceClient: () => Pick<ValedictorianWorkspaceClient, 'connectors'> = requireRendererHttpWorkspaceClient,
 ): ConnectorSettingsUiApi {
   return {
     ...preloadApi,

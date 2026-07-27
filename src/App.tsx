@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from './runtime/local-connector-client.contract'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { useAppBootstrapLoads } from './app/use-app-bootstrap-loads'
@@ -58,7 +58,7 @@ interface AppProps {
   policyApi?: PolicyPreloadApi
   profileApi?: ProfilePreloadApi
   updatesApi?: UpdatesPreloadApi
-  workspaceClient?: ValedictorianWorkspaceClientV2 | null
+  workspaceClient?: LocalWorkspaceClientV2 | null
   [key: string]: unknown
 }
 

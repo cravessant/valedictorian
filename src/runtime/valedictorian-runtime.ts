@@ -4,7 +4,6 @@ import {
   defaultValedictorianApiBaseUrl,
   type HttpValedictorianClientOptions,
   type ValedictorianClient,
-  type ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 import {
   createValedictorianHttpServer,
@@ -16,6 +15,7 @@ import {
   type DefaultLocalConnectorPorts,
 } from '../modules/connectors/connector.runtime-ports'
 import { localDesktopConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
+import type { LocalWorkspaceClient } from './local-connector-client.contract'
 import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
@@ -67,7 +67,7 @@ export interface ValedictorianRuntimeConfig {
 }
 
 export interface ValedictorianRuntime {
-  client: ValedictorianWorkspaceClient
+  client: LocalWorkspaceClient
   connectors: LocalValedictorianClient['connectors'] | null
   profileService: ProfileService | null
   secretService: SecretService | null
@@ -210,7 +210,6 @@ export async function createValedictorianRuntime({
       connectorScheduling: config.mode === 'local-desktop'
         ? localDesktopConnectorSchedulingCapability
         : undefined,
-      deferCompanyCoverageMigration: true,
       localSecretResolutionEnabled,
       profilePath: config.profilePath,
       ...(preparedCapabilities === null

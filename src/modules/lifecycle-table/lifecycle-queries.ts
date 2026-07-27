@@ -7,8 +7,8 @@ import type {
   JobListInput,
   LifecyclePageInfo,
   Opportunity,
-  ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 
 import { WorkspaceClientUnavailableError, scopedLoadFailure } from '@/app/app-load-failure'
 import type { WorkspaceCursorDirection } from '@/app/workspace-location'
@@ -66,7 +66,7 @@ export interface LifecycleScope {
   readonly connectionId: number
 }
 
-export type LifecycleClient = ValedictorianWorkspaceClientV2
+export type LifecycleClient = LocalWorkspaceClientV2
 
 export interface CapturePageInput {
   readonly filter: 'all' | 'needs_attention' | 'removed'

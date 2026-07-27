@@ -2,8 +2,8 @@ import { useState, type ReactElement } from 'react'
 import type {
   Job,
   JobCompanyAssignmentPresentation,
-  ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 import type { LifecycleRowAction } from './lifecycle-table'
 import { JobCompanyReassignmentModal } from '@/modules/workspace-resources/JobCompanyReassignmentModal'
 
@@ -14,7 +14,7 @@ export function useJobCompanyAssignmentController({
   workspaceId,
 }: {
   readonly assignments: ReadonlyMap<string, JobCompanyAssignmentPresentation>
-  readonly client: ValedictorianWorkspaceClient | null
+  readonly client: Pick<LocalWorkspaceClientV2, 'companies' | 'companyAssignments'> | null
   readonly refresh: () => Promise<void> | void
   readonly workspaceId: string | null
 }): {

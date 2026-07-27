@@ -29,30 +29,25 @@ function phaseResult(phase) {
           initialCompanyAssignmentCreated: true,
           jobrightIntermediaryRecorded: true,
           jobrightRecordedDetailResolverUsed: true,
-          migratedOneAssignmentPerJob: true,
-          migratedWriteAvailableAfterBackfill: true,
-          migratedWriteRejectedBeforeBackfill: true,
-          migratedWorkspaceReady: true,
+          secondWorkspaceCompanyWriteAvailableAtOpen: true,
+          secondWorkspaceJobCompanyEstablishedOnCreate: true,
         }
       : {
           completedCapturePersistedAcrossRestart: true,
           companyHistoryPersistedAcrossRestart: true,
           companyMergeAssignmentPersistedAcrossRestart: true,
           freshOneAssignmentPerJobAfterRestart: true,
-          migratedOneAssignmentPerJobAfterRestart: true,
+          secondWorkspaceOneAssignmentPerJobAfterRestart: true,
         },
     phase,
     workspace: {
       fresh: {
-        companyCapability: 'ready',
         companyCount: 5,
         completedCaptureCount: 3,
       },
-      migrated: {
+      second: {
         assignmentCount: 1,
-        companyCapability: 'ready',
-        completed: 1,
-        total: 1,
+        jobCount: 1,
       },
     },
   }
@@ -127,6 +122,30 @@ it('records bounded write and restart evidence from separate packaged processes'
         verify: { phase: 'verify' },
       },
     })
+  } finally {
+    fs.rmSync(resultDirectory, { force: true, recursive: true })
+  }
+})
+
+it('rejects a write proof whose workspace left a Job without a Company assignment', async () => {
+  const resultDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'package-proof-partial-'))
+  try {
+    const partial = phaseResult('write')
+    fs.writeFileSync(
+      path.join(resultDirectory, 'write.json'),
+      `${JSON.stringify({
+        ...partial,
+        workspace: { ...partial.workspace, second: { assignmentCount: 0, jobCount: 1 } },
+      })}\n`,
+    )
+    await expect(runPackagedManualWorkflowRestartProof({
+      buildIdentity: 'fixture-build',
+      environment: {},
+      executablePath: '/Applications/Valedictorian',
+      resultDirectory,
+      spawnPackagedApp: async () => undefined,
+      timeoutMs: 1_000,
+    })).rejects.toThrow('incomplete manual workflow write proof')
   } finally {
     fs.rmSync(resultDirectory, { force: true, recursive: true })
   }

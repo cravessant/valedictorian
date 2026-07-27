@@ -15,7 +15,7 @@ import { eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteCaptureService } from '../capture/capture.service'
-import { createCoveredPgliteJobService } from '../../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
 import { createPgliteApplicationAggregateService } from '../applications/application.aggregate.service'
 import { createPgliteJobPromotion } from './capture-to-job.promotion'
@@ -38,7 +38,7 @@ async function setup() {
   }
   const clock = monotonicClock()
   const captureService = createPgliteCaptureService(database, { now: clock })
-  const jobService = createCoveredPgliteJobService(database, { now: clock })
+  const jobService = createPgliteJobServiceWithCompanies(database, { now: clock })
   const opportunityService = createPgliteOpportunityService(database, { now: clock })
   const applicationService = createPgliteApplicationAggregateService(database, { now: clock })
   const capturePromotion = createPgliteJobPromotion(database, captureService, jobService, { now: clock })

@@ -48,10 +48,6 @@ export async function handleCompanyRoutes({
   const { method } = request
   const { pathname } = requestUrl
 
-  if (method === 'GET' && pathname === '/v1/companies/capability') {
-    writeJson(response, 200, await client.companies.capability.get())
-    return true
-  }
   if (method === 'GET' && pathname === '/v1/companies/search') {
     writeJson(response, 200, await client.companies.search(
       parseQuery(companySearchInputSchema, requestUrl),

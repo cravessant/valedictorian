@@ -30,7 +30,6 @@ import {
 import { assignInitialCompanyOn } from '../company/company.assignment.service'
 import { createInlineCompanyOn } from '../company/company.commands'
 import {
-  companyCapabilityState,
   jobCompanyAssignments,
   workspaceCompanies,
 } from '../company/company.schema'
@@ -123,8 +122,7 @@ export function createManualCaptureCompletionService(
         return lifecycleBlocked('invalid_input', 'This idempotency key was already used for a different request.')
       }
 
-      let result = await companyCapabilityFailureOn(tx)
-      if (!result) result = unsafeDestinationFailure(request)
+      let result = unsafeDestinationFailure(request)
       if (!result) {
         try {
           // A typed failure after a lifecycle write must roll the inner work back,
@@ -139,24 +137,6 @@ export function createManualCaptureCompletionService(
       await writeReceipt(tx, options.workspaceId, request, requestFingerprint, result, nowIso())
       return result
     })
-  }
-
-  async function companyCapabilityFailureOn(
-    tx: Tx,
-  ): Promise<CompleteCaptureManuallyResult | null> {
-    const [state] = await tx.select({
-      status: companyCapabilityState.status,
-      message: companyCapabilityState.message,
-    }).from(companyCapabilityState)
-      .where(eq(companyCapabilityState.workspaceId, options.workspaceId))
-      .limit(1)
-    if (state?.status === 'ready') return null
-    return lifecycleBlocked(
-      'impossible_state',
-      state?.status === 'blocked'
-        ? state.message ?? 'Workspace Companies are unavailable.'
-        : 'Workspace Companies are still being prepared.',
-    )
   }
 
   async function completeOn(tx: Tx, request: CompletionRequest): Promise<CompleteCaptureManuallyResult> {

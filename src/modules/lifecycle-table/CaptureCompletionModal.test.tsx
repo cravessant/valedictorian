@@ -1,7 +1,8 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CaptureCompletionDetailV2, Job, ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
+import type { CaptureCompletionDetailV2, Job } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
 vi.mock('@/components/ui/use-toast', () => ({ toast }))
@@ -120,7 +121,7 @@ function makeClient(options: {
     jobs: { get: jobsGet },
     companyAssignments: { get: assignmentGet, reassign },
   } as unknown as Pick<
-    ValedictorianWorkspaceClientV2,
+    LocalWorkspaceClientV2,
     'captureResolutionV2' | 'companies' | 'jobs' | 'companyAssignments'
   >
   return { client, complete, search, jobsGet, assignmentGet, reassign, lookup }
@@ -128,7 +129,7 @@ function makeClient(options: {
 
 function renderModal(
   client: Pick<
-    ValedictorianWorkspaceClientV2,
+    LocalWorkspaceClientV2,
     'captureResolutionV2' | 'companies' | 'jobs' | 'companyAssignments'
   >,
   overrides: Partial<React.ComponentProps<typeof CaptureCompletionModal>> = {},

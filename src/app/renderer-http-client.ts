@@ -1,8 +1,8 @@
 import {
   createHttpValedictorianClient,
   type ValedictorianClientV2,
-  type ValedictorianWorkspaceClientV2,
 } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from '../runtime/local-connector-client.contract'
 
 interface RendererHttpConfig {
   apiBaseUrl: string
@@ -49,7 +49,7 @@ export function backendUnavailableError() {
   return new Error('Workspace backend unavailable.')
 }
 
-export function getRendererHttpWorkspaceClient(): ValedictorianWorkspaceClientV2 | null {
+export function getRendererHttpWorkspaceClient(): LocalWorkspaceClientV2 | null {
   const config = getRendererHttpConfig()
   const rootClient = getRendererHttpRootClient()
 
@@ -86,7 +86,7 @@ export function onRendererBackendStateChanged(
   return getRendererHttpConfig()?.onBackendStateChanged?.(listener) ?? (() => {})
 }
 
-export function requireRendererHttpWorkspaceClient(): ValedictorianWorkspaceClientV2 {
+export function requireRendererHttpWorkspaceClient(): LocalWorkspaceClientV2 {
   const workspaceClient = getRendererHttpWorkspaceClient()
 
   if (!workspaceClient) {

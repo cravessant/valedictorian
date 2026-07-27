@@ -1,7 +1,8 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { WorkspaceCompaniesClient, WorkspaceCompany } from '@sparxie/sdk'
+import type { WorkspaceCompany } from '@sparxie/sdk'
+import type { LocalWorkspaceCompaniesClient } from '../../runtime/local-connector-client.contract'
 import { CompanyMutationModal } from './CompanyMutationModal'
 
 afterEach(cleanup)
@@ -20,7 +21,7 @@ const company = {
   updatedAt: '2026-07-23T00:00:00.000Z',
 } as unknown as WorkspaceCompany
 
-function clientWith(overrides: Partial<WorkspaceCompaniesClient> = {}) {
+function clientWith(overrides: Partial<LocalWorkspaceCompaniesClient> = {}) {
   return {
     previewMatches: vi.fn(async () => ({
       items: [{
@@ -45,7 +46,7 @@ function clientWith(overrides: Partial<WorkspaceCompaniesClient> = {}) {
       company,
     })),
     ...overrides,
-  } as unknown as WorkspaceCompaniesClient
+  } as unknown as LocalWorkspaceCompaniesClient
 }
 
 describe('CompanyMutationModal', () => {

@@ -12,7 +12,7 @@ import { eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import type { JobService } from '../job/job.service'
-import { createCoveredPgliteJobService } from '../../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
 import { opportunities } from '../opportunity/opportunity.schema'
 import {
@@ -35,7 +35,7 @@ async function setup() {
     await database.insert(workspaces).values({ id, name: id, createdAt: '2026-07-20T00:00:00.000Z', updatedAt: '2026-07-20T00:00:00.000Z' })
   }
   const clock = monotonicClock()
-  const jobs = createCoveredPgliteJobService(database, { now: clock })
+  const jobs = createPgliteJobServiceWithCompanies(database, { now: clock })
   const opportunities = createPgliteOpportunityService(database, { now: clock })
   let evaluation: OpportunityEvaluation = { fit: 'unknown', rank: null, cutoff: 'not_evaluated', signals: [] }
   const evaluateSpy = vi.fn(async () => evaluation)

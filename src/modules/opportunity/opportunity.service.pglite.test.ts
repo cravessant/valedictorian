@@ -14,7 +14,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { UUID_V7_PATTERN } from '../../db/lifecycle-vocabulary'
 import type { JobService } from '../job/job.service'
-import { createCoveredPgliteJobService } from '../../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { opportunities as opportunityRows } from './opportunity.schema'
 import { createPgliteOpportunityService, type OpportunityService } from './opportunity.service'
 
@@ -35,7 +35,7 @@ async function setup(workspaceIds: readonly string[] = ['ws-a', 'ws-b']) {
       .values({ id, name: id, createdAt: '2026-07-20T00:00:00.000Z', updatedAt: '2026-07-20T00:00:00.000Z' })
   }
   const clock = monotonicClock()
-  const jobs = createCoveredPgliteJobService(database, { now: clock })
+  const jobs = createPgliteJobServiceWithCompanies(database, { now: clock })
   const opportunities = createPgliteOpportunityService(database, { now: clock })
   return { database, jobs, opportunities }
 }

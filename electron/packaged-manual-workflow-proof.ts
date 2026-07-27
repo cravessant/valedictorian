@@ -4,7 +4,6 @@ import {
   createPgliteClient,
   migratePgliteDatabase,
 } from '../src/db/pglite'
-import { workspaces } from '../src/db/workspaces.schema'
 import {
   captureResolutionStageResults,
   captureRevisions,
@@ -14,11 +13,7 @@ import type {
   AppConnectorRuntime,
   AppJobConnector,
 } from '../src/modules/connectors/connector.runner'
-import {
-  companyCapabilityState,
-  jobCompanyAssignments,
-} from '../src/modules/company/company.schema'
-import { createCompanyCoverageService } from '../src/modules/company/company.coverage'
+import { jobCompanyAssignments } from '../src/modules/company/company.schema'
 import { jobs } from '../src/modules/job/job.schema'
 import { jobFactsTiming } from '../src/modules/job/job.timing'
 import type { LocalScheduledWorkSource } from '../src/runtime/local-scheduler'
@@ -29,7 +24,7 @@ const BUILD_IDENTITY = process.env.VALEDICTORIAN_PACKAGE_MANUAL_WORKFLOW_BUILD_I
 const FIXTURE_ADAPTER_ID = 'jobright.resolver'
 const FIXTURE_ADAPTER_VERSION = '0.18.2'
 const FRESH_WORKSPACE_ID = 'package-proof-fresh-workspace'
-const MIGRATED_WORKSPACE_ID = 'package-proof-migrated-workspace'
+const SECOND_WORKSPACE_ID = 'package-proof-second-workspace'
 const FIXTURE_DESTINATION = 'https://jobs.lever.co/packageproof/fixture-engineer'
 const FIXTURE_INTERMEDIARY_URL = 'https://jobright.ai/jobs/info/package-proof-jobright-001'
 const FIXTURE_JOBRIGHT_DETAIL_URL = 'https://swan-api.jobright.ai/swan/share/job/package-proof-jobright-001'
@@ -51,13 +46,10 @@ export interface PackagedManualWorkflowProofResult {
     readonly fresh: {
       readonly companyCount: number
       readonly completedCaptureCount: number
-      readonly companyCapability: 'ready'
     }
-    readonly migrated: {
+    readonly second: {
       readonly assignmentCount: number
-      readonly companyCapability: 'ready'
-      readonly completed: number
-      readonly total: number
+      readonly jobCount: number
     }
   }
   readonly observables: Record<string, boolean | number | string>
@@ -94,54 +86,46 @@ async function writeProof(
   database: Awaited<ReturnType<typeof migratePgliteDatabase>>,
   dataDirectory: string,
 ): Promise<PackagedManualWorkflowProofResult> {
-  await seedMigratedWorkspace(database)
-  const migrated = await createLocalValedictorianClient({
+  const second = await createLocalValedictorianClient({
     database,
-    deferCompanyCoverageMigration: true,
     pgliteDataPath: dataDirectory,
     registerScheduledWorkSource: () => undefined,
-    scheduleCompanyCoverageMigration: () => undefined,
-    workspaceId: MIGRATED_WORKSPACE_ID,
+    workspaceId: SECOND_WORKSPACE_ID,
   })
-  const migratingCapability = await migrated.companies.capability.get()
-  assert(migratingCapability.status === 'migrating'
-    && migratingCapability.completed < migratingCapability.total,
-  'Migrated workspace did not expose incomplete Company coverage before backfill.')
-  const unavailableWrite = await migrated.companies.create({
+  const immediateWrite = await second.companies.create({
     actor: ACTOR,
-    displayName: 'Blocked before Company backfill',
-    idempotencyKey: 'package-proof-migrated-write-blocked',
+    displayName: 'Available at workspace open',
+    idempotencyKey: 'package-proof-second-write',
     notes: null,
-    rationale: 'Verify Company-backed writes remain unavailable during backfill.',
+    rationale: 'Verify Company-backed writes need no workspace preparation.',
     websiteUrl: null,
-    workspaceId: MIGRATED_WORKSPACE_ID,
+    workspaceId: SECOND_WORKSPACE_ID,
   })
-  assert(unavailableWrite.status === 'blocked'
-    && unavailableWrite.failure.blocker.code === 'impossible_state',
-  'Migrated workspace accepted a Company-backed write before coverage completed.')
-  const migratedCoverage = createCompanyCoverageService(database)
-  const migratedCapability = await migratedCoverage.migrateToReady(MIGRATED_WORKSPACE_ID)
-  assert(migratedCapability.status === 'ready', 'Migrated workspace Company capability was not ready.')
-  const availableWrite = await migrated.companies.create({
+  assert(immediateWrite.status === 'created',
+    'A freshly opened workspace rejected a Company-backed write.')
+  const secondCapture = await createManualCapture(second, 'package-proof-second-capture')
+  const secondJob = await second.jobs.create({
     actor: ACTOR,
-    displayName: 'Available after Company backfill',
-    idempotencyKey: 'package-proof-migrated-write-ready',
-    notes: null,
-    rationale: 'Verify Company-backed writes become available after complete coverage.',
-    websiteUrl: null,
-    workspaceId: MIGRATED_WORKSPACE_ID,
+    availability: { observedAt: '2026-07-24T12:00:00.000Z', state: 'open' },
+    evidenceReferences: [{
+      captureId: secondCapture.id,
+      captureRevision: secondCapture.revision,
+      evidenceIndexes: [0],
+    }],
+    externalIdentities: [],
+    facts: jobFacts('Second Package Employer', 'Second Engineer', null),
+    idempotencyKey: 'package-proof-second-job',
   })
-  assert(availableWrite.status === 'created',
-    'Migrated workspace did not allow a Company-backed write after coverage completed.')
-  const migratedState = await capabilityState(database, MIGRATED_WORKSPACE_ID)
-  assert(migratedState.completed === 1 && migratedState.total === 1,
-    'Migrated workspace did not reach complete Company coverage.')
-  const migratedAssignment = await migrated.companyAssignments.get('01990000-0000-7000-8000-000000000001')
-  const migratedAssignmentRows = await database.select({ value: count() })
+  assert(secondJob.status === 'succeeded', 'Could not create the second workspace Job.')
+  if (secondJob.status !== 'succeeded') throw new Error('Unreachable Job creation result.')
+  const secondAssignment = await second.companyAssignments.get(secondJob.resource.id)
+  assert(secondAssignment.workspaceCompany.displayName === 'Second Package Employer',
+    'Job creation did not establish the canonical Company named by its facts.')
+  const secondAssignmentRows = await database.select({ value: count() })
     .from(jobCompanyAssignments)
-    .where(eq(jobCompanyAssignments.workspaceId, MIGRATED_WORKSPACE_ID))
-  assert(Number(migratedAssignmentRows[0]?.value) === 1,
-    'Migrated workspace left partial Company-assignment coverage.')
+    .where(eq(jobCompanyAssignments.workspaceId, SECOND_WORKSPACE_ID))
+  assert(Number(secondAssignmentRows[0]?.value) === 1,
+    'The second workspace did not hold exactly one Company assignment.')
 
   const scheduledSources = new Map<string, LocalScheduledWorkSource>()
   const clock = monotonicClock()
@@ -154,9 +138,6 @@ async function writeProof(
     registerScheduledWorkSource: (source) => scheduledSources.set(source.id, source),
     workspaceId: FRESH_WORKSPACE_ID,
   })
-  const freshCapability = await fresh.companies.capability.get()
-  assert(freshCapability.status === 'ready', 'Fresh workspace Company capability was not ready.')
-
   await fresh.connectors.create({
     connectorId: FIXTURE_ADAPTER_ID,
     connectorVersion: FIXTURE_ADAPTER_VERSION,
@@ -276,13 +257,10 @@ async function writeProof(
       fresh: {
         companyCount: finalDirectory.totalCount,
         completedCaptureCount: completedPage.items.filter((capture) => capture.linkedJob !== null).length,
-        companyCapability: 'ready',
       },
-      migrated: {
-        assignmentCount: Number(migratedAssignmentRows[0]?.value),
-        companyCapability: 'ready',
-        completed: migratedState.completed,
-        total: migratedState.total,
+      second: {
+        assignmentCount: Number(secondAssignmentRows[0]?.value),
+        jobCount: 1,
       },
     },
     observables: {
@@ -301,10 +279,8 @@ async function writeProof(
       initialCompanyAssignmentCreated: originalAssignment.assignmentRevision === 1,
       jobrightIntermediaryRecorded: true,
       jobrightRecordedDetailResolverUsed: true,
-      migratedOneAssignmentPerJob: migratedAssignment.assignmentRevision === 1,
-      migratedWriteAvailableAfterBackfill: true,
-      migratedWriteRejectedBeforeBackfill: true,
-      migratedWorkspaceReady: true,
+      secondWorkspaceCompanyWriteAvailableAtOpen: true,
+      secondWorkspaceJobCompanyEstablishedOnCreate: secondAssignment.assignmentRevision === 1,
     },
     phase: 'write',
   })
@@ -320,22 +296,24 @@ async function verifyProof(
     registerScheduledWorkSource: () => undefined,
     workspaceId: FRESH_WORKSPACE_ID,
   })
-  const migrated = await createLocalValedictorianClient({
+  const second = await createLocalValedictorianClient({
     database,
     pgliteDataPath: dataDirectory,
     registerScheduledWorkSource: () => undefined,
-    workspaceId: MIGRATED_WORKSPACE_ID,
+    workspaceId: SECOND_WORKSPACE_ID,
   })
-  const freshCapability = await fresh.companies.capability.get()
-  const migratedCapability = await migrated.companies.capability.get()
-  assert(freshCapability.status === 'ready' && migratedCapability.status === 'ready',
-    'Company capability did not remain ready after the packaged restart.')
   const captures = await fresh.captureResolution.list({ filter: 'all', sort: 'observed_desc' })
   const companies = await fresh.companies.directory.list({
     filter: 'all', limit: 50, sort: 'display_name_asc',
   })
   const freshAssignments = await assignmentCoverage(database, FRESH_WORKSPACE_ID)
-  const migratedAssignments = await assignmentCoverage(database, MIGRATED_WORKSPACE_ID)
+  const secondAssignments = await assignmentCoverage(database, SECOND_WORKSPACE_ID)
+  const secondCompanies = await second.companies.directory.list({
+    filter: 'all', limit: 50, sort: 'display_name_asc',
+  })
+  assert(secondCompanies.items.some((company) =>
+    company.displayName === 'Second Package Employer'),
+  'The second workspace lost its Job-created Company after the packaged restart.')
   const fixtureCapture = captures.items.find((capture) =>
     capture.source.provider === FIXTURE_ADAPTER_ID && capture.linkedJob !== null)
   assert(fixtureCapture,
@@ -351,22 +329,17 @@ async function verifyProof(
     'Company merge assignment did not persist after the packaged restart.')
   assert(freshAssignments.assignments === freshAssignments.jobs,
     'Fresh workspace lost one-assignment-per-Job coverage after restart.')
-  assert(migratedAssignments.assignments === migratedAssignments.jobs,
-    'Migrated workspace lost one-assignment-per-Job coverage after restart.')
-
-  const migratedState = await capabilityState(database, MIGRATED_WORKSPACE_ID)
+  assert(secondAssignments.assignments === secondAssignments.jobs,
+    'The second workspace lost one-assignment-per-Job after restart.')
   return proofResult({
     workspace: {
       fresh: {
         companyCount: companies.totalCount,
         completedCaptureCount: captures.items.filter((capture) => capture.linkedJob !== null).length,
-        companyCapability: 'ready',
       },
-      migrated: {
-        assignmentCount: migratedAssignments.assignments,
-        companyCapability: 'ready',
-        completed: migratedState.completed,
-        total: migratedState.total,
+      second: {
+        assignmentCount: secondAssignments.assignments,
+        jobCount: secondAssignments.jobs,
       },
     },
     observables: {
@@ -374,7 +347,7 @@ async function verifyProof(
       companyMergeAssignmentPersistedAcrossRestart: true,
       completedCapturePersistedAcrossRestart: true,
       freshOneAssignmentPerJobAfterRestart: true,
-      migratedOneAssignmentPerJobAfterRestart: true,
+      secondWorkspaceOneAssignmentPerJobAfterRestart: true,
     },
     phase: 'verify',
   })
@@ -541,29 +514,6 @@ async function exerciseCompletionRecovery(
   assert(recoveredAssignment.status === 'created' && recoveredAssignment.jobId === first.id,
     'Company-assignment recovery did not attach to the current Company.')
   return { companyAssignmentAttached: true, duplicateAttached: true }
-}
-
-async function seedMigratedWorkspace(database: Awaited<ReturnType<typeof migratePgliteDatabase>>) {
-  const timestamp = '2026-07-24T12:00:00.000Z'
-  await database.insert(workspaces).values({
-    id: MIGRATED_WORKSPACE_ID,
-    name: 'Package proof migrated workspace',
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  })
-  await database.insert(jobs).values({
-    id: '01990000-0000-7000-8000-000000000001',
-    workspaceId: MIGRATED_WORKSPACE_ID,
-    factsRevision: 1,
-    factsJson: JSON.stringify(jobFacts('Migrated Package Employer', 'Migrated Engineer', null)),
-    availabilityState: 'open',
-    availabilityObservedAt: timestamp,
-    availabilityRevision: 1,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    removedAt: null,
-    idempotencyKey: null,
-  })
 }
 
 function createRecordedJobrightFixture(clock: () => Date): {
@@ -838,19 +788,6 @@ async function assignmentCoverage(
     .from(jobs)
     .where(eq(jobs.workspaceId, workspaceId))
   return { assignments: Number(assignments?.value), jobs: Number(jobCount?.value) }
-}
-
-async function capabilityState(
-  database: Awaited<ReturnType<typeof migratePgliteDatabase>>,
-  workspaceId: string,
-) {
-  const [state] = await database.select({
-    completed: companyCapabilityState.completed,
-    total: companyCapabilityState.total,
-  }).from(companyCapabilityState)
-    .where(eq(companyCapabilityState.workspaceId, workspaceId))
-  assert(state, 'Company capability state was not persisted.')
-  return state
 }
 
 function proofResult(input: Pick<PackagedManualWorkflowProofResult, 'observables' | 'phase' | 'workspace'>) {

@@ -1,7 +1,8 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CaptureListPresentation, Job, ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
+import type { CaptureListPresentation, Job } from '@sparxie/sdk'
+import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
 import { renderWithQueryClient, testQueryClient } from '@/test/query-client'
@@ -109,7 +110,7 @@ function makeClient() {
     },
     opportunities: { list: lists.opportunities },
     applications: { list: lists.applications },
-  } as unknown as ValedictorianWorkspaceClientV2
+  } as unknown as LocalWorkspaceClientV2
   return { client, lists, removeCapture }
 }
 
@@ -986,7 +987,7 @@ function completionDetail(captureId: string) {
   }
 }
 
-function JobsHistoryHarness({ client }: { client: ValedictorianWorkspaceClient }) {
+function JobsHistoryHarness({ client }: { client: LocalWorkspaceClientV2 }) {
   const navigation = useWorkspaceLocation()
   return (
     <LifecycleWorkbench

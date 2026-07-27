@@ -84,21 +84,30 @@ export async function runPackagedManualWorkflowRestartProof({
   }
 }
 
+/** Every Job in a workspace holds exactly one Company assignment. */
+function oneAssignmentPerJob(workspace) {
+  return Number.isInteger(workspace?.assignmentCount)
+    && Number.isInteger(workspace?.jobCount)
+    && workspace.assignmentCount === workspace.jobCount
+}
+
+function freshWorkspaceCounted(workspace) {
+  return Number.isInteger(workspace?.companyCount)
+    && Number.isInteger(workspace?.completedCaptureCount)
+}
+
 function assertWriteResult(result, buildIdentity) {
   if (
     result?.buildIdentity !== buildIdentity
     || result?.phase !== 'write'
-    || result?.workspace?.fresh?.companyCapability !== 'ready'
-    || result?.workspace?.migrated?.companyCapability !== 'ready'
-    || result?.workspace?.migrated?.assignmentCount !== result?.workspace?.migrated?.total
-    || result?.workspace?.migrated?.completed !== result?.workspace?.migrated?.total
+    || !freshWorkspaceCounted(result?.workspace?.fresh)
+    || !oneAssignmentPerJob(result?.workspace?.second)
     || result?.observables?.companyAliasAndNotesEdited !== true
     || result?.observables?.destinationResolved !== true
     || result?.observables?.jobrightIntermediaryRecorded !== true
     || result?.observables?.jobrightRecordedDetailResolverUsed !== true
     || result?.observables?.initialCompanyAssignmentCreated !== true
-    || result?.observables?.migratedOneAssignmentPerJob !== true
-    || result?.observables?.migratedWorkspaceReady !== true
+    || result?.observables?.secondWorkspaceJobCompanyEstablishedOnCreate !== true
     || result?.observables?.duplicateJobRecoveryAttached !== true
     || result?.observables?.companyAssignmentRecoveryAttached !== true
     || result?.observables?.companyArchiveAndRestoreRevisioned !== true
@@ -109,8 +118,7 @@ function assertWriteResult(result, buildIdentity) {
     || result?.observables?.captureApiDefaultMatchesAll !== true
     || result?.observables?.captureNeedsAttentionFilterExercised !== true
     || result?.observables?.companyApiDefaultMatchesAll !== true
-    || result?.observables?.migratedWriteRejectedBeforeBackfill !== true
-    || result?.observables?.migratedWriteAvailableAfterBackfill !== true
+    || result?.observables?.secondWorkspaceCompanyWriteAvailableAtOpen !== true
   ) {
     throw new Error('Packaged app returned an incomplete manual workflow write proof')
   }
@@ -120,15 +128,13 @@ function assertVerifyResult(result, buildIdentity) {
   if (
     result?.buildIdentity !== buildIdentity
     || result?.phase !== 'verify'
-    || result?.workspace?.fresh?.companyCapability !== 'ready'
-    || result?.workspace?.migrated?.companyCapability !== 'ready'
-    || result?.workspace?.migrated?.assignmentCount !== result?.workspace?.migrated?.total
-    || result?.workspace?.migrated?.completed !== result?.workspace?.migrated?.total
+    || !freshWorkspaceCounted(result?.workspace?.fresh)
+    || !oneAssignmentPerJob(result?.workspace?.second)
     || result?.observables?.completedCapturePersistedAcrossRestart !== true
     || result?.observables?.companyHistoryPersistedAcrossRestart !== true
     || result?.observables?.companyMergeAssignmentPersistedAcrossRestart !== true
     || result?.observables?.freshOneAssignmentPerJobAfterRestart !== true
-    || result?.observables?.migratedOneAssignmentPerJobAfterRestart !== true
+    || result?.observables?.secondWorkspaceOneAssignmentPerJobAfterRestart !== true
   ) {
     throw new Error('Packaged app returned an incomplete manual workflow restart proof')
   }

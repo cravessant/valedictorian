@@ -1,5 +1,5 @@
 import type http from 'node:http'
-import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { LocalWorkspaceClient } from '../runtime/local-connector-client.contract'
 import { readJsonBody, writeJson } from './local-server.http'
 
 /**
@@ -17,7 +17,7 @@ const NOT_FOUND_BODY = Object.freeze({ message: 'The requested resource was not 
 const LIFECYCLE_PREFIX = /^\/v1\/(captures|jobs|opportunities|applications)(?:\/|$)/
 
 type LifecycleRouteContext = {
-  client: ValedictorianWorkspaceClient
+  client: LocalWorkspaceClient
   request: http.IncomingMessage
   requestUrl: URL
   response: http.ServerResponse

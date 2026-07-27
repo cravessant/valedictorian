@@ -14,7 +14,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteCaptureService } from '../capture/capture.service'
 import type { JobService } from '../job/job.service'
-import { createCoveredPgliteJobService } from '../../test/covered-job-service'
+import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { createPgliteOpportunityService, type OpportunityService } from '../opportunity/opportunity.service'
 import { createPgliteApplicationAggregateService } from '../applications/application.aggregate.service'
 import { applications as applicationRows, pursuitLinks, applicationEventRecords, applicationHistory } from '../application/application.schema'
@@ -38,7 +38,7 @@ async function setup() {
   }
   const clock = monotonicClock()
   const captures = createPgliteCaptureService(database, { now: clock })
-  const jobs = createCoveredPgliteJobService(database, { now: clock })
+  const jobs = createPgliteJobServiceWithCompanies(database, { now: clock })
   const opportunities = createPgliteOpportunityService(database, { now: clock })
   const applications = createPgliteApplicationAggregateService(database, { now: clock })
   const promotion = createPgliteOpportunityToApplicationPromotion(

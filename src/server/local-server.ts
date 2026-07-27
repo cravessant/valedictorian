@@ -2,7 +2,6 @@ import http from 'node:http'
 import {
   unavailableConnectorSchedulingCapability,
   type ConnectorSchedulingCapability,
-  type ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
 import { writeEmpty, writeNoStoreEmpty } from './local-server.http'
@@ -12,7 +11,7 @@ import {
   type ValedictorianHttpRequestErrorLogger,
 } from './local-server.error-boundary'
 import type { LocalWorkspaceManager } from './local-workspaces'
-import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
+import type { LocalValedictorianClient, LocalWorkspaceClient } from '../runtime/local-connector-client.contract'
 
 export type WorkspaceClientResolver = (
   workspaceId: string,
@@ -40,7 +39,7 @@ export interface StartedValedictorianHttpServer {
 
 /** Read the authoritative scheduling capability from a local workspace client. */
 export function readClientConnectorScheduling(
-  client: ValedictorianWorkspaceClient,
+  client: LocalWorkspaceClient,
 ): ConnectorSchedulingCapability {
   if (
     client
