@@ -118,6 +118,13 @@ describe('build configuration', () => {
     expect(pnpmWorkspaceConfig).not.toContain('- sparxie')
   })
 
+  it('enforces peer compatibility through the lint quality entrypoint', () => {
+    const packageJson = readPackageJson()
+
+    expect(packageJson.scripts?.['peers:check']).toBe('pnpm peers check')
+    expect(packageJson.scripts?.lint).toContain('pnpm run peers:check')
+  })
+
   it('packages the current PGlite runtime contract', () => {
     const packageJson = readPackageJson()
     const config = readElectronBuilderConfig()
