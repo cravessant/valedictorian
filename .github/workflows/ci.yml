@@ -133,7 +133,6 @@ jobs:
           trap on_term TERM
           TMPDIR="$TEST_TEMP_ROOT" pnpm exec vitest run --shard=${{ matrix.shard }}/2 --minWorkers=2 --maxWorkers=2
         env:
-          NODE_OPTIONS: --disable-warning=DEP0176 --disable-warning=DEP0205
           NODE_COMPILE_CACHE: ${{ github.workspace }}/valedictorian-app/.node-compile-cache
           VALEDICTORIAN_WINDOW_TESTS: "1"
 

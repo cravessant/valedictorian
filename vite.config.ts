@@ -11,22 +11,48 @@ export const maintainedTestIncludes = [
   'scripts/**/*.test.{ts,mjs}',
   'src/**/*.test.{ts,tsx}',
 ]
+// The jsdom set is subtracted from the node project's discovery, so every maintained
+// test is owned by exactly one project and neither list may drift on its own.
+export const jsdomTestIncludes = [
+  'electron/**/*.test.tsx',
+  'src/**/*.test.tsx',
+  'src/app/loaders*.test.ts',
+  'src/theme/theme-applier.test.ts',
+]
+export const maintainedTestExcludes = [
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/.local/**',
+  '**/.worktrees/**',
+]
 
 // https://vitejs.dev/config/
 export default defineConfig({
   test: {
-    environment: 'node',
-    environmentMatchGlobs: [
-      ['**/*.test.tsx', 'jsdom'],
-      ['src/app/loaders*.test.ts', 'jsdom'],
-      ['src/theme/theme-applier.test.ts', 'jsdom'],
-    ],
-    exclude: ['**/node_modules/**', '**/dist/**', '**/.local/**', '**/.worktrees/**'],
-    include: maintainedTestIncludes,
     globalSetup: './src/test/global-setup.ts',
     maxWorkers: 2,
     minWorkers: process.env.CI ? 2 : 1,
     pool: 'threads',
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          environment: 'node',
+          exclude: [...maintainedTestExcludes, ...jsdomTestIncludes],
+          include: maintainedTestIncludes,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'jsdom',
+          environment: 'jsdom',
+          exclude: maintainedTestExcludes,
+          include: jsdomTestIncludes,
+        },
+      },
+    ],
     sequence: {
       sequencer: DurationBalancedSequencer,
     },
