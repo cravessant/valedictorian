@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 import { DurationBalancedSequencer } from './src/test/duration-balanced-sequencer'
+import { rendererManualChunk } from './scripts/renderer-chunk-policy'
 
 export const mainExternals = ['@electric-sql/pglite', 'undici']
 export const maintainedTestIncludes = [
@@ -28,6 +29,15 @@ export const maintainedTestExcludes = [
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Renderer-only: vite-plugin-electron builds main and preload with their own
+  // configs, so this leaves dist-electron output untouched.
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: rendererManualChunk,
+      },
+    },
+  },
   test: {
     globalSetup: './src/test/global-setup.ts',
     maxWorkers: 2,
