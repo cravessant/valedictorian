@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHttpValedictorianClient, type ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import { createHttpValedictorianClient } from '@sparxie/sdk'
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import {
   createLocalValedictorianClient as createRuntimeLocalValedictorianClient,
@@ -98,8 +98,8 @@ export function createLocalServerHttpTestFixture(): LocalServerHttpTestFixture {
 
 export function createBoundaryWorkspaceClient(
   onCreate: () => void,
-  overrides: Partial<ValedictorianWorkspaceClient> = {},
-): ValedictorianWorkspaceClient {
+  overrides: Partial<LocalValedictorianClient> = {},
+): LocalValedictorianClient {
   const client = {
     applications: {
       async archive() {},
@@ -235,7 +235,7 @@ export function createBoundaryWorkspaceClient(
         },
       },
     },
-  } as unknown as ValedictorianWorkspaceClient
+  } as unknown as LocalValedictorianClient
 
   return { ...client, ...overrides }
 }

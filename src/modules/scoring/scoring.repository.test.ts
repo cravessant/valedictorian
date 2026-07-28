@@ -17,7 +17,7 @@ const scoreInput = {
   careerSignal: 2,
   cityWorkMode: 2,
   compensationLogistics: 1,
-  penalties: [{ code: 'none', points: 0 }],
+  penalties: [0],
   rationale: 'Strong match for the role.',
   rubricVersion: 'v1',
 } as const
@@ -60,7 +60,7 @@ describe('PGlite scoring repository', () => {
       })
       expect(record.id).toEqual(expect.any(String))
       expect(record.createdAt).toEqual(expect.any(String))
-      expect(record.penalties).toEqual([{ code: 'none', points: 0 }])
+      expect(record.penalties).toEqual([0])
 
       const scores = await database.select().from(applicationScores)
       expect(scores).toHaveLength(1)
@@ -69,7 +69,7 @@ describe('PGlite scoring repository', () => {
         applicationId: scoreInput.applicationId,
         score: 8,
         band: 'strong',
-        penaltiesJson: JSON.stringify([{ code: 'none', points: 0 }]),
+        penaltiesJson: JSON.stringify([0]),
       })
 
       const [application] = await database

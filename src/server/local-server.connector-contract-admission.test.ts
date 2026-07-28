@@ -1,4 +1,4 @@
-import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createBoundaryWorkspaceClient,
@@ -23,28 +23,25 @@ const canonicalCreateBody = {
   earliestBackfillDate: '2026-01-15',
 } as const
 
-type ConnectorAdmissionClient = ValedictorianWorkspaceClient & {
-  connectors: {
-    create(input: unknown): Promise<unknown>
-    update(input: unknown): Promise<unknown>
-  }
-}
-
 function createAdmissionRecorder() {
   const created: unknown[] = []
   const updated: unknown[] = []
-  const client = createBoundaryWorkspaceClient(() => {}) as ConnectorAdmissionClient
+  const client = createBoundaryWorkspaceClient(() => {})
 
-  client.connectors = {
-    async create(input) {
+  // The recorder answers with payloads the connector contract forbids, so HTTP
+  // admission is the only layer that can reject or strip them.
+  const admissionProbeConnectors = {
+    async create(input: unknown) {
       created.push(input)
       return { id: 'connector one', displayName: 'Jobright' }
     },
-    async update(input) {
+    async update(input: unknown) {
       updated.push(input)
       return { id: 'connector one', displayName: 'Jobright' }
     },
   }
+  client.connectors
+    = admissionProbeConnectors as unknown as LocalValedictorianClient['connectors']
 
   return { client, created, updated }
 }

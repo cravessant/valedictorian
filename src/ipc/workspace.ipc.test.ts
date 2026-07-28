@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { WorkspaceService } from '../workspace/workspace.service'
+import type { WorkspaceLaunchState, WorkspaceService } from '../workspace/workspace.service'
 import { registerWorkspaceIpc } from './workspace.ipc'
 
 const currentWorkspace = {
@@ -30,7 +30,7 @@ describe('workspace IPC registration', () => {
         },
         recentWorkspaces: [],
         status: 'needs-workspace',
-      })),
+      } satisfies WorkspaceLaunchState)),
       getCurrent: vi.fn(),
       getLaunchState: vi.fn(),
       listRecent: vi.fn(),
@@ -40,13 +40,13 @@ describe('workspace IPC registration', () => {
         },
         recentWorkspaces: [],
         status: 'needs-workspace',
-      })),
+      } satisfies WorkspaceLaunchState)),
       openRecent: vi.fn(),
       removeRecent: vi.fn(),
       reveal: vi.fn(),
       revealCurrent: vi.fn(),
     }
-    const handlers = new Map<string, (_event: unknown, payload?: unknown) => Promise<unknown>>()
+    const handlers = new Map<string, (event: unknown, payload?: unknown) => unknown>()
 
     registerWorkspaceIpc(
       service,
@@ -87,7 +87,7 @@ describe('workspace IPC registration', () => {
         recentWorkspaces: [],
         status: 'active',
         workspace: currentWorkspace,
-      })),
+      } satisfies WorkspaceLaunchState)),
       getCurrent: vi.fn(async () => currentWorkspace),
       getLaunchState: vi.fn(async () => ({
         devOptions: {
@@ -96,7 +96,7 @@ describe('workspace IPC registration', () => {
         recentWorkspaces: [],
         status: 'active',
         workspace: currentWorkspace,
-      })),
+      } satisfies WorkspaceLaunchState)),
       listRecent: vi.fn(async () => []),
       openFolder: vi.fn(async () => ({
         devOptions: {
@@ -105,7 +105,7 @@ describe('workspace IPC registration', () => {
         recentWorkspaces: [],
         status: 'active',
         workspace: currentWorkspace,
-      })),
+      } satisfies WorkspaceLaunchState)),
       openRecent: vi.fn(async () => ({
         devOptions: {
           canSeedSampleData: false,
@@ -113,18 +113,18 @@ describe('workspace IPC registration', () => {
         recentWorkspaces: [],
         status: 'active',
         workspace: currentWorkspace,
-      })),
+      } satisfies WorkspaceLaunchState)),
       removeRecent: vi.fn(async () => ({
         devOptions: {
           canSeedSampleData: false,
         },
         recentWorkspaces: [],
         status: 'needs-workspace',
-      })),
+      } satisfies WorkspaceLaunchState)),
       reveal: vi.fn(async () => undefined),
       revealCurrent: vi.fn(async () => undefined),
     }
-    const handlers = new Map<string, (_event: unknown, payload?: unknown) => Promise<unknown>>()
+    const handlers = new Map<string, (event: unknown, payload?: unknown) => unknown>()
 
     registerWorkspaceIpc(service, {
       handle(channel, handler) {

@@ -26,7 +26,7 @@ describe('ConnectorSettingsInstanceCard scroll composition', () => {
       connectorVersion: '0.16.0',
       displayName: 'Jobright scroll',
       enabled: true,
-      auth: [{ id: 'jobright', mode: 'username_password', label: 'Jobright username and password', configured: true }],
+      auth: [{ id: 'jobright', mode: 'username_password', label: 'Jobright username and password' }],
       config: { discoveryCount: 20 },
       filters: { country: 'US' },
       earliestBackfillDate: '2026-07-02',

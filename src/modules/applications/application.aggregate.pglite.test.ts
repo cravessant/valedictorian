@@ -16,6 +16,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { UUID_V7_PATTERN } from '../../db/lifecycle-vocabulary'
 import type { JobService } from '../job/job.service'
+import type { JsonValue } from '../capture/capture.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { createPgliteOpportunityService, type OpportunityService } from '../opportunity/opportunity.service'
 import { applications as applicationRows } from '../application/application.schema'
@@ -48,7 +49,7 @@ async function setup(workspaceIds: readonly string[] = ['ws-a', 'ws-b']) {
   return { database, jobs, opportunities, applications }
 }
 
-async function makeOpportunity(jobs: JobService, opportunities: OpportunityService, workspaceId = 'ws-a', facts: Record<string, unknown> = { company: 'Acme', title: 'Staff Engineer' }) {
+async function makeOpportunity(jobs: JobService, opportunities: OpportunityService, workspaceId = 'ws-a', facts: JsonValue = { company: 'Acme', title: 'Staff Engineer' }) {
   const job = await jobs.create({ workspaceId, facts, actor: ACTOR })
   if (!job.ok) throw new Error(`job create failed: ${job.code}`)
   const opp = await opportunities.create({ workspaceId, jobId: job.job.id, actor: ACTOR })

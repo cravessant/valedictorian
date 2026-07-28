@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ConnectorScheduleSummary } from '@sparxie/sdk'
+import type {
+  ConnectorScheduleSummary,
+  DispatchConnectorScheduleDueResult,
+} from '@sparxie/sdk'
 import { createConnectorScheduleWorkSource } from '../modules/connectors/connector-schedule.source'
 
 describe('local connector schedule source recovery', () => {
   it('immediately resumes an admitted queued run after the schedule cadence advanced', async () => {
-    const dispatchDue = vi.fn(async () => ({
-      status: 'admitted' as const,
-      occurrence: queuedSchedule.lastOccurrence!,
-      run: queuedSchedule.lastRun!,
+    const dispatchDue = vi.fn(async (): Promise<DispatchConnectorScheduleDueResult> => ({
+      status: 'admitted',
+      occurrence: { ...queuedSchedule.lastOccurrence!, admittedMode: 'scheduled', connectorRunId: 'queued-run' },
+      run: { ...queuedSchedule.lastRun!, mode: 'scheduled' },
     }))
     const source = createConnectorScheduleWorkSource({
       dispatchDue,

@@ -1,7 +1,9 @@
 import { and, count, eq, isNull } from 'drizzle-orm'
 import {
   completeCaptureManuallyResultSchema,
+  jobIdSchema,
   type CompleteCaptureManuallyInput,
+  type JobId,
 } from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { workspaces } from '../../db/workspaces.schema'
@@ -67,7 +69,7 @@ function jobFacts(companyName: string, roleTitle: string, destination: string | 
     destination: destination
       ? { class: 'employer_or_ats', url: destination }
       : null,
-  }
+  } satisfies CompleteCaptureManuallyInput['jobFacts']
 }
 
 async function setup() {
@@ -161,7 +163,7 @@ async function createExistingJob(
     actor: ACTOR,
   })
   if (!created.ok) throw new Error(created.message)
-  return created.job
+  return { ...created.job, id: jobIdSchema.parse(created.job.id) }
 }
 
 async function establishStrongIdentity(
@@ -195,7 +197,7 @@ async function createExactOwners(
   ownerCount: number,
 ) {
   const owners: Array<{
-    readonly jobId: string
+    readonly jobId: JobId
     readonly identity: CompleteCaptureManuallyInput['externalIdentities'][number]
   }> = []
   for (let index = 0; index < ownerCount; index += 1) {
@@ -606,7 +608,7 @@ describe.sequential('manual Capture completion', () => {
         value: secondIdentity,
         strength: 'strong',
       },
-    ]
+    ] satisfies CompleteCaptureManuallyInput['externalIdentities']
     const base = completionInput(capture, 'manual-multi-owner', undefined, {
       destination: null,
       jobFacts: jobFacts('Conflict Labs', 'Conflict Engineer', null),
@@ -627,7 +629,7 @@ describe.sequential('manual Capture completion', () => {
       idempotencyKey: 'manual-multi-owner-foreign',
       duplicateResolution: {
         action: 'attach',
-        targetJobId: '01980c4f-2222-7000-8000-000000000001',
+        targetJobId: jobIdSchema.parse('01980c4f-2222-7000-8000-000000000001'),
         expectedJobFactsRevision: 1,
         expectedAssignmentRevision: 1,
       },

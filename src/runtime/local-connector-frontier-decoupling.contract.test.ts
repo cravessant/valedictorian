@@ -39,7 +39,11 @@ interface ProviderUrlResolverConnector extends AppJobConnector {
 function createCapturingConnector(clockRef: { value: Date }) {
   const resolve = vi.fn(async () => {
     clockRef.value = new Date(clockRef.value.getTime() + 1)
-    return { status: 'resolved', url: 'https://jobs.lever.co/example/opening-1', method: 'fixture_provider_detail' }
+    return {
+      status: 'resolved' as const,
+      url: 'https://jobs.lever.co/example/opening-1',
+      method: 'fixture_provider_detail',
+    }
   })
   const connector: ProviderUrlResolverConnector = {
     definition: {

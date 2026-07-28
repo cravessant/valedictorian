@@ -31,14 +31,24 @@ describe.sequential('connector repository earliest backfill date persistence', (
     expect(explicit.earliestBackfillDate).toBe('2026-05-01')
 
     const earlier = await repository.upsertInstance({
-      ...explicit,
+      id: explicit.id,
+      connectorId: explicit.connectorId,
+      connectorVersion: explicit.connectorVersion,
+      displayName: explicit.displayName,
+      enabled: explicit.enabled,
+      createdAt: explicit.createdAt,
       earliestBackfillDate: '2026-04-20',
       config: { keep: true },
     })
     expect(earlier.earliestBackfillDate).toBe('2026-04-20')
 
     const later = await repository.upsertInstance({
-      ...earlier,
+      id: earlier.id,
+      connectorId: earlier.connectorId,
+      connectorVersion: earlier.connectorVersion,
+      displayName: earlier.displayName,
+      enabled: earlier.enabled,
+      createdAt: earlier.createdAt,
       earliestBackfillDate: '2026-07-01',
       auth: [{ id: 'fixture', mode: 'none' }],
     })

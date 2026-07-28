@@ -42,7 +42,6 @@ beforeEach(() => {
 function createdInstance(id: string): ConnectorSettingsInstance {
   return jobrightInstance({
     auth: jobrightAuth(false),
-    earliestBackfillDate: null,
     enabled: false,
     filters: { country: 'US' },
     id,

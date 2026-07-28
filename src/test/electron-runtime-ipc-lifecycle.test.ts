@@ -32,7 +32,9 @@ describe('Electron runtime IPC lifecycle', () => {
 
   it('replaces both privileged HTTP transport handlers for the next workspace', () => {
     const { handlers, ipcMain } = createIpcMain()
-    const transport = { request: vi.fn(async () => ({ body: '', headers: {}, status: 200 })) }
+    const transport = {
+      request: vi.fn(async () => ({ body: '', headers: {}, status: 200, statusText: 'OK' })),
+    }
 
     registerValedictorianHttpIpc(transport, ipcMain)
     expect([...handlers.keys()].sort()).toEqual([

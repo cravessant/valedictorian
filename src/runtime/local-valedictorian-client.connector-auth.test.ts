@@ -60,11 +60,10 @@ describe.sequential('runtime local Valedictorian client', () => {
           observations: 0,
         },
         status: 'completed',
-        outcome: { kind: 'yielded' },
         warnings: [
           {
-            code: 'auth.expired_session',
-            message: 'Expired API key fixture-session-123.',
+            code: 'auth.required',
+            message: 'Connector authentication is required before capture can continue.',
           },
         ],
       },

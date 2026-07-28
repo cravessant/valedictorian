@@ -321,7 +321,8 @@ describe('local server profile document routes', () => {
           return {
             ...current,
             schemaVersion: 2,
-          } as typeof current
+            // A hostile store answers with a schema version the contract forbids.
+          } as unknown as typeof current
         },
         async update(input) {
           updateCalls += 1

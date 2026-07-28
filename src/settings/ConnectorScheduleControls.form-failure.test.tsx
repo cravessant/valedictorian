@@ -313,7 +313,7 @@ describe('ConnectorScheduleControls async FormFailureAlert ownership', () => {
     let rejectDelete: ((reason?: unknown) => void) | undefined
     const deleteSchedule = vi.fn(
       () =>
-        new Promise((_, reject) => {
+        new Promise<void>((_, reject) => {
           rejectDelete = reject
         }),
     )

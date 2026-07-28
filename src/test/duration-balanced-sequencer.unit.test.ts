@@ -5,7 +5,12 @@ import {
   sortAssignedShardFilesByDescendingWeight,
   sortWorkspaceSpecsByDescendingWeight,
 } from './duration-balanced-sequencer'
-import type { WorkspaceSpec } from 'vitest/node'
+import type { TestSpecification } from 'vitest/node'
+
+/** The sequencer only reads a spec's module id and project name. */
+function testSpecification(moduleId: string, projectName: string): TestSpecification {
+  return { moduleId, project: { name: projectName } } as unknown as TestSpecification
+}
 
 describe('duration-balanced test sharding', () => {
   it('assigns every file exactly once with deterministic bounded imbalance', () => {
@@ -85,9 +90,9 @@ describe('duration-balanced test sharding', () => {
 
   it('preserves duplicate normalized WorkspaceSpec paths with stable index tie-break', () => {
     const root = '/repo'
-    const first = { moduleId: `${root}/src/same.test.ts`, project: { name: 'a' } } as WorkspaceSpec
-    const second = { moduleId: `${root}/src/same.test.ts`, project: { name: 'b' } } as WorkspaceSpec
-    const heavy = { moduleId: `${root}/src/heavy.test.ts`, project: { name: 'c' } } as WorkspaceSpec
+    const first = testSpecification(`${root}/src/same.test.ts`, 'a')
+    const second = testSpecification(`${root}/src/same.test.ts`, 'b')
+    const heavy = testSpecification(`${root}/src/heavy.test.ts`, 'c')
     const weightForPath = (file: string) => (file.endsWith('heavy.test.ts') ? 50 : 10)
 
     const ordered = sortWorkspaceSpecsByDescendingWeight(
@@ -104,10 +109,10 @@ describe('duration-balanced test sharding', () => {
 
   it('preserves every WorkspaceSpec across shards when normalized paths collide', () => {
     const root = '/repo'
-    const projectA = { moduleId: `${root}/src/same.test.ts`, project: { name: 'a' } } as WorkspaceSpec
-    const projectB = { moduleId: `${root}/src/same.test.ts`, project: { name: 'b' } } as WorkspaceSpec
-    const heavy = { moduleId: `${root}/src/heavy.test.ts`, project: { name: 'c' } } as WorkspaceSpec
-    const light = { moduleId: `${root}/src/light.test.ts`, project: { name: 'd' } } as WorkspaceSpec
+    const projectA = testSpecification(`${root}/src/same.test.ts`, 'a')
+    const projectB = testSpecification(`${root}/src/same.test.ts`, 'b')
+    const heavy = testSpecification(`${root}/src/heavy.test.ts`, 'c')
+    const light = testSpecification(`${root}/src/light.test.ts`, 'd')
     const weightForPath = (file: string) => {
       if (file.endsWith('heavy.test.ts')) return 100
       if (file.endsWith('same.test.ts')) return 40

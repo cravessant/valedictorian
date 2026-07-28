@@ -1,17 +1,25 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import type { ConnectorRendererSchema } from '@sparxie/sdk'
 import { createDefaultLocalConnectorRegistry } from './connector.registry'
+
+function objectSchema(schema: ConnectorRendererSchema) {
+  if (!('type' in schema) || schema.type !== 'object') {
+    throw new Error('expected an object renderer schema')
+  }
+  return schema
+}
 
 describe('installed Jobright declarative capabilities', () => {
   const descriptor = createDefaultLocalConnectorRegistry().get('jobright.resolver')!.descriptor
 
   it('declares every config, static filter, bounded enum, range, and required taxonomy field', () => {
-    expect(Object.keys(descriptor.configSchema!.schema.properties)).toEqual([
+    expect(Object.keys(objectSchema(descriptor.configSchema!.schema).properties)).toEqual([
       'discoveryCount',
       'maxRunElapsedMs',
     ])
-    expect(Object.keys(descriptor.filterSchema!.schema.properties)).toEqual([
+    expect(Object.keys(objectSchema(descriptor.filterSchema!.schema).properties)).toEqual([
       'jobTaxonomyList',
       'excludedTitle',
       'locations',
@@ -35,14 +43,14 @@ describe('installed Jobright declarative capabilities', () => {
       'companies',
       'excludedCompanies',
     ])
-    expect(descriptor.filterSchema!.schema.required).toEqual(['jobTaxonomyList'])
-    expect(descriptor.filterSchema!.schema.properties.jobTypes).toMatchObject({
+    expect(objectSchema(descriptor.filterSchema!.schema).required).toEqual(['jobTaxonomyList'])
+    expect(objectSchema(descriptor.filterSchema!.schema).properties.jobTypes).toMatchObject({
       type: 'array', items: { type: 'integer', enum: [1, 2, 3, 4] },
     })
-    expect(descriptor.filterSchema!.schema.properties.daysAgo).toEqual({
+    expect(objectSchema(descriptor.filterSchema!.schema).properties.daysAgo).toEqual({
       type: 'integer', enum: [1, 3, 7, 30],
     })
-    expect(descriptor.filterSchema!.schema.properties.minYearsOfExperienceRange).toMatchObject({
+    expect(objectSchema(descriptor.filterSchema!.schema).properties.minYearsOfExperienceRange).toMatchObject({
       type: 'array', minItems: 2, maxItems: 2,
       items: { type: 'integer', minimum: 0, maximum: 11 },
     })

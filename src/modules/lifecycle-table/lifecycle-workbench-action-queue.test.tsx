@@ -2,12 +2,10 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  Application,
-  ValedictorianWorkspaceClient,
-} from '@sparxie/sdk'
+import type { ActionQueueListQuery, ActionQueueListResult, Application } from '@sparxie/sdk'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
+import type { LifecycleClient } from './lifecycle-queries'
 import { renderWithQueryClient } from '@/test/query-client'
 import { emptyPage, emptyPageInfo, makeApplication } from './lifecycle.test-helpers'
 import {
@@ -46,7 +44,8 @@ function makeClient(seed: {
     events: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
   }
   const actionQueue = {
-    list: vi.fn(async () => createActionQueueResult(seed.actionQueueItems ?? [])),
+    list: vi.fn(async (_query?: ActionQueueListQuery) =>
+      createActionQueueResult(seed.actionQueueItems ?? [])),
   }
   const client = {
     captures: { list: vi.fn(async () => emptyPage()) },
@@ -69,7 +68,7 @@ function makeClient(seed: {
     opportunities: { list: vi.fn(async () => emptyPage()) },
     applications,
     actionQueue,
-  } as unknown as ValedictorianWorkspaceClient
+  } as unknown as LifecycleClient
   return { client, applications, actionQueue }
 }
 
@@ -333,7 +332,7 @@ describe('A308-4: shared Application modal actions and reconciliation', () => {
 describe('A308-5: separate loading/error/empty state per mode', () => {
   it('shows loading state independently for Action Queue mode', async () => {
     const user = userEvent.setup()
-    let resolveQueue: ((value: unknown) => void) | undefined
+    let resolveQueue: ((value: ActionQueueListResult) => void) | undefined
     const { client, actionQueue } = makeClient()
     actionQueue.list.mockImplementationOnce(() => new Promise((resolve) => { resolveQueue = resolve }))
     renderWithQueryClient(<LifecycleWorkbench client={client} />)
@@ -380,7 +379,7 @@ describe('A308-5: separate loading/error/empty state per mode', () => {
   it('switching modes never presents stale Action Queue data as success', async () => {
     const user = userEvent.setup()
     const { client, actionQueue } = makeClient()
-    let resolveSecond: ((value: unknown) => void) | undefined
+    let resolveSecond: ((value: ActionQueueListResult) => void) | undefined
     actionQueue.list
       .mockResolvedValueOnce(createActionQueueResult([]))
       .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
@@ -446,7 +445,7 @@ describe('A308-6: keyboard and accessibility', () => {
 describe('validator fix 1: generation fencing on client change', () => {
   it('a pending queue request from client A cannot overwrite state after the client is replaced', async () => {
     const user = userEvent.setup()
-    let resolveFirst: ((value: unknown) => void) | undefined
+    let resolveFirst: ((value: ActionQueueListResult) => void) | undefined
     const { client, actionQueue } = makeClient()
     actionQueue.list.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
     const { rerender } = renderWithQueryClient(<LifecycleWorkbench client={client} />)
@@ -468,7 +467,7 @@ describe('validator fix 1: generation fencing on client change', () => {
 describe('validator fix 2: manual Refresh control for Action Queue mode', () => {
   it('shows a visible Refresh button that triggers a queue reload with truthful loading state', async () => {
     const user = userEvent.setup()
-    let resolveRefresh: ((value: unknown) => void) | undefined
+    let resolveRefresh: ((value: ActionQueueListResult) => void) | undefined
     const { client, actionQueue } = makeClient()
     renderWithQueryClient(<LifecycleWorkbench client={client} />)
     await switchToApplications(user)

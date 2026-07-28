@@ -17,7 +17,7 @@ afterEach(() => {
   cleanup()
   window.matchMedia = originalMatchMedia
   delete (window as Window & { valedictorianHttp?: unknown }).valedictorianHttp
-  delete (window as Window & { valedictorianNavigation?: unknown }).valedictorianNavigation
+  delete (window as Partial<Window>).valedictorianNavigation
   window.history.replaceState(null, '', '/')
 })
 

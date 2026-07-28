@@ -94,9 +94,9 @@ describe.sequential('source session executor', () => {
     const gate = new Promise<void>((resolve) => { release = resolve })
     let markStarted!: () => void
     const started = new Promise<void>((resolve) => { markStarted = resolve })
-    const lease = await governor.acquireReconnectLease(scopeId, {
+    const lease = (await governor.acquireReconnectLease(scopeId, {
       now: clock.toISOString(), leaseMs: 10, token: 'stale-reconnect',
-    })!
+    }))!
     const stale = createSourceSessionExecutor({ governor, now: () => clock })
       .reconnect(scopeId, async () => {
         markStarted()
@@ -117,9 +117,9 @@ describe.sequential('source session executor', () => {
     const { database, scopeId, governor } = await fixture()
     const other = createSourceExecutionGovernor(database)
     let clock = new Date('2026-07-12T12:00:00.000Z')
-    const lease = await governor.acquireReconnectLease(scopeId, {
+    const lease = (await governor.acquireReconnectLease(scopeId, {
       now: clock.toISOString(), leaseMs: 10, token: 'expired-reconnect',
-    })!
+    }))!
     clock = new Date('2026-07-12T12:00:00.020Z')
     await createSourceSessionExecutor({ governor: other, now: () => clock, refreshLeaseMs: 10 })
       .refresh(scopeId, async () => ({ status: 'ready', sessionId: 'winner' }))
@@ -136,9 +136,9 @@ describe.sequential('source session executor', () => {
     [{ status: 'action_required' as const, reason: 'action' }, 'action_required'],
   ])('persists explicit $status validation and gates subsequent ordinary admission', async (result, expectedStatus) => {
     const { scopeId, governor } = await fixture()
-    const lease = await governor.acquireReconnectLease(scopeId, {
+    const lease = (await governor.acquireReconnectLease(scopeId, {
       now: '2026-07-12T12:00:00.000Z', leaseMs: 60_000, token: 'matrix',
-    })!
+    }))!
     await createSourceSessionExecutor({ governor, now: () => new Date('2026-07-12T12:00:00.250Z') })
       .reconnect(scopeId, async () => result, lease.token)
     expect((await governor.getScope(scopeId)).status).toBe(expectedStatus)
@@ -147,9 +147,9 @@ describe.sequential('source session executor', () => {
 
   it('persists a thrown explicit validation as action-required', async () => {
     const { scopeId, governor } = await fixture()
-    const lease = await governor.acquireReconnectLease(scopeId, {
+    const lease = (await governor.acquireReconnectLease(scopeId, {
       now: '2026-07-12T12:00:00.000Z', leaseMs: 60_000, token: 'throw',
-    })!
+    }))!
     await expect(createSourceSessionExecutor({
       governor, now: () => new Date('2026-07-12T12:00:00.500Z'),
     }).reconnect(scopeId, async () => {
@@ -162,9 +162,9 @@ describe.sequential('source session executor', () => {
     { status: 'retryable' as const, reason: 'retry', retryReason: 'server_failure' as const },
   ])('keeps $status closed to ordinary admission after explicit establishment', async (result) => {
     const { scopeId, governor } = await fixture()
-    const lease = await governor.acquireReconnectLease(scopeId, {
+    const lease = (await governor.acquireReconnectLease(scopeId, {
       now: '2026-07-12T12:00:00.000Z', leaseMs: 60_000, token: 'reconnect',
-    })!
+    }))!
     const executor = createSourceSessionExecutor({
       governor, now: () => new Date('2026-07-12T12:00:00.500Z'),
     })

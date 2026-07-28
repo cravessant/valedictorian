@@ -200,7 +200,8 @@ describe('ProfileService', () => {
           },
           revision: 'hostile-revision',
           schemaVersion: 1,
-        } as Awaited<ReturnType<typeof stores.profileStore.get>>
+          // A hostile store answers with a schema version the contract forbids.
+        } as unknown as Awaited<ReturnType<typeof stores.profileStore.get>>
       },
       async update(input: Parameters<typeof stores.profileStore.update>[0]) {
         updateCalls += 1
@@ -247,7 +248,8 @@ describe('ProfileService', () => {
         return {
           ...base,
           schemaVersion: 2,
-        } as Awaited<ReturnType<typeof stores.profileStore.get>>
+          // A hostile store answers with a schema version the contract forbids.
+        } as unknown as Awaited<ReturnType<typeof stores.profileStore.get>>
       },
       async update(input: Parameters<typeof stores.profileStore.update>[0]) {
         updateCalls += 1

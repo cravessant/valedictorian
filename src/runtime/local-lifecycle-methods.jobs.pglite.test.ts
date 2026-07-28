@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   jobHistoryResultSchema,
+  jobIdSchema,
   jobListResultSchema,
   jobMutationResultSchema,
   jobSchema,
@@ -115,7 +116,7 @@ describe.sequential('local lifecycle facade — jobs', () => {
 
   it('returns null from get for an unknown job', async () => {
     const { methods } = await setup()
-    expect(await methods.jobs.get('01900000-0000-7000-8000-000000000000')).toBeNull()
+    expect(await methods.jobs.get(jobIdSchema.parse('01900000-0000-7000-8000-000000000000'))).toBeNull()
   })
 
   it('blocks a create whose evidence reference names an unknown capture (missing_lineage blocked body)', async () => {

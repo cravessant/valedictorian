@@ -8,6 +8,13 @@ describe('profile IPC registration', () => {
   it('registers profile and secret handlers against owned services', async () => {
     const handlers = new Map<string, (event: unknown, payload?: unknown) => unknown>()
     const profileService: ProfileService = {
+      dispose() {},
+      getLastKnownGoodPreview() {
+        return null
+      },
+      subscribe() {
+        return () => undefined
+      },
       async formatDocument() {
         throw new Error('unused')
       },

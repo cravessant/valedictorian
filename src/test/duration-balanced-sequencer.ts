@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { BaseSequencer, type WorkspaceSpec } from 'vitest/node'
+import { BaseSequencer, type TestSpecification } from 'vitest/node'
 import {
   assignDurationBalancedShards,
   CI_TEST_SHARD_CAPACITIES,
@@ -7,11 +7,11 @@ import {
   type WeightedTestFile,
 } from './duration-balanced-shards'
 
-function normalizedSpecPath(root: string, spec: WorkspaceSpec) {
+function normalizedSpecPath(root: string, spec: TestSpecification) {
   return path.relative(root, spec.moduleId).split(path.sep).join('/')
 }
 
-function workspaceProjectName(spec: WorkspaceSpec) {
+function workspaceProjectName(spec: TestSpecification) {
   return spec.project?.name ?? ''
 }
 
@@ -34,7 +34,7 @@ export function sortAssignedShardFilesByDescendingWeight(
 }
 
 export function sortWorkspaceSpecsByDescendingWeight(
-  files: readonly WorkspaceSpec[],
+  files: readonly TestSpecification[],
   root: string,
   weightForPath: (file: string) => number = testWeightForPath,
 ) {
@@ -53,12 +53,12 @@ export function sortWorkspaceSpecsByDescendingWeight(
 }
 
 export function assignWorkspaceSpecsToDurationBalancedShards(
-  files: readonly WorkspaceSpec[],
+  files: readonly TestSpecification[],
   root: string,
   shardCount: number,
   shardCapacities?: readonly number[],
   weightForPath: (file: string) => number = testWeightForPath,
-): WorkspaceSpec[][] {
+): TestSpecification[][] {
   const annotated = files.map((spec, index) => {
     const relativePath = normalizedSpecPath(root, spec)
     return {
@@ -82,7 +82,7 @@ export function assignWorkspaceSpecsToDurationBalancedShards(
     path: `rank:${String(rank).padStart(8, '0')}`,
     weight: entry.weight,
   }))
-  const specsByRankKey = new Map<string, WorkspaceSpec>(
+  const specsByRankKey = new Map<string, TestSpecification>(
     ranked.map((entry, rank) => [`rank:${String(rank).padStart(8, '0')}`, entry.spec]),
   )
   const assigned = assignDurationBalancedShards(
@@ -94,7 +94,7 @@ export function assignWorkspaceSpecsToDurationBalancedShards(
 }
 
 export class DurationBalancedSequencer extends BaseSequencer {
-  override async shard(files: WorkspaceSpec[]) {
+  override async shard(files: TestSpecification[]) {
     const shard = this.ctx.config.shard
     if (!shard) return files
 
@@ -110,7 +110,7 @@ export class DurationBalancedSequencer extends BaseSequencer {
     return shards[shard.index - 1]!
   }
 
-  override async sort(files: WorkspaceSpec[]) {
+  override async sort(files: TestSpecification[]) {
     return sortWorkspaceSpecsByDescendingWeight(files, this.ctx.config.root)
   }
 }

@@ -101,14 +101,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // │ │ ├── main.js
 // │ │ └── preload.mjs
 // │
-process.env.APP_ROOT = path.join(__dirname, '..')
+export const APP_ROOT = path.join(__dirname, '..')
+process.env.APP_ROOT = APP_ROOT
 
 // 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
-export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
-export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+export const MAIN_DIST = path.join(APP_ROOT, 'dist-electron')
+export const RENDERER_DIST = path.join(APP_ROOT, 'dist')
 
-process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
+export const VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(APP_ROOT, 'public') : RENDERER_DIST
+process.env.VITE_PUBLIC = VITE_PUBLIC
 
 app.setName('Valedictorian')
 
@@ -368,7 +370,7 @@ function createMainWindow() {
     ...resolveMainWindowStateOptions(savedMainWindowState, screen.getAllDisplays()),
     ...minimumMainWindowBounds,
     ...createMainWindowFirstPaintOptions(activeResolvedTheme),
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    icon: path.join(VITE_PUBLIC, 'electron-vite.svg'),
     title: createWorkspaceWindowTitle(currentWorkspace),
     titleBarOverlay: {
       color: activeResolvedTheme.titleBarBackground,

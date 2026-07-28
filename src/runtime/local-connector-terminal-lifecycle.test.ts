@@ -80,7 +80,7 @@ describe('public terminal connector lifecycle projection', () => {
       name: 'failure',
       status: 'failed' as const,
       operation: () => null,
-      outcome: () => ({ kind: 'failed' as const, reason: 'fixture_failure' }),
+      outcome: () => ({ kind: 'failed' as const, reason: 'connector_execution_failed' as const }),
     },
   ])('publishes frozen zero-count lifecycle details for $name', async (terminal) => {
     const fixture = await createTestPgliteDatabase()

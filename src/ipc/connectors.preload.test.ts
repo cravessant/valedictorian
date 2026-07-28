@@ -1,6 +1,7 @@
 import {
   ConnectorRetirementConflictError,
   connectorRetirementActiveWorkConflictMessage,
+  type CreateConnectorInstanceInput,
 } from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
@@ -114,7 +115,7 @@ describe('connectors preload API', () => {
       auth: [{ id: 'jobright', label: 'Jobright API key', mode: 'api_key' }],
       config: { publicFeedUrl: 'https://jobright.ai/jobs/recommend' },
       filters: {},
-    } as const
+    } satisfies CreateConnectorInstanceInput
     const updateInput = {
       connectorInstanceId: 'connector-instance',
       enabled: false,

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -122,7 +122,8 @@ describe('supervised app launch', () => {
     detached,
     expectedTermination,
   ) => {
-    const anchor = { pid: 43210 }
+    // The launch seam only reads the child's pid, so a pid-only stub is enough.
+    const anchor = { pid: 43210 } as unknown as ChildProcess
     const forkProcess = vi.fn(() => anchor)
     const terminate = vi.fn()
     const launched = launchSupervisedAnchor({

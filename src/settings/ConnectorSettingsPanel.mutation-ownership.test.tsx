@@ -5,7 +5,9 @@ import {
   createConnectorsApi,
   createConnectorsApiWithJobrightDescriptor,
   createProfileApi,
+  retiredConnectorResult,
 } from '../App.test-helpers'
+import type { ConnectorRetirementResult } from '@sparxie/sdk'
 import { availableScheduleApi } from './connector-schedule.test-helpers'
 import type { ConnectorSettingsInstance, ConnectorSettingsRun } from './connector-settings.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
@@ -122,7 +124,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
   })
 
   it('ignores a deferred remove success after connectorsApi switches', async () => {
-    const pending = deferred<void>()
+    const pending = deferred<ConnectorRetirementResult>()
     const oldApi = createConnectorsApiWithJobrightDescriptor()
     const newApi = createConnectorsApiWithJobrightDescriptor()
     const instance = instanceFixture()
@@ -162,7 +164,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
     })
 
     await act(async () => {
-      pending.resolve()
+      pending.resolve(retiredConnectorResult(instance.id))
       await pending.promise
     })
 
@@ -211,24 +213,21 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
         executionScopeId: 'scope_stale',
         mode: 'manual',
         scheduleOccurrence: null,
-        status: 'succeeded',
-        coverage: {
-          start: '2026-07-09T15:00:00.000Z',
-          end: '2026-07-09T16:00:00.000Z',
-        },
+        status: 'completed',
         filterSignature: 'filters:{}',
         observationCount: 0,
         warningCount: 0,
+        warnings: [],
         newestFrontier: { state: 'caught_up' },
         historicalBackfill: {
           state: 'caught_up',
           boundary: { earliestDate: '2026-07-02' },
         },
         pendingResolutionCount: 0,
-        createdAt: '2026-07-09T15:00:00.000Z',
+        outcome: { kind: 'caught_up' },
         startedAt: '2026-07-09T15:00:00.000Z',
-        finishedAt: '2026-07-09T15:01:00.000Z',
-      } as ConnectorSettingsRun)
+        completedAt: '2026-07-09T15:01:00.000Z',
+      } satisfies ConnectorSettingsRun)
       await pending.promise
     })
 
@@ -287,24 +286,21 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
         executionScopeId: 'scope_stale',
         mode: 'manual',
         scheduleOccurrence: null,
-        status: 'succeeded',
-        coverage: {
-          start: '2026-07-09T15:00:00.000Z',
-          end: '2026-07-09T16:00:00.000Z',
-        },
+        status: 'completed',
         filterSignature: 'filters:{}',
         observationCount: 0,
         warningCount: 0,
+        warnings: [],
         newestFrontier: { state: 'caught_up' },
         historicalBackfill: {
           state: 'caught_up',
           boundary: { earliestDate: '2026-07-02' },
         },
         pendingResolutionCount: 0,
-        createdAt: '2026-07-09T15:00:00.000Z',
+        outcome: { kind: 'caught_up' },
         startedAt: '2026-07-09T15:00:00.000Z',
-        finishedAt: '2026-07-09T15:01:00.000Z',
-      } as ConnectorSettingsRun)
+        completedAt: '2026-07-09T15:01:00.000Z',
+      } satisfies ConnectorSettingsRun)
       await pending.promise
     })
 

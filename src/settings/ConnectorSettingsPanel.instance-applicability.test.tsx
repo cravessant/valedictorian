@@ -14,7 +14,7 @@ import {
 } from '../App.test-helpers'
 import { JOBRIGHT_CONNECTOR_VERSION } from '../modules/connectors/jobright.constants'
 import { unavailableScheduleApi } from './connector-schedule.test-helpers'
-import type { ConnectorSettingsUiApi } from './connector-settings.types'
+import type { ConnectorSettingsInstance, ConnectorSettingsUiApi } from './connector-settings.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
 import { openConnectorEditor } from './ConnectorSettingsPanel.test-helpers'
 
@@ -45,6 +45,7 @@ const fixtureInstance = {
   connectorVersion: '0.0.0-fixture',
   displayName: 'Fixture jobs',
   enabled: true,
+  lifecycle: 'enabled',
   auth: [{
     id: 'fixture-api',
     mode: 'api_key' as const,
@@ -56,7 +57,7 @@ const fixtureInstance = {
   earliestBackfillDate: '2026-07-02',
   createdAt: '2026-07-09T15:00:00.000Z',
   updatedAt: '2026-07-09T15:00:00.000Z',
-}
+} satisfies ConnectorSettingsInstance
 
 describe('ConnectorSettingsPanel instance applicability', () => {
   it('adds a Jobright connector instance with released auth and default US filter', async () => {

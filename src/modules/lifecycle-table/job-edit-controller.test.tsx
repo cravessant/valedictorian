@@ -104,7 +104,7 @@ function makeClient(overrides: {
   readonly correctFacts?: ReturnType<typeof vi.fn>
   readonly assignmentGet?: ReturnType<typeof vi.fn>
 } = {}) {
-  const correctFacts = overrides.correctFacts ?? vi.fn(async () => ({
+  const correctFacts = overrides.correctFacts ?? vi.fn(async (_input: unknown) => ({
     status: 'succeeded',
     resource: job,
     duplicateResolution: null,
@@ -217,7 +217,7 @@ describe('useJobEditController', () => {
   it('never replays a committed facts correction while recovering a stale assignment', async () => {
     const user = userEvent.setup()
     const corrected = correctedJob('Corrected Posting Name')
-    const correctFacts = vi.fn(async () => ({
+    const correctFacts = vi.fn(async (_input: unknown) => ({
       status: 'succeeded',
       resource: corrected,
       duplicateResolution: null,

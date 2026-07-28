@@ -189,6 +189,7 @@ const fixtureDynamicOptions = {
       search: { minSearchLength: 1, maxSearchLength: 100, defaultLimit: 10, maxLimit: 20 },
       resolve: { maxValues: 10 },
     },
+    auth: { mode: 'none' as const },
     dependencies: [{
       id: 'country', filterPointer: '/country', cardinality: 'one' as const, required: true,
     }],

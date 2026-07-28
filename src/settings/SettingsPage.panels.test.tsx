@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createConnectorsApi,
+  createPolicyApi,
   createProfileApi,
   createSettingsApi,
   createWorkspaceApi,
@@ -10,7 +11,7 @@ import {
 } from '../App.test-helpers'
 import { defaultAppSettings } from './app-settings'
 import { SettingsPage, SettingsSidebar } from './SettingsPage'
-import { SETTINGS_PANELS } from '../app/types'
+import { SETTINGS_PANELS, type SettingsPanelId } from '../app/types'
 import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 
 afterEach(cleanup)
@@ -25,7 +26,7 @@ describe('SettingsPage developer and panel navigation', () => {
         connectorsApi={createConnectorsApi()}
         connectorScheduleApi={unavailableScheduleApi()}
         contentColumnClass=""
-        policyApi={{ get: vi.fn(), update: vi.fn(), reset: vi.fn() }}
+        policyApi={createPolicyApi()}
         profileApi={createProfileApi()}
         restartRequired={false}
         selectedPanel={SETTINGS_PANELS.ADVANCED}
@@ -58,7 +59,7 @@ describe('SettingsPage developer and panel navigation', () => {
         connectorsApi={createConnectorsApi()}
         connectorScheduleApi={unavailableScheduleApi()}
         contentColumnClass=""
-        policyApi={{ get: vi.fn(), update: vi.fn(), reset: vi.fn() }}
+        policyApi={createPolicyApi()}
         profileApi={createProfileApi()}
         restartRequired={false}
         selectedPanel={SETTINGS_PANELS.ADVANCED}
@@ -93,7 +94,7 @@ describe('SettingsPage developer and panel navigation', () => {
       connectorsApi: createConnectorsApi(),
       connectorScheduleApi: unavailableScheduleApi(),
       contentColumnClass: '',
-      policyApi: { get: vi.fn(), update: vi.fn(), reset: vi.fn() },
+      policyApi: createPolicyApi(),
       profileApi: createProfileApi(),
       restartRequired: false,
       settings: defaultAppSettings,
@@ -109,7 +110,7 @@ describe('SettingsPage developer and panel navigation', () => {
     } as const
 
     function PanelHarness() {
-      const [selectedPanel, setSelectedPanel] = useState(SETTINGS_PANELS.GENERAL)
+      const [selectedPanel, setSelectedPanel] = useState<SettingsPanelId>(SETTINGS_PANELS.GENERAL)
       return (
         <>
           <SettingsSidebar
@@ -174,7 +175,7 @@ describe('SettingsPage developer and panel navigation', () => {
         connectorsApi={createConnectorsApi()}
         connectorScheduleApi={unavailableScheduleApi()}
         contentColumnClass=""
-        policyApi={{ get: vi.fn(), update: vi.fn(), reset: vi.fn() }}
+        policyApi={createPolicyApi()}
         profileApi={createProfileApi()}
         restartRequired={false}
         selectedPanel={SETTINGS_PANELS.GENERAL}

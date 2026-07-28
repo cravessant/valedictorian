@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ConnectorRetirementConflictError } from '@sparxie/sdk'
+import {
+  ConnectorRetirementConflictError,
+  connectorRetirementActiveWorkConflictMessage,
+  type ConnectorInstanceSummary,
+} from '@sparxie/sdk'
 
 import {
   createConnectorsApi,
@@ -30,7 +34,6 @@ describe('ConnectorSettingsPanel', () => {
         id: 'jobright',
         mode: 'username_password',
         label: 'Jobright username and password',
-        configured: true,
       }],
       config: { discoveryCount: 20 },
       filters: { country: 'US' },
@@ -95,7 +98,6 @@ describe('ConnectorSettingsPanel', () => {
         id: 'jobright',
         mode: 'username_password',
         label: 'Jobright username and password',
-        configured: true,
       }],
       config: {},
       filters: {},
@@ -198,7 +200,6 @@ describe('ConnectorSettingsPanel', () => {
         id: 'jobright',
         mode: 'username_password',
         label: 'Jobright username and password',
-        configured: true,
       }],
       config: {},
       filters: {},
@@ -286,7 +287,6 @@ describe('ConnectorSettingsPanel', () => {
         id: 'jobright',
         mode: 'username_password',
         label: 'Jobright username and password',
-        configured: true,
       }],
       config: { discoveryCount: 20 },
       filters: {},
@@ -357,18 +357,20 @@ describe('ConnectorSettingsPanel', () => {
       connectorVersion: '0.11.0',
       displayName: 'Jobright internslist',
       enabled: true,
+      lifecycle: 'enabled',
       auth: [],
       config: { discoveryCount: 20 },
       filters: {},
       earliestBackfillDate: '2026-07-02',
       createdAt: '2026-07-09T15:00:00.000Z',
       updatedAt: '2026-07-09T15:00:00.000Z',
-    }
+    } satisfies ConnectorInstanceSummary
     const connectorsApi = createConnectorsApi()
     vi.mocked(connectorsApi.list).mockResolvedValue({ items: [instance] })
     vi.mocked(connectorsApi.update).mockResolvedValue({
       ...instance,
       enabled: false,
+      lifecycle: 'disabled',
     })
     const savedSchedule = scheduleSummary({
       id: 'schedule-unified',
@@ -495,13 +497,17 @@ describe('ConnectorSettingsPanel', () => {
       id: 'fixture-connector', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Fixture jobs', enabled: true, auth: [], config: {}, filters: {},
     })
-    vi.mocked(connectorsApi.remove).mockRejectedValueOnce(new ConnectorRetirementConflictError({
+    const conflict = new ConnectorRetirementConflictError({
       code: 'connector_retirement_active_work_conflict',
       connectorInstanceId: 'fixture-connector',
-      message: 'sensitive backend diagnostic',
+      message: connectorRetirementActiveWorkConflictMessage,
       cancellationRequired: true,
       activeRuns: [{ connectorRunId: 'run-queued', status: 'queued' }],
-    }))
+    })
+    // The SDK pins the conflict payload's message, so the hostile diagnostic can
+    // only reach the panel through the thrown error itself.
+    conflict.message = 'sensitive backend diagnostic'
+    vi.mocked(connectorsApi.remove).mockRejectedValueOnce(conflict)
     render(
       <ConnectorSettingsPanel
         connectorsApi={connectorsApi}

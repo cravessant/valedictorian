@@ -3,10 +3,12 @@ import { createPgliteSecretService } from '../secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../secrets/secret.scope'
 import { createConnectorSecretResolver } from '../secrets/connector-secret-resolver'
 import type { SecretCodec } from '../secrets/secret.codec'
-import {
-  type ConnectorCoverageWindow,
-  type ConnectorObservationInput
-} from './connector.repository'
+import { type ConnectorCoverageWindow } from './connector.repository'
+import type {
+  ConnectorRefreshInput,
+  ConnectorRuntime,
+  JobObservation,
+} from '@sparxie/valedictorian-connectors-core'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
@@ -78,6 +80,8 @@ describe.sequential('connector runner', () => {
             {
               connectorId: 'fixture.jobs',
               connectorVersion: '0.0.0-fixture',
+              parserVersion: 'fixture-parser@1',
+              observationSchemaVersion: 'job-observation@2',
               sourceRecordKey: 'fixture.jobs:software-engineering-intern',
               observedAt,
               companyName: 'Example Robotics',
@@ -416,7 +420,7 @@ describe.sequential('connector runner', () => {
       },
     })
     const receivedGrants: unknown[] = []
-    const fixtureConnector: AppJobConnector = {
+    const fixtureConnector = leakProbeConnector({
       definition: {
         id: 'fixture.secret-jobs',
         version: '0.0.0-fixture',
@@ -464,7 +468,7 @@ describe.sequential('connector runner', () => {
           },
         }
       },
-    }
+    })
 
     await secretService.upsert({
       key: 'fixture_api_key',
@@ -567,7 +571,7 @@ describe.sequential('connector runner', () => {
         secrets: createConnectorSecretResolver(secretService),
       },
     })
-    const fixtureConnector: AppJobConnector = {
+    const fixtureConnector = leakProbeConnector({
       definition: {
         id: 'fixture.overlap-secret-jobs',
         version: '0.0.0-fixture',
@@ -609,7 +613,7 @@ describe.sequential('connector runner', () => {
           },
         }
       },
-    }
+    })
 
     await secretService.upsert({
       key: 'short_key',
@@ -862,6 +866,15 @@ describe.sequential('connector runner', () => {
 
 })
 
+/** Leak probes deliberately emit refresh payloads the contract forbids. */
+function leakProbeConnector(
+  connector: Omit<AppJobConnector, 'refresh'> & {
+    refresh: (input: ConnectorRefreshInput, runtime: ConnectorRuntime) => Promise<unknown>
+  },
+): AppJobConnector {
+  return connector as unknown as AppJobConnector
+}
+
 function emptyConnectorRefreshResult({
   checkpoint,
   coverage,
@@ -906,7 +919,7 @@ function releasedRefreshOutcome(coverage: ConnectorCoverageWindow) {
 function jobrightSeedObservation(
   sourceRecordKey: string,
   observedAt: string,
-): ConnectorObservationInput {
+): JobObservation {
   return {
     connectorId: 'jobright.public',
     connectorVersion: '0.4.3',

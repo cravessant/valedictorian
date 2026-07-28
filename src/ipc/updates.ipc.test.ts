@@ -24,8 +24,8 @@ describe('updates IPC', () => {
     }
 
     registerUpdatesIpc(service, {
-      handle(channel, handler) {
-        handlers.set(channel, handler as (...args: unknown[]) => unknown)
+      handle(channel: string, handler: (event: unknown, ...args: unknown[]) => unknown) {
+        handlers.set(channel, handler)
       },
     }, () => [{ webContents }])
 

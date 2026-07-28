@@ -1,7 +1,7 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CaptureListPresentation, Job } from '@sparxie/sdk'
+import type { CaptureListPresentation, Job, JobId, RemovalResult } from '@sparxie/sdk'
 import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
@@ -23,6 +23,7 @@ afterEach(() => {
 
 interface TestPage {
   items: unknown[]
+  totalCount: number
   pageInfo: typeof emptyPageInfo | {
     startCursor: string | null
     endCursor: string | null
@@ -36,7 +37,7 @@ function morePages(endCursor: string) {
 }
 
 function emptyPage(): TestPage {
-  return { items: [], pageInfo: emptyPageInfo }
+  return { items: [], pageInfo: emptyPageInfo, totalCount: 0 }
 }
 
 function capturePage(items: CaptureListPresentation[] = []) {
@@ -53,13 +54,13 @@ function capturePage(items: CaptureListPresentation[] = []) {
 }
 
 function makeClient() {
-  const removeCapture = vi.fn(async () => ({
-    status: 'removed' as const,
+  const removeCapture = vi.fn(async (): Promise<RemovalResult> => ({
+    status: 'removed',
     id: 'capture-remove',
     choice: 'reject_if_dependents' as const,
     removedAt: '2026-07-24T00:00:00Z',
     affectedDependentIds: [],
-    audit: { actor: 'desktop' as const, timestamp: '2026-07-24T00:00:00Z' },
+    audit: { actor: { id: 'desktop', type: 'user' }, timestamp: '2026-07-24T00:00:00Z' },
   }))
   const lists = {
     captures: vi.fn(async (_input?: unknown) => capturePage()),
@@ -179,7 +180,7 @@ describe('LifecycleWorkbench', () => {
       externalIdentities: [],
       removedAt: null,
     } as unknown as Job
-    lists.jobs.mockResolvedValue({ items: [job], pageInfo: emptyPageInfo })
+    lists.jobs.mockResolvedValue({ items: [job], pageInfo: emptyPageInfo, totalCount: 1 })
     const navigate = vi.fn()
     renderWithQueryClient(
       <LifecycleWorkbench
@@ -448,15 +449,15 @@ describe('LifecycleWorkbench', () => {
     const capture = completionCapture('capture-remove')
     let active = true
     lists.captures.mockImplementation(async () => capturePage(active ? [capture] : []))
-    removeCapture.mockImplementation(async () => {
+    removeCapture.mockImplementation(async (): Promise<RemovalResult> => {
       active = false
       return {
-        status: 'removed' as const,
+        status: 'removed',
         id: 'capture-remove',
         choice: 'reject_if_dependents' as const,
         removedAt: '2026-07-24T00:00:00Z',
         affectedDependentIds: [],
-        audit: { actor: 'desktop' as const, timestamp: '2026-07-24T00:00:00Z' },
+        audit: { actor: { id: 'desktop', type: 'user' }, timestamp: '2026-07-24T00:00:00Z' },
       }
     })
     const complete = vi.fn()
@@ -603,10 +604,12 @@ describe('LifecycleWorkbench', () => {
 
   it('keeps the visible Jobs page bounded while draining its complete projection', async () => {
     const { client, lists } = makeClient()
-    for (const [phase, list] of Object.entries(lists)
-      .filter(([phase]) => phase !== 'jobs' && phase !== 'captures')) {
+    for (const [phase, list] of [
+      ['opportunities', lists.opportunities],
+      ['applications', lists.applications],
+    ] as const) {
       list
-        .mockResolvedValueOnce({ items: [], pageInfo: morePages(`${phase}-page-2`) })
+        .mockResolvedValueOnce({ items: [], pageInfo: morePages(`${phase}-page-2`), totalCount: 0 })
         .mockResolvedValueOnce(emptyPage())
     }
     lists.jobs.mockImplementation(async (input?: unknown) => {
@@ -614,7 +617,7 @@ describe('LifecycleWorkbench', () => {
       if (query.limit === 50) return emptyPage()
       return query.after === 'jobs-page-2'
         ? emptyPage()
-        : { items: [], pageInfo: morePages('jobs-page-2') }
+        : { items: [], pageInfo: morePages('jobs-page-2'), totalCount: 0 }
     })
     renderWithQueryClient(<LifecycleWorkbench client={client} />)
 
@@ -654,6 +657,7 @@ describe('LifecycleWorkbench', () => {
         hasPreviousPage: false,
         hasNextPage: true,
       },
+      totalCount: 0,
     })
     const navigate = vi.fn()
     const { rerender } = renderWithQueryClient(
@@ -686,6 +690,7 @@ describe('LifecycleWorkbench', () => {
         hasPreviousPage: true,
         hasNextPage: false,
       },
+      totalCount: 0,
     })
     rerender(
       <LifecycleWorkbench
@@ -730,7 +735,7 @@ describe('LifecycleWorkbench', () => {
     nextDisabled,
   ) => {
     const { client, lists } = makeClient()
-    lists.jobs.mockResolvedValueOnce({ items: [], pageInfo })
+    lists.jobs.mockResolvedValueOnce({ items: [], pageInfo, totalCount: 0 })
     renderWithQueryClient(
       <LifecycleWorkbench
         client={client}
@@ -756,6 +761,7 @@ describe('LifecycleWorkbench', () => {
         hasPreviousPage: true,
         hasNextPage: false,
       },
+      totalCount: 0,
     })
     const navigate = vi.fn()
     renderWithQueryClient(
@@ -785,6 +791,7 @@ describe('LifecycleWorkbench', () => {
     lists.jobs.mockResolvedValueOnce({
       items: [],
       pageInfo: { startCursor: 's', endCursor: 'e', hasPreviousPage: true, hasNextPage: true },
+      totalCount: 0,
     })
     renderWithQueryClient(<LifecycleWorkbench client={client} selectedPhase="jobs" />)
     expect(await screen.findByRole('button', { name: 'Go to previous page' })).toBeDisabled()
@@ -843,7 +850,7 @@ describe('LifecycleWorkbench', () => {
       availability: { state: 'active' },
       externalIdentities: [],
     } as unknown as Job
-    lists.jobs.mockResolvedValue({ items: [job], pageInfo: emptyPageInfo })
+    lists.jobs.mockResolvedValue({ items: [job], pageInfo: emptyPageInfo, totalCount: 1 })
     Object.assign(client.jobs, { get: vi.fn(async () => job) })
     renderWithQueryClient(<JobsHistoryHarness client={client} />)
 
@@ -861,9 +868,9 @@ describe('LifecycleWorkbench', () => {
     // One renderer-lifetime cache spans both mounts, as it does in the app.
     const queryClient = testQueryClient()
     const stale = makeClient()
-    let settleStale: ((page: unknown) => void) | undefined
+    let settleStale: ((page: ReturnType<typeof capturePage>) => void) | undefined
     stale.lists.captures.mockImplementation(
-      () => new Promise<unknown>((resolve) => { settleStale = resolve }),
+      () => new Promise<ReturnType<typeof capturePage>>((resolve) => { settleStale = resolve }),
     )
     const first = renderWithQueryClient(
       <LifecycleWorkbench client={stale.client} workspaceId="ws-1" />,
@@ -905,6 +912,11 @@ describe('LifecycleWorkbench', () => {
   })
 })
 
+/** Readable non-UUID identifiers keep these UI assertions legible. */
+function testJobId(value: string) {
+  return value as JobId
+}
+
 function captureIntent(
   captureId: string,
   kind: 'resolve_duplicate_job' | 'resolve_company_assignment',
@@ -921,8 +933,12 @@ function captureIntent(
     activeProcessing: false,
     linkedJob: null,
     primaryIntent: kind === 'resolve_duplicate_job'
-      ? { kind, conflictingJobIds: ['job-conflict'], supportedActions: ['attach'] }
-      : { kind, jobId: 'job-conflict', currentCompanyId: '01900000-0000-7000-8000-000000000099' },
+      ? { kind, conflictingJobIds: [testJobId('job-conflict')], supportedActions: ['attach'] }
+      : {
+          kind,
+          jobId: testJobId('job-conflict'),
+          currentCompanyId: '01900000-0000-7000-8000-000000000099',
+        },
   }
 }
 

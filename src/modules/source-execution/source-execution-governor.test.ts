@@ -152,7 +152,7 @@ describe.sequential('source execution governor', () => {
       .toEqual({ expiresAt: '2026-07-12T12:00:02.000Z', token: 'elapsed' })
     const action = deriveSourceExecutionScopeId('explicit-recovery')
     await governor.ensureScope(action, '2026-07-12T12:00:00.000Z')
-    const first = await governor.acquireRefreshLease(action, { now: '2026-07-12T12:00:00.000Z', leaseMs: 1000, token: 'first' })!
+    const first = (await governor.acquireRefreshLease(action, { now: '2026-07-12T12:00:00.000Z', leaseMs: 1000, token: 'first' }))!
     await governor.failRefresh(action, { now: '2026-07-12T12:00:00.100Z', token: first.token, reason: 'credentials_missing' })
     expect(await governor.acquireRefreshLease(action, { now: '2026-07-12T12:01:00.000Z', leaseMs: 1000 })).toBeNull()
     expect(await governor.acquireRefreshLease(action, { now: '2026-07-12T12:01:00.000Z', leaseMs: 1000,
@@ -163,11 +163,11 @@ describe.sequential('source execution governor', () => {
     const governor = createSourceExecutionGovernor(await createTestDatabase())
     const scope = deriveSourceExecutionScopeId('reconnect-validation')
     await governor.ensureScope(scope, '2026-07-12T12:00:00.000Z')
-    const ordinary = await governor.acquireRefreshLease(scope, { now: '2026-07-12T12:00:01.000Z', leaseMs: 10, token: 'ordinary' })!
+    const ordinary = (await governor.acquireRefreshLease(scope, { now: '2026-07-12T12:00:01.000Z', leaseMs: 10, token: 'ordinary' }))!
     expect(await governor.acquireReconnectLease(scope, { now: '2026-07-12T12:00:01.001Z', leaseMs: 10, token: 'reconnect' })).toBeNull()
     expect(await governor.completeRefresh(scope, { now: '2026-07-12T12:00:01.005Z', token: ordinary.token, encryptedSession: 'canonical' }))
       .toMatchObject({ authGeneration: 1 })
-    const reconnect = await governor.acquireReconnectLease(scope, { now: '2026-07-12T12:00:02.000Z', leaseMs: 10, token: 'reconnect' })!
+    const reconnect = (await governor.acquireReconnectLease(scope, { now: '2026-07-12T12:00:02.000Z', leaseMs: 10, token: 'reconnect' }))!
     expect((await governor.loadActiveSession(scope))?.encryptedSession).toBe('canonical')
     expect(await governor.isAvailable(scope, '2026-07-12T12:00:02.000Z')).toBe(false)
     expect(await governor.finishReconnectValidation(scope, {
@@ -185,9 +185,9 @@ describe.sequential('source execution governor', () => {
     const governor = createSourceExecutionGovernor(await createTestDatabase())
     const scope = deriveSourceExecutionScopeId('exact-provider-minimum')
     await governor.ensureScope(scope, '2026-07-12T12:00:00.250Z')
-    const lease = await governor.acquireRefreshLease(scope, {
+    const lease = (await governor.acquireRefreshLease(scope, {
       now: '2026-07-12T12:00:00.250Z', leaseMs: 10_000, token: 'rate-limit',
-    })!
+    }))!
     await governor.cooldownRefresh(scope, {
       now: '2026-07-12T12:00:00.250Z', random: () => 0,
       serverMinimumDelayMs: 1500, token: lease.token,

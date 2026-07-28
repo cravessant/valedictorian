@@ -69,7 +69,7 @@ describe('PolicySettingsPanel mutation target ownership', () => {
         ...initial,
         actionQueue: {
           ...initial.actionQueue,
-          scoreCutoff: 99,
+          staleLockHours: 99,
         },
       })
       await pending.promise
@@ -130,7 +130,7 @@ describe('PolicySettingsPanel mutation target ownership', () => {
     let rejectReset: ((reason?: unknown) => void) | undefined
     policyApi.config.reset = vi.fn(
       () =>
-        new Promise((_, reject) => {
+        new Promise<PolicyConfig>((_, reject) => {
           rejectReset = reject
         }),
     )

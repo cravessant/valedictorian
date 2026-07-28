@@ -14,6 +14,13 @@ import type { PgliteDatabase, PgliteRepositoryDatabase } from '../../db/pglite'
 
 const DEFAULT_RUN_LIST_LIMIT = 50
 
+/**
+ * Sourcing runs record coverage outcomes the published Application-status union
+ * cannot express, and the column stores the free-form value the app owns.
+ */
+export type CompleteLocalWorkflowRunInput
+  = Omit<CompleteWorkflowRunInput, 'outcome'> & { outcome?: string | null }
+
 type WorkflowRunQueryDatabase = Pick<PgliteDatabase, 'select'>
 type WorkflowRunWriteDatabase = Pick<PgliteDatabase, 'insert' | 'select' | 'update'>
 
@@ -158,7 +165,7 @@ export function createPgliteWorkflowRunRepository(database: PgliteRepositoryData
         return mapWorkflowRunStep(step)
       })
     },
-    async completeRun(input: CompleteWorkflowRunInput): Promise<WorkflowRun> {
+    async completeRun(input: CompleteLocalWorkflowRunInput): Promise<WorkflowRun> {
       const now = new Date().toISOString()
 
       return database.transaction(async (transaction) => {

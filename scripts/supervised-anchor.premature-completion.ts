@@ -7,4 +7,4 @@ process.send?.({
   code: 0,
   signal: null,
   type: SUPERVISED_LEADER_EXIT_MESSAGE,
-}, () => process.disconnect())
+}, () => process.disconnect?.())

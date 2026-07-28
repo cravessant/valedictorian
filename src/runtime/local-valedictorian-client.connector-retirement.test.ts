@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { sourceExecutionScopes, sourceExecutionSessions } from '../db/schema'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
 import {
   createSourceExecutionGovernor,
@@ -21,7 +22,7 @@ describe.sequential('local connector instance retirement', () => {
   it('signals scheduled work only after retirement succeeds', async () => {
     const onScheduledWorkChanged = vi.fn()
     const client = await createLocalValedictorianClient({
-      connectorRegistry: { get: () => null },
+      connectorRegistry: createStaticConnectorRegistry([]),
       onScheduledWorkChanged,
     })
     await createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client)).upsertInstance({
@@ -71,15 +72,10 @@ describe.sequential('local connector instance retirement', () => {
       throw new Error('retirement must not retrieve authentication')
     })
     const client = await createFreshLocalValedictorianClient({
-      connectorRegistry: { get: getConnector },
+      connectorRegistry: { get: getConnector, getVersion: getConnector, list: () => [] },
       secretCodec: {
         decrypt,
-        encrypt: vi.fn(() => ({
-          ciphertext: 'unused',
-          iv: 'unused',
-          keyVersion: 1,
-          tag: 'unused',
-        })),
+        encrypt: vi.fn(() => 'unused'),
       },
       seedDataMode: 'none',
       pgliteDataPath,
@@ -105,7 +101,7 @@ describe.sequential('local connector instance retirement', () => {
 
   it('returns a typed conflict and preserves the instance when queued work is active', async () => {
     const client = await createLocalValedictorianClient({
-      connectorRegistry: { get: () => null },
+      connectorRegistry: createStaticConnectorRegistry([]),
       seedDataMode: 'none',
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
@@ -140,7 +136,7 @@ describe.sequential('local connector instance retirement', () => {
 
   it('destroys connector-owned session credentials while preserving workspace secret administration', async () => {
     const client = await createLocalValedictorianClient({
-      connectorRegistry: { get: () => null },
+      connectorRegistry: createStaticConnectorRegistry([]),
       secretCodec: {
         decrypt: (value) => value.replace(/^encrypted:/, ''),
         encrypt: (value) => `encrypted:${value}`,
@@ -187,7 +183,7 @@ describe.sequential('local connector instance retirement', () => {
 
   it('fences a late refresh completion from recreating a retired connector session', async () => {
     const client = await createFreshLocalValedictorianClient({
-      connectorRegistry: { get: () => null },
+      connectorRegistry: createStaticConnectorRegistry([]),
       seedDataMode: 'none',
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
@@ -201,11 +197,11 @@ describe.sequential('local connector instance retirement', () => {
       createdAt: '2026-07-13T12:00:00.000Z',
     })
     const governor = createSourceExecutionGovernor(database)
-    const lease = await governor.acquireRefreshLease(instance.executionScopeId, {
+    const lease = (await governor.acquireRefreshLease(instance.executionScopeId, {
       leaseMs: 60_000,
       now: '2026-07-13T15:59:30.000Z',
       token: 'refresh-issued-before-retirement',
-    })!
+    }))!
 
     await client.connectors.remove({ connectorInstanceId: instance.id })
 
@@ -220,7 +216,7 @@ describe.sequential('local connector instance retirement', () => {
   it('retires mutable execution state while preserving checkpoints and canonical Capture lineage', async () => {
     const retiredAt = '2026-07-13T16:00:00.000Z'
     const client = await createLocalValedictorianClient({
-      connectorRegistry: { get: () => null },
+      connectorRegistry: createStaticConnectorRegistry([]),
       seedDataMode: 'none',
       now: () => new Date(retiredAt),
     })
@@ -266,7 +262,7 @@ describe.sequential('local connector instance retirement', () => {
       '2026-07-13T14:00:00.000Z',
     )).create({
       connectorInstanceId: instance.id,
-      state: 'active',
+      state: 'enabled',
       cadence: { kind: 'interval', everyMinutes: 60 },
       timezone: 'UTC',
     })
@@ -310,7 +306,7 @@ describe.sequential('local connector instance retirement', () => {
     ])
     await expect(createConnectorScheduleRepository(database).create({
       connectorInstanceId: instance.id,
-      state: 'active',
+      state: 'enabled',
       cadence: { kind: 'interval', everyMinutes: 60 },
       timezone: 'UTC',
     })).rejects.toThrow(/connector instance not found/i)

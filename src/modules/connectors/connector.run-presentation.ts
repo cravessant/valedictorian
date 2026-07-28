@@ -3,7 +3,7 @@ import type {
   ConnectorStatusState,
 } from '@sparxie/sdk'
 
-type ConnectorSynchronizationInput = Pick<
+export type ConnectorSynchronizationInput = Pick<
   ConnectorRunSummary,
   'historicalBackfill' | 'newestFrontier' | 'outcome' | 'pendingResolutionCount' | 'status'
 >

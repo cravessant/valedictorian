@@ -72,7 +72,7 @@ describe('connector schedule helpers', () => {
   it('filters unsupported schedule modes and presets', () => {
     const intervalOnly = {
       ...availableCapability,
-      supportedCadences: ['interval'] as const,
+      supportedCadences: ['interval'] satisfies typeof availableCapability.supportedCadences,
       minimumIntervalMinutes: 60,
     }
 

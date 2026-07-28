@@ -409,6 +409,7 @@ function dynamicRepairConnector(
             search: { minSearchLength: 1, maxSearchLength: 40, defaultLimit: 10, maxLimit: 10 },
             resolve: { maxValues: 5 },
           },
+          auth: { mode: 'none' },
           dependencies: [],
         }],
         bindings: [{

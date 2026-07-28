@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CaptureCompletionDetailV2, Job } from '@sparxie/sdk'
+import type { CaptureCompletionDetailV2, Job, JobId } from '@sparxie/sdk'
 import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
@@ -127,6 +127,11 @@ function makeClient(options: {
   return { client, complete, search, jobsGet, assignmentGet, reassign, lookup }
 }
 
+/** Readable non-UUID identifiers keep these UI assertions legible. */
+function testJobId(value: string) {
+  return value as JobId
+}
+
 function renderModal(
   client: Pick<
     LocalWorkspaceClientV2,
@@ -134,7 +139,7 @@ function renderModal(
   >,
   overrides: Partial<React.ComponentProps<typeof CaptureCompletionModal>> = {},
 ) {
-  const onClose = overrides.onClose ?? vi.fn()
+  const onClose = vi.fn(overrides.onClose)
   const onCreated = overrides.onCreated ?? vi.fn()
   const onViewJob = overrides.onViewJob ?? vi.fn()
   // An explicit null intent is the read-only destination-outcome case, so it
@@ -511,7 +516,7 @@ describe('CaptureCompletionModal', () => {
     renderModal(client, {
       intent: {
         kind: 'resolve_duplicate_job',
-        conflictingJobIds: ['job-existing'],
+        conflictingJobIds: [testJobId('job-existing')],
         supportedActions: ['attach'],
       },
     })
@@ -577,7 +582,7 @@ describe('CaptureCompletionModal', () => {
     renderModal(client, {
       intent: {
         kind: 'resolve_company_assignment',
-        jobId: 'job-existing',
+        jobId: testJobId('job-existing'),
         currentCompanyId: 'company-current',
       },
     })

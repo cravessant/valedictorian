@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createHttpValedictorianClient,
   ValedictorianHttpError,
+  type CompleteCaptureManuallyInput,
+  type CompleteCaptureManuallyV2Input,
+  type JobId,
 } from '@sparxie/sdk'
 import { createTestLocalValedictorianClient } from '../runtime/local-valedictorian-client.test-harness'
 import { getTestLocalValedictorianDatabase } from '../runtime/local-valedictorian-client.test-harness'
@@ -30,12 +33,12 @@ function jobFacts(companyName: string, roleTitle: string) {
     location: null, workMode: 'unknown', employmentType: 'unknown', seniority: 'unknown',
     compensation: null, postedAt: null,
     destination: { class: 'employer_or_ats', url: 'https://jobs.completion.acme.com/roles/engineer' },
-  } as const
+  } satisfies CompleteCaptureManuallyInput['jobFacts']
 }
 
 function jobFactsV2(companyName: string, roleTitle: string, url: string) {
   const { destination: _destination, ...facts } = jobFacts(companyName, roleTitle)
-  return { ...facts, destination: { url } }
+  return { ...facts, destination: { url } } satisfies CompleteCaptureManuallyV2Input['jobFacts']
 }
 
 describe.sequential('Capture resolution HTTP surface', () => {
@@ -238,7 +241,7 @@ describe.sequential('Capture resolution HTTP surface', () => {
         url,
       })
     }
-    const createdJobByCapture = new Map<string, string>()
+    const createdJobByCapture = new Map<string, JobId>()
     for (const [index, completion] of completions.entries()) {
       const result = await client.captureResolutionV2.complete({
         captureId: completion.captureId,

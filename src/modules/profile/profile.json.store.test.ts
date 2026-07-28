@@ -521,8 +521,9 @@ describe('JSON profile adapter', () => {
   it('emits debounced valid/invalid external changes, suppresses self-writes, and stops on dispose', async () => {
     vi.useFakeTimers()
     const profilePath = tempProfilePath()
-    let watchCallback: ((eventType: string, filename: string | Buffer | null) => void) | null =
-      null
+    const watch: {
+      callback: ((eventType: string, filename: string | Buffer | null) => void) | null
+    } = { callback: null }
     let watchStarts = 0
     const store = createJsonProfileStore(profilePath, {
       debounceMs: 20,
@@ -531,10 +532,10 @@ describe('JSON profile adapter', () => {
       clearTimeoutFn: (handle) => clearTimeout(handle),
       watchFn: ((_directory, _options, listener) => {
         watchStarts += 1
-        watchCallback = listener as (eventType: string, filename: string | Buffer | null) => void
+        watch.callback = listener as (eventType: string, filename: string | Buffer | null) => void
         return {
           close() {
-            watchCallback = null
+            watch.callback = null
           },
         } as fs.FSWatcher
       }) as typeof fs.watch,
@@ -547,7 +548,7 @@ describe('JSON profile adapter', () => {
     const unsubscribe = store.subscribe((event) => {
       events.push({ kind: event.kind })
     })
-    expect(watchCallback).toEqual(expect.any(Function))
+    expect(watch.callback).toEqual(expect.any(Function))
     expect(watchStarts).toBe(1)
 
     const initial = await store.get()
@@ -555,7 +556,7 @@ describe('JSON profile adapter', () => {
       expectedRevision: initial.revision,
       profile: { ...initial.profile, email: 'self@example.com' },
     })
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events).toEqual([])
 
@@ -565,28 +566,28 @@ describe('JSON profile adapter', () => {
       revision: 'ignored',
     })
     fs.writeFileSync(profilePath, validExternal, 'utf8')
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events.at(-1)).toEqual({ kind: 'valid' })
 
     fs.writeFileSync(profilePath, '{bad', 'utf8')
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events.at(-1)).toEqual({ kind: 'invalid' })
 
     unsubscribe()
-    expect(watchCallback).toBeNull()
+    expect(watch.callback).toBeNull()
     events.length = 0
     fs.writeFileSync(profilePath, serializeProfileJsonDocument(emptyProfileDocument()), 'utf8')
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events).toEqual([])
 
     const again = store.subscribe((event) => events.push({ kind: event.kind }))
     expect(watchStarts).toBe(2)
-    expect(watchCallback).toEqual(expect.any(Function))
+    expect(watch.callback).toEqual(expect.any(Function))
     fs.writeFileSync(profilePath, validExternal, 'utf8')
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events.at(-1)).toEqual({ kind: 'valid' })
 
@@ -594,7 +595,7 @@ describe('JSON profile adapter', () => {
     store.dispose()
     events.length = 0
     fs.writeFileSync(profilePath, '{bad-again', 'utf8')
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events).toEqual([])
     again()
@@ -708,18 +709,19 @@ describe('JSON profile adapter', () => {
     vi.useFakeTimers()
     const profilePath = tempProfilePath()
     let currentTime = 1_000
-    let watchCallback: ((eventType: string, filename: string | Buffer | null) => void) | null =
-      null
+    const watch: {
+      callback: ((eventType: string, filename: string | Buffer | null) => void) | null
+    } = { callback: null }
     const store = createJsonProfileStore(profilePath, {
       debounceMs: 20,
       now: () => currentTime,
       setTimeoutFn: (callback, ms) => setTimeout(callback, ms),
       clearTimeoutFn: (handle) => clearTimeout(handle),
       watchFn: ((_directory, _options, listener) => {
-        watchCallback = listener as (eventType: string, filename: string | Buffer | null) => void
+        watch.callback = listener as (eventType: string, filename: string | Buffer | null) => void
         return {
           close() {
-            watchCallback = null
+            watch.callback = null
           },
         } as fs.FSWatcher
       }) as typeof fs.watch,
@@ -754,7 +756,7 @@ describe('JSON profile adapter', () => {
       revision: 'ignored',
     })
     fs.writeFileSync(profilePath, bytesB, 'utf8')
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events.at(-1)).toEqual({ kind: 'valid', email: 'external-b@example.com' })
     expect(store.getLastKnownGoodPreview()).toBeNull()
@@ -762,7 +764,7 @@ describe('JSON profile adapter', () => {
     currentTime += 1_000
     events.length = 0
     fs.writeFileSync(profilePath, bytesA, 'utf8')
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events.at(-1)).toEqual({ kind: 'valid', email: 'coop-a@example.com' })
     expect(store.getLastKnownGoodPreview()).toBeNull()
@@ -774,18 +776,19 @@ describe('JSON profile adapter', () => {
   it('bounds self-write suppression so repeated writes do not retain every fingerprint', async () => {
     vi.useFakeTimers()
     const profilePath = tempProfilePath()
-    let watchCallback: ((eventType: string, filename: string | Buffer | null) => void) | null =
-      null
+    const watch: {
+      callback: ((eventType: string, filename: string | Buffer | null) => void) | null
+    } = { callback: null }
     const store = createJsonProfileStore(profilePath, {
       debounceMs: 20,
       now: () => Date.now(),
       setTimeoutFn: (callback, ms) => setTimeout(callback, ms),
       clearTimeoutFn: (handle) => clearTimeout(handle),
       watchFn: ((_directory, _options, listener) => {
-        watchCallback = listener as (eventType: string, filename: string | Buffer | null) => void
+        watch.callback = listener as (eventType: string, filename: string | Buffer | null) => void
         return {
           close() {
-            watchCallback = null
+            watch.callback = null
           },
         } as fs.FSWatcher
       }) as typeof fs.watch,
@@ -822,7 +825,7 @@ describe('JSON profile adapter', () => {
 
     // Older self-write fingerprints must not be retained forever.
     fs.writeFileSync(profilePath, earlyBytes, 'utf8')
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events.at(-1)).toEqual({ kind: 'valid' })
 
@@ -832,7 +835,7 @@ describe('JSON profile adapter', () => {
       profile: { ...current.profile, email: 'latest-self@example.com' },
     })
     expect(latest.ok).toBe(true)
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events).toEqual([])
   })
@@ -840,17 +843,18 @@ describe('JSON profile adapter', () => {
   it('propagates format, restore, notifications, and disposal through the JSON service', async () => {
     vi.useFakeTimers()
     const profilePath = tempProfilePath()
-    let watchCallback: ((eventType: string, filename: string | Buffer | null) => void) | null =
-      null
+    const watch: {
+      callback: ((eventType: string, filename: string | Buffer | null) => void) | null
+    } = { callback: null }
     const service = createJsonProfileService(profilePath, {
       debounceMs: 20,
       setTimeoutFn: (callback, ms) => setTimeout(callback, ms),
       clearTimeoutFn: (handle) => clearTimeout(handle),
       watchFn: ((_directory, _options, listener) => {
-        watchCallback = listener as (eventType: string, filename: string | Buffer | null) => void
+        watch.callback = listener as (eventType: string, filename: string | Buffer | null) => void
         return {
           close() {
-            watchCallback = null
+            watch.callback = null
           },
         } as fs.FSWatcher
       }) as typeof fs.watch,
@@ -875,7 +879,7 @@ describe('JSON profile adapter', () => {
     const events: Array<{ kind: string }> = []
     const unsubscribe = service.subscribe((event) => events.push({ kind: event.kind }))
     fs.writeFileSync(profilePath, '{bad', 'utf8')
-    watchCallback?.('change', 'profile.json')
+    watch.callback?.('change', 'profile.json')
     await vi.advanceTimersByTimeAsync(100)
     expect(events.at(-1)).toEqual({ kind: 'invalid' })
     expect(service.getLastKnownGoodPreview()?.stale).toBe(true)

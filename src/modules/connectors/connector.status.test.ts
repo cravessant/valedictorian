@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ConnectorStatusSummaryRecord } from './connector.repository'
+import type { ConnectorStatusSummaryRecord, ConnectorWarning } from './connector.repository'
 import { mapConnectorStatusSummary } from './connector.status'
 
 describe('connector status mapping', () => {
@@ -555,7 +555,9 @@ function createStatusRecord(
     connectorVersion: '0.1.0',
     createdAt: '2026-07-08T15:00:00.000Z',
     displayName: 'Fixture Jobs',
+    earliestBackfillDate: '2026-07-01',
     enabled: true,
+    executionScopeId: 'scope_fixture_connector_status',
     filters: {},
     id: 'connector-instance-fixture',
     latestRun: null,
@@ -564,8 +566,13 @@ function createStatusRecord(
   }
 }
 
+type ConnectorRunRecordOverrides
+  = Partial<Omit<NonNullable<ConnectorStatusSummaryRecord['latestRun']>, 'warnings'>>
+    // Persisted warnings are raw provider evidence: sanitization is what these tests prove.
+    & { warnings?: ReadonlyArray<ConnectorWarning & Record<string, unknown>> }
+
 function createRunRecord(
-  overrides: Partial<NonNullable<ConnectorStatusSummaryRecord['latestRun']>> = {},
+  overrides: ConnectorRunRecordOverrides = {},
 ): NonNullable<ConnectorStatusSummaryRecord['latestRun']> {
   const status = overrides.status ?? 'completed'
   const warnings = overrides.warnings ?? []

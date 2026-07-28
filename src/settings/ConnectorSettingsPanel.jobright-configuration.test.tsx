@@ -132,7 +132,9 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
     vi.mocked(connectorsApi.create).mockClear()
     vi.mocked(connectorsApi.update).mockClear()
     vi.mocked(connectorsApi.status.reconnect).mockImplementation(async (input) => ({
+      action: 'reconnect',
       connectorInstanceId: input.connectorInstanceId,
+      grants: [],
       message: 'Auth verified',
       reason: 'jobright_auth_ready',
       status: 'ready',

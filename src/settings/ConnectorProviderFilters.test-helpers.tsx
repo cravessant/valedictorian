@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { expect, vi } from 'vitest'
 import type {
+  ConnectorDynamicOptions,
   ConnectorOption,
   ConnectorOptionQueryResult,
   ConnectorOptionValue,
+  ConnectorVersionedRendererSchema,
   InstalledConnectorDescriptor,
   ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
@@ -216,7 +218,7 @@ const fixtureConfigSchema = {
       },
     },
   },
-}
+} satisfies ConnectorVersionedRendererSchema
 
 const fixtureFilterSchema = {
   version: 'fixture-provider-filters@1',
@@ -322,7 +324,7 @@ const fixtureFilterSchema = {
       },
     },
   },
-}
+} satisfies ConnectorVersionedRendererSchema
 
 const fixtureDynamicOptions = {
   protocolVersion: 'connector-dynamic-options@1',
@@ -348,7 +350,7 @@ const fixtureDynamicOptions = {
   }, {
     filterPointer: '/excludedSkills', sourceId: 'fixture.skills', cardinality: 'many', intent: 'exclude',
   }],
-}
+} satisfies ConnectorDynamicOptions
 
 export const fixtureDescriptor = {
   connectorId: 'fixture.provider',
@@ -357,7 +359,7 @@ export const fixtureDescriptor = {
   configSchema: fixtureConfigSchema,
   filterSchema: fixtureFilterSchema,
   dynamicOptions: fixtureDynamicOptions,
-} as InstalledConnectorDescriptor
+} satisfies InstalledConnectorDescriptor
 
 const extraSourceDependency = {
   id: 'region',

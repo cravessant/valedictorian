@@ -47,6 +47,10 @@ jobs:
         working-directory: valedictorian-app
         run: pnpm install --frozen-lockfile
 
+      - name: Type-check maintained tests
+        working-directory: valedictorian-app
+        run: pnpm typecheck:tests
+
       - name: Lint
         working-directory: valedictorian-app
         run: pnpm lint
@@ -162,6 +166,10 @@ jobs:
       - name: Install dependencies
         working-directory: valedictorian-app
         run: pnpm install --frozen-lockfile
+
+      - name: Type-check maintained tests
+        working-directory: valedictorian-app
+        run: pnpm typecheck:tests
 
       - name: Lint
         working-directory: valedictorian-app

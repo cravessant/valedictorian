@@ -18,7 +18,7 @@
     "validate:isolated": "tsx scripts/run-isolated-validation.ts",
     "build": "pnpm run typecheck && vite build && electron-builder",
     "build:mac": "vite build && electron-builder --mac --publish never",
-    "lint": "pnpm run typecheck && pnpm run peers:check && pnpm run audit:high && pnpm run lint:line-limit-policy && pnpm run lint:profile-secret-import-policy && pnpm run inspect:pglite-runtime && oxlint . --react-plugin --type-aware --report-unused-disable-directives --deny-warnings",
+    "lint": "pnpm run typecheck && pnpm run typecheck:tests && pnpm run peers:check && pnpm run audit:high && pnpm run lint:line-limit-policy && pnpm run lint:profile-secret-import-policy && pnpm run inspect:pglite-runtime && oxlint . --react-plugin --type-aware --report-unused-disable-directives --deny-warnings",
     "audit:high": "pnpm run proof:brace-expansion-patch && pnpm audit --audit-level high",
     "proof:brace-expansion-patch": "node scripts/brace-expansion-patch-proof.mjs",
     "lint:line-limit-policy": "node scripts/line-limit-policy.mjs",
@@ -35,6 +35,7 @@
     "test:window": "VALEDICTORIAN_WINDOW_TESTS=1 pnpm test -- scripts/isolated-validation.command.test.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:tests": "tsx scripts/maintained-test-typecheck-coverage.ts && tsc -p tsconfig.tests.json --noEmit",
     "db:generate": "tsx scripts/generate-database-baseline.ts",
     "db:migrate": "tsx scripts/migrate.ts"
   },

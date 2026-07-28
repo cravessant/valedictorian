@@ -30,7 +30,7 @@ describe('connectors IPC registration', () => {
         skip,
       },
     } as unknown as LocalValedictorianClient['connectors']
-    const handlers = new Map<string, (_event: unknown) => Promise<unknown>>()
+    const handlers = new Map<string, (event: unknown, input?: unknown) => Promise<unknown>>()
 
     registerConnectorsIpc(connectors, {
       handle(channel, handler) {
@@ -360,7 +360,7 @@ describe('connectors IPC registration', () => {
   })
 
   it('does not register an IPC-only connector status list', async () => {
-    const handlers = new Map<string, (_event: unknown) => Promise<unknown>>()
+    const handlers = new Map<string, (event: unknown, input?: unknown) => Promise<unknown>>()
 
     registerConnectorsIpc(null, {
       handle(channel, handler) {

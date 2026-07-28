@@ -1,13 +1,17 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHttpValedictorianClient, type ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import { createHttpValedictorianClient } from '@sparxie/sdk'
+import { emptyPageInfo } from '../modules/lifecycle-table/lifecycle.test-helpers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { prepareWorkspaceProfileCapabilities } from '../modules/profile/profile.composition'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import {
+  createLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+  type LocalValedictorianClient,
+} from '../runtime/local-valedictorian-client'
 import { createValedictorianRuntime } from '../runtime/valedictorian-runtime'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
@@ -87,9 +91,9 @@ describe('local Valedictorian HTTP server', () => {
     const workspaceClient = createBoundaryTestClient(() => {})
     const listCalls: unknown[] = []
 
-    workspaceClient.applications.list = async (query) => {
+    workspaceClient.applications.list = async (query?) => {
       listCalls.push(query)
-      return { hasMore: false, items: [], limit: 10, offset: 0, total: 0 }
+      return { items: [], pageInfo: emptyPageInfo }
     }
 
     const server = await fixture.start({
@@ -106,49 +110,32 @@ describe('local Valedictorian HTTP server', () => {
       `${server.url}/v1/workspaces/workspace-1/applications?limit=10&offset=0`,
     )
 
-    await expect(readJson(response)).resolves.toEqual({
-      hasMore: false,
-      items: [],
-      limit: 10,
-      offset: 0,
-      total: 0,
-    })
+    await expect(readJson(response)).resolves.toEqual({ items: [], pageInfo: emptyPageInfo })
     expect(response.status).toBe(200)
     expect(listCalls).toEqual([{ limit: 10, offset: 0 }])
   })
 
   it('routes workspace-scoped connector contract requests through the selected workspace client', async () => {
     const rootClient = createBoundaryTestClient(() => {})
-    const workspaceClient = createBoundaryTestClient(() => {}) as ValedictorianWorkspaceClient & {
-      connectors: {
-        list(): Promise<unknown>
-        create(input: unknown): Promise<unknown>
-        update(input: unknown): Promise<unknown>
-        inspect(connectorInstanceId: string): Promise<unknown>
-        runs: {
-          trigger(input: unknown): Promise<unknown>
-        }
-        observations: {
-          list(input: unknown): Promise<unknown>
-        }
-      }
-    }
+    const workspaceClient = createBoundaryTestClient(() => {})
     const calls: unknown[] = []
 
-    workspaceClient.connectors = {
+    // The stubs deliberately answer with payloads the connector contract forbids,
+    // so the HTTP admission layer is the only thing that can reject or strip them.
+    const admissionProbeConnectors = {
       async list() {
         calls.push(['list'])
         return { items: [{ id: 'connector one', displayName: 'Jobright' }] }
       },
-      async create(input) {
+      async create(input: unknown) {
         calls.push(['create', input])
         return { id: 'connector one', displayName: 'Jobright' }
       },
-      async update(input) {
+      async update(input: unknown) {
         calls.push(['update', input])
         return { id: 'connector one', displayName: 'Jobright Internships' }
       },
-      async inspect(connectorInstanceId) {
+      async inspect(connectorInstanceId: string) {
         calls.push(['inspect', connectorInstanceId])
         return {
           id: connectorInstanceId,
@@ -180,7 +167,7 @@ describe('local Valedictorian HTTP server', () => {
         }
       },
       runs: {
-        async trigger(input) {
+        async trigger(input: unknown) {
           calls.push(['trigger', input])
           return {
             id: 'run-queued',
@@ -232,7 +219,7 @@ describe('local Valedictorian HTTP server', () => {
         },
       },
       observations: {
-        async list(input) {
+        async list(input: unknown) {
           calls.push(['observations', input])
           return {
             hasMore: false,
@@ -254,6 +241,8 @@ describe('local Valedictorian HTTP server', () => {
         },
       },
     }
+    workspaceClient.connectors
+      = admissionProbeConnectors as unknown as LocalValedictorianClient['connectors']
 
     const server = await fixture.start({
       client: rootClient,

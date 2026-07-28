@@ -91,7 +91,10 @@ describe('ConnectorSettingsPanel Jobright execution progress', () => {
     const connectorsApi = createConnectorsApiWithJobrightDescriptor()
     const profileApi = createProfileApi()
     const onRunSettled = vi.fn()
-    type ConnectorRun = Awaited<ReturnType<typeof connectorsApi.runs.trigger>>
+    type ConnectorRun = Extract<
+      Awaited<ReturnType<typeof connectorsApi.runs.trigger>>,
+      { mode: 'manual' }
+    >
     let resolveRun: ((run: ConnectorRun) => void) | undefined
     const pendingRun = new Promise<ConnectorRun>((resolve) => {
       resolveRun = resolve
@@ -315,6 +318,7 @@ describe('ConnectorSettingsPanel Jobright execution progress', () => {
         connectorVersion: '0.11.0',
         displayName: 'Jobright internslist',
         enabled: true,
+        lifecycle: 'enabled',
         auth: [{
           id: 'jobright',
           mode: 'username_password' as const,

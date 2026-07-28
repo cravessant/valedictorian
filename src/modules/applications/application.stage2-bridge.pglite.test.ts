@@ -35,7 +35,7 @@ async function setup() {
   return { database, jobs, opportunities, applications }
 }
 
-async function makeLineage(jobs: ReturnType<typeof createPgliteJobService>, opportunities: ReturnType<typeof createPgliteOpportunityService>) {
+async function makeLineage(jobs: ReturnType<typeof createPgliteJobServiceWithCompanies>, opportunities: ReturnType<typeof createPgliteOpportunityService>) {
   const job = await jobs.create({ workspaceId: 'ws-a', facts: { company: 'Acme', title: 'Staff Engineer' }, actor: ACTOR })
   if (!job.ok) throw new Error('job create failed')
   const opp = await opportunities.create({ workspaceId: 'ws-a', jobId: job.job.id, actor: ACTOR })

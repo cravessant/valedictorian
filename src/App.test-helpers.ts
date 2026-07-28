@@ -26,6 +26,7 @@ import {
   type PolicyEvidenceRecord,
   type PolicyRunWindowDecision,
   type ConnectorOptionQueryResult,
+  type ConnectorRetirementResult,
 } from '@sparxie/sdk'
 import { canonicalAlreadyConfiguredBody } from './app/error-presentation'
 import {
@@ -128,6 +129,27 @@ export function createConnectorStatusResult(
   }
 }
 
+export function retiredConnectorResult(connectorInstanceId: string): ConnectorRetirementResult {
+  return {
+    connectorInstanceId,
+    lifecycle: 'retired',
+    retiredAt: '2026-07-09T15:03:00.000Z',
+    requirements: {
+      connectorImplementation: 'not_required',
+      authenticationValidation: 'not_required',
+    },
+    disposition: {
+      configuration: 'removed', schedule: 'removed', checkpoints: 'preserved',
+      executionScopes: 'preserved', futureExecution: 'blocked', authReferences: 'removed',
+      secretValues: 'preserved_for_workspace_secret_administration',
+    },
+    preservedLineage: {
+      connectorRuns: true, captures: true, normalizationAttempts: true,
+      jobs: true, opportunities: true,
+    },
+  }
+}
+
 export function createConnectorsApi(): ConnectorsPreloadApi {
   type ConnectorInstance = Awaited<ReturnType<ConnectorsPreloadApi['list']>>['items'][number]
   type CreateConnectorInput = Parameters<ConnectorsPreloadApi['create']>[0]
@@ -208,24 +230,7 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
       }
       instances = instances.filter((instance) => instance.id !== connectorInstanceId)
       retiredIds.add(connectorInstanceId)
-      return {
-        connectorInstanceId,
-        lifecycle: 'retired',
-        retiredAt: '2026-07-09T15:03:00.000Z',
-        requirements: {
-          connectorImplementation: 'not_required',
-          authenticationValidation: 'not_required',
-        },
-        disposition: {
-          configuration: 'removed', schedule: 'removed', checkpoints: 'preserved',
-          executionScopes: 'preserved', futureExecution: 'blocked', authReferences: 'removed',
-          secretValues: 'preserved_for_workspace_secret_administration',
-        },
-        preservedLineage: {
-          connectorRuns: true, captures: true, normalizationAttempts: true,
-          jobs: true, opportunities: true,
-        },
-      } as const
+      return retiredConnectorResult(connectorInstanceId)
     }),
     inspect: vi.fn(),
     runs: {

@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import type { LifecyclePageInfo } from '@sparxie/sdk'
 import { afterPage, loadAllPages } from './load-pages'
 
-const page = (endCursor: string | null) => ({
-  startCursor: 'start',
-  endCursor,
+/** Opaque lifecycle cursors are branded; fixtures keep readable literals. */
+const cursor = (value: string) => value as LifecyclePageInfo['endCursor']
+
+const page = (endCursor: string | null): LifecyclePageInfo => ({
+  startCursor: cursor('start'),
+  endCursor: endCursor === null ? null : cursor(endCursor),
   hasPreviousPage: false,
   hasNextPage: endCursor !== null,
 })

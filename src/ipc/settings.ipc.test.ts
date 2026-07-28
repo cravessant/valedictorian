@@ -11,7 +11,7 @@ describe('settings IPC registration', () => {
       resolveApiToken: vi.fn(async () => null),
       update: vi.fn(async (patch) => ({ ...defaultAppSettings, ...patch })),
     }
-    const handlers = new Map<string, (_event: unknown, payload?: unknown) => Promise<unknown>>()
+    const handlers = new Map<string, (event: unknown, payload?: unknown) => unknown>()
 
     registerSettingsIpc(store, {
       handle(channel, handler) {
@@ -40,7 +40,7 @@ describe('settings IPC registration', () => {
       update: vi.fn(async (patch) => ({ ...defaultAppSettings, ...patch })),
     }
     const onSettingsUpdated = vi.fn()
-    const handlers = new Map<string, (_event: unknown, payload?: unknown) => Promise<unknown>>()
+    const handlers = new Map<string, (event: unknown, payload?: unknown) => unknown>()
 
     registerSettingsIpc(store, {
       handle(channel, handler) {

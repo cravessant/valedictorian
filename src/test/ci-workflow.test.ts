@@ -92,7 +92,20 @@ describe('CI workflow', () => {
     expect(workflow).toMatch(
       /- name: Build Windows application bundles\n\s+if: runner\.os == 'Windows'/,
     )
-    expect(workflow).not.toContain('run: pnpm typecheck')
+    // Production type checking stays inside `pnpm lint`; only the dedicated
+    // maintained-test program earns its own step.
+    expect(workflow).not.toMatch(/run: pnpm typecheck$/m)
+  })
+
+  it('type-checks maintained tests explicitly on the draft and ready paths', () => {
+    const workflow = fs.readFileSync(workflowPath, 'utf8')
+    const quality = sectionBetween(workflow, '\n  quality:\n', '\n  test:\n')
+    const devProof = sectionBetween(workflow, '\n  dev-proof:\n', '\n  package-smoke:')
+
+    for (const job of [quality, devProof]) {
+      expect(job).toContain('- name: Type-check maintained tests')
+      expect(job).toContain('run: pnpm typecheck:tests')
+    }
   })
 
   it('runs lint alone for drafts without spending package or test runner minutes', () => {

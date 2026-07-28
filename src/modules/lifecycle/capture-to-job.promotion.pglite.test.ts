@@ -16,6 +16,7 @@ import { jobCaptureEvidenceReferences, jobExternalIdentities, jobs as jobRows } 
 import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { createPgliteJobIdentityService } from '../job/job.identity'
+import { admitCommandActor } from './lifecycle-representation'
 import {
   createPgliteJobPromotion,
   type DestinationResolution,
@@ -87,7 +88,7 @@ describe.sequential('Capture→Job promotion (#300)', () => {
       workspaceId: 'ws-a',
       captureId: capture.id,
       jobId: created.job.id,
-      actor: ACTOR,
+      actor: admitCommandActor(ACTOR),
       evidenceReferences: [{
         captureId: capture.id,
         captureRevision: capture.revision,

@@ -6,7 +6,7 @@ import {
   createProfileApi,
 } from '../App.test-helpers'
 import { unavailableScheduleApi } from './connector-schedule.test-helpers'
-import type { ConnectorSettingsRun } from './connector-settings.types'
+import type { ConnectorSettingsInstance, ConnectorSettingsRun } from './connector-settings.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
 import { openConnectorEditor } from './ConnectorSettingsPanel.test-helpers'
 
@@ -51,6 +51,7 @@ function instanceFixture(overrides: {
     connectorVersion: '0.11.0',
     displayName: overrides.displayName ?? 'Jobright internslist',
     enabled: overrides.enabled ?? true,
+    lifecycle: (overrides.enabled ?? true) ? 'enabled' : 'disabled',
     auth: [{
       id: 'jobright',
       mode: 'username_password' as const,
@@ -62,12 +63,12 @@ function instanceFixture(overrides: {
     earliestBackfillDate: '2026-07-02',
     createdAt: '2026-07-09T15:00:00.000Z',
     updatedAt: '2026-07-09T15:00:00.000Z',
-  }
+  } satisfies ConnectorSettingsInstance
 }
 
 function createRun(
   connectorInstanceId: string,
-  status: 'succeeded' | 'failed' | 'running' | 'queued',
+  status: 'completed' | 'failed' | 'running' | 'queued',
 ): ConnectorSettingsRun {
   return {
     id: `run-${connectorInstanceId}-${status}`,
@@ -76,25 +77,20 @@ function createRun(
     mode: 'manual',
     scheduleOccurrence: null,
     status,
-    coverage: {
-      start: '2026-07-09T15:00:00.000Z',
-      end: '2026-07-09T16:00:00.000Z',
-    },
     filterSignature: 'filters:{}',
     observationCount: 0,
     warningCount: 0,
+    warnings: [],
     newestFrontier: { state: 'caught_up' },
     historicalBackfill: {
       state: 'caught_up',
       boundary: { earliestDate: '2026-07-02' },
     },
     pendingResolutionCount: 0,
-    outcome: { kind: 'caught_up' as const },
-    createdAt: '2026-07-09T15:00:00.000Z',
-    updatedAt: '2026-07-09T15:00:00.000Z',
+    outcome: { kind: 'caught_up' },
     startedAt: '2026-07-09T15:00:00.000Z',
-    finishedAt: status === 'running' || status === 'queued' ? null : '2026-07-09T15:01:00.000Z',
-  } as ConnectorSettingsRun
+    completedAt: status === 'running' || status === 'queued' ? null : '2026-07-09T15:01:00.000Z',
+  }
 }
 
 describe('ConnectorSettingsPanel concurrent manual runs', () => {
@@ -154,7 +150,7 @@ describe('ConnectorSettingsPanel concurrent manual runs', () => {
     expect(within(dialogAAgain).getByRole('button', { name: 'Running...' })).toBeDisabled()
 
     await act(async () => {
-      resolveA(createRun('jobright-a', 'succeeded'))
+      resolveA(createRun('jobright-a', 'completed'))
     })
     await waitFor(() => {
       expect(within(dialogAAgain).getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
@@ -190,7 +186,7 @@ describe('ConnectorSettingsPanel concurrent manual runs', () => {
     expect(connectorsApi.runs.trigger).toHaveBeenCalledTimes(1)
 
     await act(async () => {
-      resolveRun(createRun(instance.id, 'succeeded'))
+      resolveRun(createRun(instance.id, 'completed'))
     })
     await waitFor(() => {
       expect(within(dialog).getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()

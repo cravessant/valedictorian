@@ -201,7 +201,7 @@ describe.sequential('canonical lifecycle HTTP and typed client', () => {
     const { client } = await setup()
     const capture = await client.captures.create(CAPTURE_INPUT)
     if (capture.status !== 'succeeded') throw new Error('capture create failed')
-    const promoteCapture = {
+    const promoteCapture: Parameters<typeof client.captures.promoteToJob>[0] = {
       idempotencyKey: 'promote-capture-http',
       actor: USER,
       captureId: capture.resource.id,
@@ -212,7 +212,7 @@ describe.sequential('canonical lifecycle HTTP and typed client', () => {
       override: {
         actor: USER,
         rationale: 'Accept provisional provider-less identity',
-        warningCodes: ['missing_optional_facts'] as const,
+        warningCodes: ['missing_optional_facts'],
       },
     }
     const job = await client.captures.promoteToJob(promoteCapture)
@@ -226,16 +226,16 @@ describe.sequential('canonical lifecycle HTTP and typed client', () => {
     if (repeatedJob.status !== 'promoted') throw new Error('capture replay failed')
     expect(repeatedJob.resource.id).toBe(job.resource.id)
 
-    const promoteJob = {
+    const promoteJob: Parameters<typeof client.jobs.promoteToOpportunity>[0] = {
       idempotencyKey: 'promote-job-http',
       actor: USER,
       jobId: job.resource.id,
       expectedFactsRevision: 1,
-      evaluation: { fit: 'possible' as const, rank: null, cutoff: 'below' as const, disposition: 'pursue' as const },
+      evaluation: { fit: 'possible', rank: null, cutoff: 'below', disposition: 'pursue' },
       override: {
         actor: USER,
         rationale: 'Pursue despite policy warnings',
-        warningCodes: ['fit', 'rank', 'cutoff', 'weak_possible_match'] as const,
+        warningCodes: ['fit', 'rank', 'cutoff', 'weak_possible_match'],
       },
     }
     const opportunity = await client.jobs.promoteToOpportunity(promoteJob)
@@ -247,7 +247,7 @@ describe.sequential('canonical lifecycle HTTP and typed client', () => {
     const repeatedOpportunity = await client.jobs.promoteToOpportunity(promoteJob)
     expect(repeatedOpportunity).toMatchObject({ status: 'promoted', created: false })
 
-    const promoteOpportunity = {
+    const promoteOpportunity: Parameters<typeof client.opportunities.promoteToApplication>[0] = {
       idempotencyKey: 'promote-opportunity-http',
       actor: USER,
       opportunityId: opportunity.resource.id,
@@ -256,7 +256,7 @@ describe.sequential('canonical lifecycle HTTP and typed client', () => {
       override: {
         actor: USER,
         rationale: 'Apply despite possible fit',
-        warningCodes: ['fit', 'weak_possible_match'] as const,
+        warningCodes: ['fit', 'weak_possible_match'],
       },
     }
     const application = await client.opportunities.promoteToApplication(promoteOpportunity)

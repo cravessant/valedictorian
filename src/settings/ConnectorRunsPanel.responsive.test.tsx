@@ -11,7 +11,9 @@ import { ConnectorRunsPanel } from './ConnectorRunsPanel'
 
 afterEach(cleanup)
 
-function runFixture(overrides: Partial<ConnectorSettingsRun> = {}): ConnectorSettingsRun {
+type ManualConnectorRun = Extract<ConnectorSettingsRun, { mode: 'manual' }>
+
+function runFixture(overrides: Partial<ManualConnectorRun> = {}): ManualConnectorRun {
   return {
     id: 'connector-run-responsive',
     connectorInstanceId: 'jobright-responsive',
@@ -22,7 +24,12 @@ function runFixture(overrides: Partial<ConnectorSettingsRun> = {}): ConnectorSet
     filterSignature: 'filters:{}',
     observationCount: 0,
     warningCount: 1,
-    warnings: [{ code: 'jobright_auth_failed', message: 'Authentication failed' }],
+    warnings: [{
+      code: 'jobright_auth_failed',
+      label: null,
+      message: 'Authentication failed',
+      severity: 'warning',
+    }],
     newestFrontier: { state: 'not_started' },
     historicalBackfill: {
       state: 'not_started',

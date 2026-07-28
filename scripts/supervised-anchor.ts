@@ -37,7 +37,7 @@ function reportLeaderExit(code: number | null, signal: NodeJS.Signals | null) {
     type: SUPERVISED_LEADER_EXIT_MESSAGE,
   }
   if (!process.send) return
-  process.send(message, () => process.disconnect())
+  process.send(message, () => process.disconnect?.())
 }
 
 leader.once('error', () => reportLeaderExit(1, null))

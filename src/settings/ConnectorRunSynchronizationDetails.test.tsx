@@ -82,7 +82,7 @@ describe('ConnectorRunSynchronizationDetails', () => {
     ['queued', {}, 'Queued'],
   ] as const)('renders the %s state deterministically', (_name, overrides, label) => {
     render(<ConnectorRunSynchronizationDetails run={runFixture(
-      overrides as Partial<ConnectorSettingsRun>,
+      overrides as Partial<ManualConnectorRun>,
     )} />)
 
     expect(screen.getByRole('status', { name: 'Connector synchronization state' }))
@@ -626,7 +626,9 @@ function installedReconciledLifecycleFixture(): NonNullable<ConnectorSettingsRun
   }
 }
 
-function runFixture(overrides: Partial<ConnectorSettingsRun> = {}): ConnectorSettingsRun {
+type ManualConnectorRun = Extract<ConnectorSettingsRun, { mode: 'manual' }>
+
+function runFixture(overrides: Partial<ManualConnectorRun> = {}): ManualConnectorRun {
   return {
     id: 'connector-run-sync-fixture',
     connectorInstanceId: 'connector-instance-fixture',

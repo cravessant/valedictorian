@@ -30,6 +30,7 @@ function completedRun() {
     filterSignature: 'filters:{}',
     observationCount: 0,
     warningCount: 0,
+    warnings: [],
     newestFrontier: { state: 'caught_up' as const },
     historicalBackfill: {
       state: 'caught_up' as const,
@@ -37,10 +38,8 @@ function completedRun() {
     },
     pendingResolutionCount: 0,
     outcome: { kind: 'caught_up' as const },
-    createdAt: '2026-07-09T15:00:00.000Z',
-    updatedAt: '2026-07-09T15:00:00.000Z',
     startedAt: '2026-07-09T15:00:00.000Z',
-    finishedAt: '2026-07-09T15:01:00.000Z',
+    completedAt: '2026-07-09T15:01:00.000Z',
   }
 }
 

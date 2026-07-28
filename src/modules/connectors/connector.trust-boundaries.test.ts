@@ -81,12 +81,16 @@ describe('registry admission boundary', () => {
   it('freezes the admitted descriptor through nested schema data', () => {
     const descriptor = createStaticConnectorRegistry([fixtureConnector()]).get(CONNECTOR_ID)!
       .descriptor
-    const properties = descriptor.configSchema!.schema.properties as Record<string, unknown>
+    const schema = descriptor.configSchema!.schema
+    if (!('type' in schema) || schema.type !== 'object') {
+      throw new Error('expected an object renderer schema')
+    }
+    const properties = schema.properties as Record<string, unknown>
 
     expect(Object.isFrozen(descriptor)).toBe(true)
-    expect(Object.isFrozen(descriptor.configSchema!.schema)).toBe(true)
+    expect(Object.isFrozen(schema)).toBe(true)
     expect(Object.isFrozen(properties)).toBe(true)
-    expect(Object.isFrozen(descriptor.configSchema!.schema.required)).toBe(true)
+    expect(Object.isFrozen(schema.required)).toBe(true)
     expect(() => {
       (properties as { batchSize: unknown }).batchSize = { type: 'string' }
     }).toThrow(TypeError)

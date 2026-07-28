@@ -19,7 +19,7 @@ describe.sequential('connector runner 0.10 auth boundary', () => {
     const { database, repository } = await createConnectorRepositoryTestContext()
     const governor = createSourceExecutionGovernor(database)
     const revealSecret = vi.fn(async () => null)
-    const connector: AppJobConnector = { definition: { id: 'fixture.optimistic', version: '1.0.0', auth: { requirements: [{ id: 'jobright', mode: 'username_password' }] } },
+    const connector: AppJobConnector = { definition: { id: 'fixture.optimistic', version: '1.0.0', auth: { modes: ['username_password'], requirements: [{ id: 'jobright', mode: 'username_password' }] } },
       async refresh(input, runtime) {
         expect(await runtime.auth.resolve({ id: 'jobright', mode: 'username_password' })).toMatchObject({ status: 'ready', sessionId: 'good-session' })
         return result(input)
@@ -38,7 +38,7 @@ describe.sequential('connector runner 0.10 auth boundary', () => {
     const { database, repository } = await createConnectorRepositoryTestContext()
     const governor = createSourceExecutionGovernor(database)
     const revealSecret = vi.fn(async () => null)
-    const connector: AppJobConnector = { definition: { id: 'fixture.rejected', version: '1.0.0', auth: { requirements: [{ id: 'jobright', mode: 'username_password' }] } },
+    const connector: AppJobConnector = { definition: { id: 'fixture.rejected', version: '1.0.0', auth: { modes: ['username_password'], requirements: [{ id: 'jobright', mode: 'username_password' }] } },
       async refresh(input, runtime) {
         expect(await runtime.auth.resolve({ id: 'jobright', mode: 'username_password' })).toMatchObject({ sessionId: 'rejected-session' })
         const refreshed = await runtime.auth.refresh({ id: 'jobright', mode: 'username_password', executionScopeId: input.executionScopeId }, async () => {
@@ -66,7 +66,10 @@ describe.sequential('connector runner 0.10 auth boundary', () => {
       async validateAuth(input, runtime) {
         const established = await runtime.auth.refresh({ id: 'jobright', mode: 'username_password', executionScopeId: input.executionScopeId },
           async () => ({ status: 'ready', sessionId: 'rotated-session' }))
-        return { status: established.status, reason: established.status === 'ready' ? 'jobright_auth_ready' : established.reason }
+        return {
+          status: established.status,
+          reason: established.status === 'ready' ? 'jobright_auth_ready' : 'auth_validation_failed',
+        }
       } }
     const runner = createConnectorRunner({ repository, sourceExecutionGovernor: governor,
       workspaceId: 'workspace', now: () => new Date('2026-07-12T12:00:00.000Z') })
@@ -101,7 +104,7 @@ describe.sequential('connector runner 0.10 auth boundary', () => {
     const { database, repository } = await createConnectorRepositoryTestContext()
     const governor = createSourceExecutionGovernor(database)
     const establish = vi.fn(async () => ({ status: 'ready' as const, sessionId: 'fresh-session' }))
-    const connector: AppJobConnector = { definition: { id: 'fixture.session', version: '1.0.0', auth: { requirements: [{ id: 'jobright', mode: 'username_password' }] } },
+    const connector: AppJobConnector = { definition: { id: 'fixture.session', version: '1.0.0', auth: { modes: ['username_password'], requirements: [{ id: 'jobright', mode: 'username_password' }] } },
       async refresh(input, runtime) {
         const first = await runtime.auth.resolve({ id: 'jobright', mode: 'username_password' })
         expect(first.sessionId).toBeUndefined()
@@ -122,7 +125,7 @@ describe.sequential('connector runner 0.10 auth boundary', () => {
   it('does not establish when a valid persisted session is available', async () => {
     const { database, repository } = await createConnectorRepositoryTestContext()
     const governor = createSourceExecutionGovernor(database)
-    const connector: AppJobConnector = { definition: { id: 'fixture.session', version: '1.0.0', auth: { requirements: [{ id: 'jobright', mode: 'username_password' }] } },
+    const connector: AppJobConnector = { definition: { id: 'fixture.session', version: '1.0.0', auth: { modes: ['username_password'], requirements: [{ id: 'jobright', mode: 'username_password' }] } },
       async refresh(input, runtime) {
         expect(await runtime.auth.resolve({ id: 'jobright', mode: 'username_password' })).toMatchObject({ sessionId: 'persisted' })
         return result(input)

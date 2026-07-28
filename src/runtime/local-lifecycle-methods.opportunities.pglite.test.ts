@@ -19,6 +19,7 @@ import {
   promoteOpportunityToApplicationResultSchema,
   removalResultSchema,
   restoreResultSchema,
+  type JobId,
 } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import { workspaces } from '../db/workspaces.schema'
@@ -73,7 +74,7 @@ async function createJob(methods: Awaited<ReturnType<typeof setup>>['methods']) 
   return job.resource.id
 }
 
-async function createOpportunity(methods: Awaited<ReturnType<typeof setup>>['methods'], jobId?: string) {
+async function createOpportunity(methods: Awaited<ReturnType<typeof setup>>['methods'], jobId?: JobId) {
   const id = jobId ?? (await createJob(methods))
   const result = await methods.opportunities.create({
     idempotencyKey: key(), actor: USER, jobId: id, expectedJobFactsRevision: 1,

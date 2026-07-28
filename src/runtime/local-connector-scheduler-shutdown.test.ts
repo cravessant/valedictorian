@@ -45,7 +45,7 @@ describe('local connector scheduler shutdown', () => {
                   boundary: { earliestDate: input.coverage.start.slice(0, 10) },
                 },
                 pendingResolutionCount: 0,
-                outcome: { kind: 'cancelled' as const, reason: 'scheduler_shutdown' },
+                outcome: { kind: 'cancelled' as const, reason: 'cancelled' as const },
               }
             : base.synchronization,
           warnings: [],

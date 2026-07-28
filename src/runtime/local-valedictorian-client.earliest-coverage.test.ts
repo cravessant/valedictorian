@@ -42,7 +42,7 @@ describe('runtime connector coverage from earliest backfill date', () => {
         observations: [],
         nextCheckpoint: { checkpoint: { cursor: input.mode }, schemaVersion: 'fixture-checkpoint@1' },
         coverage: input.coverage,
-        stats: { observations: 0, stopReason: 'target_met' },
+        stats: { observations: 0, stopReason: 'coverage_exhausted' },
         warnings: [],
         status: 'completed',
         retryHints: null,

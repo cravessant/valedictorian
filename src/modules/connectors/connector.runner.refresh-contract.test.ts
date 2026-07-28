@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
+import type {
+  ConnectorRefreshInput,
+  ConnectorRefreshResult,
+} from '@sparxie/valedictorian-connectors-core'
 import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
@@ -76,19 +80,16 @@ describe.sequential('connector refresh result contract', () => {
 
   it('rejects a cooling-down synchronization outcome without matching scope evidence before persistence', async () => {
     const { repository } = await createConnectorRepositoryTestContext()
-    const connector = {
-      definition: { id: 'fixture.contract', version: '1.0.0' },
-      async refresh(input) {
-        const operation = {
-          kind: 'scope_rate_limited' as const, executionScopeId: input.executionScopeId,
-          retryAt: '2026-07-12T12:02:00.000Z', serverMinimumDelayMs: 120_000,
-        }
-        return {
-          ...validRefreshResult(),
-          synchronization: synchronizationForOutcome({ kind: 'cooling_down', operation }),
-        }
-      },
-    } satisfies AppJobConnector
+    const connector = adversarialRefreshConnector((input) => {
+      const operation = {
+        kind: 'scope_rate_limited' as const, executionScopeId: input.executionScopeId,
+        retryAt: '2026-07-12T12:02:00.000Z', serverMinimumDelayMs: 120_000,
+      }
+      return {
+        ...validRefreshResult(),
+        synchronization: synchronizationForOutcome({ kind: 'cooling_down', operation }),
+      }
+    })
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const instance = await runner.registerInstance({
       id: 'contract-instance', connector, displayName: 'Contract', enabled: true,
@@ -129,7 +130,7 @@ describe.sequential('connector refresh result contract', () => {
   })
 })
 
-function validRefreshResult() {
+function validRefreshResult(): ConnectorRefreshResult {
   return {
     observations: [],
     nextCheckpoint: { checkpoint: { cursor: 'advanced' }, schemaVersion: 'fixture@1' },
@@ -158,11 +159,18 @@ function synchronizationForOutcome(outcome: { kind: string; reason?: string; ope
   }
 }
 
-function adversarialConnector(result: unknown): AppJobConnector {
+/** Adversarial fixtures deliberately return refresh results the contract forbids. */
+function adversarialRefreshConnector(
+  refresh: (input: ConnectorRefreshInput) => unknown,
+): AppJobConnector {
   return {
     definition: { id: 'fixture.contract', version: '1.0.0' },
-    async refresh() { return result },
+    async refresh(input: ConnectorRefreshInput) { return refresh(input) },
   } as unknown as AppJobConnector
+}
+
+function adversarialConnector(result: unknown): AppJobConnector {
+  return adversarialRefreshConnector(() => result)
 }
 
 async function captureRefreshError(

@@ -169,7 +169,7 @@ describe.sequential('runtime local Valedictorian client', () => {
           newestFrontier: { state: 'advancing' },
           historicalBackfill: { state: 'advancing', boundary: { earliestDate: '2026-07-08' } },
           pendingResolutionCount: 1,
-          outcome: { kind: 'failed', reason: 'source_rate_limited' },
+          outcome: { kind: 'failed', reason: 'connector_execution_failed' },
         },
         coverage: {
           start: '2026-07-08T17:00:00.000Z',
@@ -183,7 +183,7 @@ describe.sequential('runtime local Valedictorian client', () => {
         stats: { observations: 0 },
         warnings: [{
           code: 'source.rate_limited',
-          message: 'Sensitive raw rate-limit details.',
+          message: 'The connector source rate limited capture. Retry after the supplied delay.',
         }],
         status: 'failed',
       },

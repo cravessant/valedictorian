@@ -10,6 +10,7 @@ import {
   resolvePackageLocalPgliteRuntimeDirectory,
   resolvePgliteRuntimeAssetPaths,
   resolvePgliteRuntimeDirectory,
+  type PgliteRuntimeBinaryAsset,
 } from './pglite-runtime-assets'
 
 const tempRoots: string[] = []
@@ -27,7 +28,10 @@ function tempRoot(prefix: string) {
   return root
 }
 
-function stageRuntimeAssets(directory: string, assets = PGLITE_RUNTIME_BINARY_ASSETS) {
+function stageRuntimeAssets(
+  directory: string,
+  assets: readonly PgliteRuntimeBinaryAsset[] = PGLITE_RUNTIME_BINARY_ASSETS,
+) {
   fs.mkdirSync(directory, { recursive: true })
   for (const asset of assets) {
     fs.writeFileSync(path.join(directory, asset), `fixture:${asset}`)

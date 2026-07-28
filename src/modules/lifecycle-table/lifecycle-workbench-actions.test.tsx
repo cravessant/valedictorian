@@ -5,9 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   Application,
   Capture,
+  CaptureHistoryResult,
   CaptureListPresentation,
+  CreateJobInput,
+  HistoryListInput,
   Job,
+  JobId,
+  JobMutationResult,
+  PromoteJobToOpportunityInput,
   Opportunity,
+  PromoteJobToOpportunityResult,
+  RemovalInput,
+  RemovalResult,
+  RestoreInput,
+  RestoreResult,
 } from '@sparxie/sdk'
 import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
 
@@ -127,31 +138,22 @@ function makeOpportunity(id: string, overrides: Partial<Opportunity> = {}): Oppo
   }
 }
 
-interface MockClient {
-  client: LocalWorkspaceClientV2
-  captures: Record<string, ReturnType<typeof vi.fn>>
-  captureResolution: Record<string, ReturnType<typeof vi.fn>>
-  jobs: Record<string, ReturnType<typeof vi.fn>>
-  companies: Record<string, ReturnType<typeof vi.fn>>
-  companyAssignments: Record<string, ReturnType<typeof vi.fn>>
-  opportunities: Record<string, ReturnType<typeof vi.fn>>
-  applications: Record<string, ReturnType<typeof vi.fn>>
-}
-
 function makeClient(seed: {
   captures?: Capture[]
   jobs?: Job[]
   opportunities?: Opportunity[]
   applications?: Application[]
-} = {}): MockClient {
+} = {}) {
   const captures = {
     list: vi.fn(async () => ({ items: seed.captures ?? [], pageInfo: emptyPageInfo })),
     get: vi.fn(async () => null),
     create: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeCapture('cap-new'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     correct: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeCapture('cap-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    remove: vi.fn(async () => ({ status: 'removed' as const, id: 'cap-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    restore: vi.fn(async () => ({ status: 'restored' as const, id: 'cap-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    history: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })),
+    remove: vi.fn(async (_input: RemovalInput): Promise<RemovalResult> => ({ status: 'removed', id: 'cap-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    restore: vi.fn(async (_input: RestoreInput): Promise<RestoreResult> => ({ status: 'restored', id: 'cap-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    history: vi.fn(async (_input: HistoryListInput): Promise<CaptureHistoryResult> => (
+      { items: [], pageInfo: emptyPageInfo }
+    )),
     promoteToJob: vi.fn(async () => ({ status: 'promoted' as const, resource: makeJob('job-new'), created: true, warnings: [], override: null, duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
   }
   const captureResolution = {
@@ -172,14 +174,16 @@ function makeClient(seed: {
   const jobs = {
     list: vi.fn(async () => ({ items: seed.jobs ?? [], pageInfo: emptyPageInfo })),
     get: vi.fn(async () => null),
-    create: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeJob('job-new'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    create: vi.fn(async (_input: CreateJobInput): Promise<JobMutationResult> => ({ status: 'succeeded', resource: makeJob('job-new'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     correctFacts: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeJob('job-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     updateAvailability: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeJob('job-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     externalIdentities: { add: vi.fn(async () => ({})), remove: vi.fn(async () => ({})) },
-    remove: vi.fn(async () => ({ status: 'removed' as const, id: 'job-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    restore: vi.fn(async () => ({ status: 'restored' as const, id: 'job-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    remove: vi.fn(async (_input: RemovalInput): Promise<RemovalResult> => ({ status: 'removed', id: 'job-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    restore: vi.fn(async (_input: RestoreInput): Promise<RestoreResult> => ({ status: 'restored', id: 'job-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     history: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })),
-    promoteToOpportunity: vi.fn(async () => ({ status: 'promoted' as const, resource: makeOpportunity('opp-new'), created: true, warnings: [], override: null, duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    promoteToOpportunity: vi.fn(async (
+      _input: PromoteJobToOpportunityInput,
+    ): Promise<PromoteJobToOpportunityResult> => ({ status: 'promoted', resource: makeOpportunity('opp-new'), created: true, warnings: [], override: null, duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
   }
   const opportunities = {
     list: vi.fn(async () => ({ items: seed.opportunities ?? [], pageInfo: emptyPageInfo })),
@@ -187,8 +191,8 @@ function makeClient(seed: {
     create: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeOpportunity('opp-new'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     updateEvaluation: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeOpportunity('opp-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     updateDisposition: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeOpportunity('opp-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    remove: vi.fn(async () => ({ status: 'removed' as const, id: 'opp-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    restore: vi.fn(async () => ({ status: 'restored' as const, id: 'opp-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    remove: vi.fn(async (_input: RemovalInput): Promise<RemovalResult> => ({ status: 'removed', id: 'opp-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    restore: vi.fn(async (_input: RestoreInput): Promise<RestoreResult> => ({ status: 'restored', id: 'opp-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     history: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })),
     promoteToApplication: vi.fn(async () => ({ status: 'promoted' as const, resource: makeApplication('app-new'), created: true, warnings: [], override: null, duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
   }
@@ -201,8 +205,8 @@ function makeClient(seed: {
     updateSource: vi.fn(async () => ({ status: 'succeeded' as const, resource: makeApplication('app-1'), duplicateResolution: null, audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     links: { create: vi.fn(async () => ({})), update: vi.fn(async () => ({})), remove: vi.fn(async () => ({})) },
     refreshSnapshot: vi.fn(async () => ({})),
-    remove: vi.fn(async () => ({ status: 'removed' as const, id: 'app-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
-    restore: vi.fn(async () => ({ status: 'restored' as const, id: 'app-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    remove: vi.fn(async (_input: RemovalInput): Promise<RemovalResult> => ({ status: 'removed', id: 'app-1', choice: 'preserve_historical_lineage' as const, removedAt: '2025-01-01T00:00:00Z', affectedDependentIds: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
+    restore: vi.fn(async (_input: RestoreInput): Promise<RestoreResult> => ({ status: 'restored', id: 'app-1', restoredAt: '2025-01-01T00:00:00Z', dependentLinks: [], audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' } })),
     history: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })),
     attempts: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
     events: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
@@ -254,7 +258,7 @@ function makeClient(seed: {
 /** Submit a Capture removal in one workspace and keep the handles to move workspaces. */
 async function submitCaptureRemovalIn(
   workspaceId: string,
-  stubRemoval: (client: MockClient) => void,
+  stubRemoval: (client: ReturnType<typeof makeClient>) => void,
 ) {
   const user = userEvent.setup()
   const mock = makeClient({ captures: [makeCapture('cap-1')] })
@@ -282,6 +286,11 @@ function expectNoOutcomePublished(): void {
   }
 }
 
+/** Readable non-UUID identifiers keep these UI assertions legible. */
+function testJobId(value: string) {
+  return value as JobId
+}
+
 /** The committed removal a superseded session's command settles with. */
 const committedRemoval = {
   status: 'removed',
@@ -290,7 +299,7 @@ const committedRemoval = {
   removedAt: '2025-02-01T00:00:00Z',
   affectedDependentIds: [],
   audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-01T00:00:00Z' },
-}
+} satisfies RemovalResult
 
 async function openRowMenu(user: ReturnType<typeof userEvent.setup>, rowLabel: string | RegExp) {
   const label = rowLabel instanceof RegExp ? rowLabel.source : rowLabel
@@ -571,8 +580,20 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     const { client, captures } = makeClient({ captures: [makeCapture('cap-1')] })
     captures.history.mockResolvedValue({
       items: [
-        { revision: 2, kind: 'removed', audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-01T00:00:00Z' } },
-        { revision: 3, kind: 'restored', audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-02T00:00:00Z' } },
+        {
+          captureId: 'cap-1',
+          revision: 2,
+          kind: 'removed',
+          snapshot: makeCapture('cap-1'),
+          audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-01T00:00:00Z' },
+        },
+        {
+          captureId: 'cap-1',
+          revision: 3,
+          kind: 'restored',
+          snapshot: makeCapture('cap-1'),
+          audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-02-02T00:00:00Z' },
+        },
       ],
       pageInfo: emptyPageInfo,
     })
@@ -720,7 +741,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
         },
       })
       .mockResolvedValueOnce({
-        status: 'succeeded', resource: makeJob('job-existing'), duplicateResolution: { action: 'attach', targetResourceId: 'job-existing' },
+        status: 'succeeded', resource: makeJob('job-existing'), duplicateResolution: { action: 'attach', targetResourceId: testJobId('job-existing') },
         audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' },
       })
     renderWithQueryClient(<LifecycleWorkbench client={client} />)
@@ -893,10 +914,10 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   })
 
   it('never publishes a command that settles after a supplied client replacement', async () => {
-    let settleRemoval: ((result: unknown) => void) | undefined
+    let settleRemoval: ((result: RemovalResult) => void) | undefined
     const { rerenderIn } = await submitCaptureRemovalIn('ws-a', (client) => {
       client.captures.remove.mockImplementation(
-        () => new Promise<unknown>((resolve) => { settleRemoval = resolve }),
+        () => new Promise<RemovalResult>((resolve) => { settleRemoval = resolve }),
       )
     })
 
@@ -945,10 +966,10 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
   })
 
   it('never publishes a command that settles after the workspace changed', async () => {
-    let settleRemoval: ((result: unknown) => void) | undefined
+    let settleRemoval: ((result: RemovalResult) => void) | undefined
     const { rerenderIn } = await submitCaptureRemovalIn('ws-a', (client) => {
       client.captures.remove.mockImplementation(
-        () => new Promise<unknown>((resolve) => { settleRemoval = resolve }),
+        () => new Promise<RemovalResult>((resolve) => { settleRemoval = resolve }),
       )
     })
 

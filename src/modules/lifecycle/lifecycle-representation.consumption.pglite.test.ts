@@ -64,7 +64,7 @@ describe.sequential('shared lifecycle representations — production consumption
       await captures.correct({ workspaceId: OVER_LONG_ID, captureId: 'c', correction: {}, actor: ACTOR }),
       await jobs.remove({ workspaceId: OVER_LONG_ID, jobId: 'j', actor: ACTOR }),
       await opportunities.remove({ workspaceId: OVER_LONG_ID, opportunityId: 'o', actor: ACTOR }),
-      await applications.remove({ workspaceId: OVER_LONG_ID, applicationId: 'a', actor: ACTOR, dependentChoice: 'cascade' }),
+      await applications.remove({ workspaceId: OVER_LONG_ID, applicationId: 'a', actor: ACTOR, dependents: 'cascade' }),
     ]
     for (const rejection of rejections) {
       expect(rejection).toMatchObject({
@@ -85,7 +85,7 @@ describe.sequential('shared lifecycle representations — production consumption
       await captures.correct({ workspaceId: 'ws-a', captureId: 'c', correction: {}, actor: overLongActor }),
       await jobs.remove({ workspaceId: 'ws-a', jobId: 'j', actor: overLongActor }),
       await opportunities.remove({ workspaceId: 'ws-a', opportunityId: 'o', actor: overLongActor }),
-      await applications.remove({ workspaceId: 'ws-a', applicationId: 'a', actor: overLongActor, dependentChoice: 'cascade' }),
+      await applications.remove({ workspaceId: 'ws-a', applicationId: 'a', actor: overLongActor, dependents: 'cascade' }),
     ]
     for (const rejection of rejections) {
       expect(rejection).toMatchObject({

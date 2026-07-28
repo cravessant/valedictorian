@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { connectorRunSynchronizationCopy } from './connector.run-presentation'
+import {
+  connectorRunSynchronizationCopy,
+  type ConnectorSynchronizationInput,
+} from './connector.run-presentation'
 
 describe('connector synchronization presentation', () => {
   it('presents an advancing newest frontier as checking newest', () => {
@@ -170,7 +173,9 @@ describe('connector synchronization presentation', () => {
   })
 })
 
-function synchronizationFixture(overrides: Record<string, unknown> = {}) {
+function synchronizationFixture(
+  overrides: Partial<ConnectorSynchronizationInput> = {},
+): ConnectorSynchronizationInput {
   return {
     status: 'running',
     newestFrontier: { state: 'not_started' },

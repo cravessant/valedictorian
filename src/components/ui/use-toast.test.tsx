@@ -1,13 +1,21 @@
 import { render } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+type SonnerToastData = Record<string, unknown>
+
 const sonnerToast = vi.hoisted(() => {
   let nextId = 0
-  const toastFn = vi.fn(() => `toast-default-${nextId++}`)
+  const toastFn = vi.fn(
+    (_message: string, _data?: SonnerToastData): string | number => `toast-default-${nextId++}`,
+  )
   return Object.assign(toastFn, {
     dismiss: vi.fn(),
-    error: vi.fn(() => `toast-error-${nextId++}`),
-    success: vi.fn(() => `toast-success-${nextId++}`),
+    error: vi.fn(
+      (_message: string, _data?: SonnerToastData): string | number => `toast-error-${nextId++}`,
+    ),
+    success: vi.fn(
+      (_message: string, _data?: SonnerToastData): string | number => `toast-success-${nextId++}`,
+    ),
     resetIds() {
       nextId = 0
     },
@@ -286,11 +294,8 @@ describe('useToast sonner adapter', () => {
   })
 })
 
-function renderHookToast(useToast: () => {
-  dismiss: typeof sonnerToast.dismiss
-  toast: (input: unknown) => unknown
-}) {
-  let result!: ReturnType<typeof useToast>
+function renderHookToast<Hook>(useToast: () => Hook) {
+  let result!: Hook
   function Probe() {
     result = useToast()
     return null

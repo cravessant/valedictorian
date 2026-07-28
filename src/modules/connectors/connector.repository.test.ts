@@ -113,8 +113,8 @@ describe.sequential('PGlite connector repository', () => {
         },
         warnings: [
           {
-            code: 'fixture.warning',
-            message: 'Fixture warning for host persistence coverage.',
+            code: 'source.retryable',
+            message: 'The connector source is temporarily unavailable. Retry later.',
           },
         ],
         retryHints: null,
@@ -712,8 +712,8 @@ describe.sequential('PGlite connector repository', () => {
         status: 'completed',
         warnings: [
           {
-            code: 'auth.expired_session',
-            message: 'Fixture session expired.',
+            code: 'auth.required',
+            message: 'Connector authentication is required before capture can continue.',
           },
         ],
         retryHints: null,
@@ -755,8 +755,8 @@ describe.sequential('PGlite connector repository', () => {
           warningCount: 1,
           warnings: [
             {
-              code: 'auth.expired_session',
-              message: 'Fixture session expired.',
+              code: 'auth.required',
+              message: 'Connector authentication is required before capture can continue.',
             },
           ],
         }),

@@ -20,6 +20,7 @@ import {
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import type { JobService } from '../job/job.service'
+import type { JsonValue } from '../capture/capture.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { createPgliteOpportunityService, type OpportunityService } from '../opportunity/opportunity.service'
 import { createPgliteApplicationAggregateService, type ApplicationAggregateService } from './application.aggregate.service'
@@ -48,7 +49,7 @@ async function setup(workspaceIds: readonly string[] = ['ws-a', 'ws-b']) {
   return { database, jobs, opportunities, applications, readModel }
 }
 
-async function makeLineage(jobs: JobService, opportunities: OpportunityService, workspaceId = 'ws-a', facts: Record<string, unknown> = { company: 'Acme', title: 'Staff Engineer' }) {
+async function makeLineage(jobs: JobService, opportunities: OpportunityService, workspaceId = 'ws-a', facts: JsonValue = { company: 'Acme', title: 'Staff Engineer' }) {
   const job = await jobs.create({ workspaceId, facts, actor: ACTOR })
   if (!job.ok) throw new Error(`job create failed: ${job.code}`)
   const opp = await opportunities.create({ workspaceId, jobId: job.job.id, actor: ACTOR })
@@ -90,7 +91,7 @@ describe.sequential('Application read-model (#304)', () => {
 
     await applications.transitionStatus({ workspaceId: 'ws-a', applicationId, status: 'submitted', actor: ACTOR })
     await applications.editCompany({ workspaceId: 'ws-a', applicationId, companyName: 'Acme Corp', actor: ACTOR })
-    await applications.addLink({ workspaceId: 'ws-a', applicationId, link: { kind: 'portal', label: 'Portal', url: 'https://acme.example/apply' }, actor: ACTOR })
+    await applications.addLink({ workspaceId: 'ws-a', applicationId, link: { kind: 'portal', label: 'Portal', url: 'https://acme.example/apply', isPrimary: false }, actor: ACTOR })
 
     const dto = await readModel.getApplication('ws-a', applicationId)
     expect(() => applicationSchema.parse(dto)).not.toThrow()

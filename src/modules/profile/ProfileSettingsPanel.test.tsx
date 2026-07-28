@@ -7,6 +7,11 @@ import {
   within
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  normalizeProfileAnswerInput,
+  normalizeProfileEducationInput,
+  type UserProfile,
+} from '@sparxie/sdk'
 import { Toaster } from '../../components/ui/sonner'
 import {
   createProfileApi,
@@ -21,12 +26,12 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
-  delete (window as Window & { applications?: unknown }).applications
+  delete (window as Partial<Window>).applications
   delete (window as Window & { sourcing?: unknown }).sourcing
-  delete (window as Window & { settings?: unknown }).settings
-  delete (window as Window & { profile?: unknown }).profile
-  delete (window as Window & { workspace?: unknown }).workspace
-  delete (window as Window & { valedictorianWindowChrome?: unknown }).valedictorianWindowChrome
+  delete (window as Partial<Window>).settings
+  delete (window as Partial<Window>).profile
+  delete (window as Partial<Window>).workspace
+  delete (window as Partial<Window>).valedictorianWindowChrome
 })
 
 function renderProfileSettings(profileApi: ReturnType<typeof createProfileApi>) {
@@ -41,7 +46,7 @@ function renderProfileSettings(profileApi: ReturnType<typeof createProfileApi>) 
 describe('profile settings', () => {
   it('exposes a named loading status while profile data is pending', async () => {
     const profileApi = createProfileApi()
-    profileApi.get = vi.fn(() => new Promise(() => undefined))
+    profileApi.get = vi.fn(() => new Promise<UserProfile>(() => undefined))
 
     renderProfileSettings(profileApi)
 
@@ -764,7 +769,7 @@ describe('profile destructive confirmations', () => {
     let rejectDelete: ((reason?: unknown) => void) | undefined
     profileApi.secrets.delete = vi.fn(
       () =>
-        new Promise((_, reject) => {
+        new Promise<void>((_, reject) => {
           rejectDelete = reject
         }),
     )
@@ -804,8 +809,8 @@ describe('profile destructive confirmations', () => {
         return {
           ...current,
           ...patch,
-          answers: patch.answers ?? current.answers,
-          education: patch.education ?? current.education,
+          answers: patch.answers?.map(normalizeProfileAnswerInput) ?? current.answers,
+          education: patch.education?.map(normalizeProfileEducationInput) ?? current.education,
         }
       })
 
@@ -875,8 +880,8 @@ describe('profile destructive confirmations', () => {
         return {
           ...current,
           ...patch,
-          answers: patch.answers ?? current.answers,
-          education: patch.education ?? current.education,
+          answers: patch.answers?.map(normalizeProfileAnswerInput) ?? current.answers,
+          education: patch.education?.map(normalizeProfileEducationInput) ?? current.education,
         }
       })
 

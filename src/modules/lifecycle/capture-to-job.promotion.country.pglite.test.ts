@@ -11,7 +11,7 @@ import { eq } from 'drizzle-orm'
 import { createJobrightProviderFieldResolver } from '@sparxie/valedictorian-connectors-jobright'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
-import { createPgliteCaptureService } from '../capture/capture.service'
+import { createPgliteCaptureService, type JsonValue } from '../capture/capture.service'
 import { createCaptureFieldOutcomeStore } from '../capture/capture.field-outcomes'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { jobs } from '../job/job.schema'
@@ -35,7 +35,7 @@ function clock() {
   return new Date(Date.UTC(2026, 6, 22, 12, 0, 0))
 }
 
-function validFacts(location: unknown) {
+function validFacts(location: JsonValue): JsonValue {
   return {
     companyName: 'Acme', roleTitle: 'Engineer', sourceName: 'Jobright', roleKind: 'experienced',
     term: null, terms: [], timingMode: 'unknown', startDate: null, endDate: null,

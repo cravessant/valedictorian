@@ -29,10 +29,11 @@ describe('local server hostile error-inspection boundary', () => {
         events.push(event)
       },
       pathname: '/v1/workspaces/secret-proto-trap/secrets/local/resolve',
+      // A hostile probe supplies only the fields the boundary is allowed to read.
       request: {
         headers: { 'x-request-id': 'secret-proto-trap-279' },
         method: 'POST',
-      } as http.IncomingMessage,
+      } as unknown as http.IncomingMessage,
       response,
     })).not.toThrow()
 

@@ -1,7 +1,11 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CaptureListPresentation, ValedictorianWorkspaceClientV2 } from '@sparxie/sdk'
+import type {
+  CaptureListPresentation,
+  JobId,
+  ValedictorianWorkspaceClientV2,
+} from '@sparxie/sdk'
 
 import { LifecycleTable } from './lifecycle-table'
 import {
@@ -37,7 +41,12 @@ interface WorkspaceClientLike {
   applications: { list: (input?: unknown) => Promise<unknown> }
 }
 
-function makeClient(): WorkspaceClientLike & Pick<ValedictorianWorkspaceClientV2, 'captures' | 'jobs' | 'opportunities' | 'applications'> {
+type LifecycleTableTestClient = WorkspaceClientLike & Pick<
+  ValedictorianWorkspaceClientV2,
+  'captures' | 'captureResolutionV2' | 'jobs' | 'opportunities' | 'applications'
+>
+
+function makeClient(): LifecycleTableTestClient {
   return {
     captures: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
     captureResolutionV2: {
@@ -55,7 +64,7 @@ function makeClient(): WorkspaceClientLike & Pick<ValedictorianWorkspaceClientV2
     jobs: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
     opportunities: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
     applications: { list: vi.fn(async () => ({ items: [], pageInfo: emptyPageInfo })) },
-  } as unknown as WorkspaceClientLike & Pick<ValedictorianWorkspaceClientV2, 'captures' | 'jobs' | 'opportunities' | 'applications'>
+  } as unknown as LifecycleTableTestClient
 }
 
 describe('lifecycle typed configs', () => {
@@ -203,7 +212,7 @@ describe('lifecycle typed configs', () => {
   it('exposes read-only resolution details for destination outcomes no completion intent explains', async () => {
     const user = userEvent.setup()
     const onComplete = vi.fn()
-    const onViewResolution = vi.fn()
+    const onViewResolution = vi.fn((_row: CaptureListPresentation) => {})
     const items = [
       destinationOutcome('capture-authenticate', 'blocked', {
         kind: 'authenticate_provider',
@@ -346,7 +355,7 @@ describe('Capture column containment', () => {
     const user = userEvent.setup()
     const onComplete = vi.fn()
     const onOpenJob = vi.fn()
-    const onViewResolution = vi.fn()
+    const onViewResolution = vi.fn((_row: CaptureListPresentation) => {})
     const linkedJob = renderContainmentRows({ onComplete, onOpenJob, onViewResolution })
 
     await user.click(linkedJob)
@@ -389,10 +398,15 @@ function destinationOutcome(
   }
 }
 
+/** Readable non-UUID identifiers keep these UI assertions legible. */
+function testJobId(value: string) {
+  return value as JobId
+}
+
 function captureWithIntent(
   captureId: string,
   kind: 'resolve_duplicate_job' | 'resolve_company_assignment',
-) {
+): CaptureListPresentation {
   return {
     captureId,
     captureRevision: 1,
@@ -405,7 +419,11 @@ function captureWithIntent(
     activeProcessing: false,
     linkedJob: null,
     primaryIntent: kind === 'resolve_duplicate_job'
-      ? { kind, conflictingJobIds: ['job-duplicate'], supportedActions: ['attach'] }
-      : { kind, jobId: 'job-assignment', currentCompanyId: 'company-assignment' },
+      ? { kind, conflictingJobIds: [testJobId('job-duplicate')], supportedActions: ['attach'] }
+      : {
+          kind,
+          jobId: testJobId('job-assignment'),
+          currentCompanyId: 'company-assignment',
+        },
   }
 }

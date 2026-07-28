@@ -211,10 +211,10 @@ describe('build configuration', () => {
     expect(sequencer).toContain('sortWorkspaceSpecsByDescendingWeight')
     expect(sequencer).toContain('assignWorkspaceSpecsToDurationBalancedShards')
     expect(sequencer).toMatch(
-      /override async sort\(files: WorkspaceSpec\[]\) \{\n\s+return sortWorkspaceSpecsByDescendingWeight/,
+      /override async sort\(files: TestSpecification\[]\) \{\n\s+return sortWorkspaceSpecsByDescendingWeight/,
     )
     expect(sequencer).toMatch(
-      /override async shard\(files: WorkspaceSpec\[]\) \{[\s\S]*?assignWorkspaceSpecsToDurationBalancedShards/,
+      /override async shard\(files: TestSpecification\[]\) \{[\s\S]*?assignWorkspaceSpecsToDurationBalancedShards/,
     )
     const sortWorkspaceFn = sequencer.match(
       /export function sortWorkspaceSpecsByDescendingWeight\([\s\S]*?\n\}/,

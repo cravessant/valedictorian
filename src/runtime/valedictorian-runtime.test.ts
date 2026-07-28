@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ValedictorianClient, ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import type { ValedictorianClient } from '@sparxie/sdk'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -7,8 +7,11 @@ import { createConnectorRunRecoveryLifecycle } from '../modules/connectors/conne
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createValedictorianRuntime, resolveValedictorianRuntimeConfig } from './valedictorian-runtime'
 import type { LocalScheduler } from './local-scheduler'
+import type { LocalValedictorianClient } from './local-valedictorian-client'
+import type { CreateValedictorianHttpServerOptions } from '../server/local-server'
+import { defaultAppSettings } from '../settings/app-settings'
 
-function createWorkspaceClient(name: string): ValedictorianWorkspaceClient {
+function createWorkspaceClient(name: string): LocalValedictorianClient {
   return {
     applications: {
       get: vi.fn(async () => null),
@@ -26,11 +29,11 @@ function createWorkspaceClient(name: string): ValedictorianWorkspaceClient {
     scores: {
       record: vi.fn(async () => undefined),
     },
-  } as unknown as ValedictorianWorkspaceClient
+  } as unknown as LocalValedictorianClient
 }
 
 function createRootClient(
-  workspaceClient: ValedictorianWorkspaceClient,
+  workspaceClient: LocalValedictorianClient,
   forWorkspace = vi.fn(() => workspaceClient),
 ): ValedictorianClient {
   return {
@@ -150,6 +153,7 @@ describe('Valedictorian runtime config', () => {
         apiToken: 'saved-token',
         env: {},
         settings: {
+          ...defaultAppSettings,
           apiTokenConfigured: false,
           localApiHost: '0.0.0.0',
           localApiPort: 7777,
@@ -177,6 +181,7 @@ describe('Valedictorian runtime config', () => {
         apiToken: 'remote-token',
         env: {},
         settings: {
+          ...defaultAppSettings,
           apiTokenConfigured: false,
           localApiHost: '127.0.0.1',
           localApiPort: 4317,
@@ -206,6 +211,7 @@ describe('Valedictorian runtime config', () => {
           VALEDICTORIAN_MODE: 'remote',
         },
         settings: {
+          ...defaultAppSettings,
           apiTokenConfigured: false,
           localApiHost: '0.0.0.0',
           localApiPort: 7777,
@@ -244,7 +250,7 @@ describe('Valedictorian runtime creation', () => {
       return localClient
     })
     const server = {
-      close: vi.fn(async () => events.push('server.close')),
+      close: vi.fn(async () => { events.push('server.close') }),
       url: 'http://127.0.0.1:4317',
     }
 
@@ -305,11 +311,11 @@ describe('Valedictorian runtime creation', () => {
       register: vi.fn(),
       signal: vi.fn(),
       start: vi.fn(() => events.push('scheduler.start')),
-      stop: vi.fn(async () => events.push('scheduler.stop')),
+      stop: vi.fn(async () => { events.push('scheduler.stop') }),
       whenIdle: vi.fn(async () => undefined),
     }
     const server = {
-      close: vi.fn(async () => events.push('server.close')),
+      close: vi.fn(async () => { events.push('server.close') }),
       url: 'http://127.0.0.1:4317',
     }
 
@@ -332,7 +338,7 @@ describe('Valedictorian runtime creation', () => {
     const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:4317' }
     const createLocalClient = vi.fn(() => localClient)
     const createHttpClient = vi.fn(() => createRootClient(createWorkspaceClient('http')))
-    const startServer = vi.fn(async () => server)
+    const startServer = vi.fn(async (_options: CreateValedictorianHttpServerOptions) => server)
 
     const runtime = await createValedictorianRuntime({
       config: resolveValedictorianRuntimeConfig({
@@ -372,7 +378,7 @@ describe('Valedictorian runtime creation', () => {
     ['local-shared', 7331],
   ] as const)('defers the first %s listener until supervised startup', async (mode, port) => {
     const server = { close: vi.fn(async () => undefined), url: `http://127.0.0.1:${port}` }
-    const startServer = vi.fn(async () => server)
+    const startServer = vi.fn(async (_options: CreateValedictorianHttpServerOptions) => server)
     const runtime = await createValedictorianRuntime({
       config: resolveValedictorianRuntimeConfig({
         env: { VALEDICTORIAN_API_PORT: '7331', VALEDICTORIAN_MODE: mode },
@@ -396,7 +402,7 @@ describe('Valedictorian runtime creation', () => {
       { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:51001' },
       { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:51002' },
     ]
-    const startServer = vi.fn(async () => servers.shift()!)
+    const startServer = vi.fn(async (_options: CreateValedictorianHttpServerOptions) => servers.shift()!)
     const createLocalClient = vi.fn(() => localClient)
     const runtime = await createValedictorianRuntime({
       config: resolveValedictorianRuntimeConfig({ env: {}, userDataPath: '/tmp/user-data' }),
@@ -416,7 +422,7 @@ describe('Valedictorian runtime creation', () => {
   it('starts a local HTTP server in local shared mode without app-level auth', async () => {
     const localClient = createWorkspaceClient('local')
     const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:9999' }
-    const startServer = vi.fn(async () => server)
+    const startServer = vi.fn(async (_options: CreateValedictorianHttpServerOptions) => server)
 
     const runtime = await createValedictorianRuntime({
       config: resolveValedictorianRuntimeConfig({
@@ -462,7 +468,7 @@ describe('Valedictorian runtime creation', () => {
       open: vi.fn(),
       resolveClient: vi.fn(async () => otherWorkspaceClient),
     }
-    const startServer = vi.fn(async () => server)
+    const startServer = vi.fn(async (_options: CreateValedictorianHttpServerOptions) => server)
 
     const runtime = await createValedictorianRuntime({
       config: resolveValedictorianRuntimeConfig({

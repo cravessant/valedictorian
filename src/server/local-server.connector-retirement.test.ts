@@ -4,6 +4,7 @@ import path from 'node:path'
 import { ConnectorRetirementConflictError, createHttpValedictorianClient } from '@sparxie/sdk'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import {
   closeLocalValedictorianClient,
   createLocalValedictorianClient,
@@ -35,7 +36,7 @@ describe('local connector retirement HTTP contract', () => {
     })
     await setup.close()
     const localClient = await createLocalValedictorianClient({
-      connectorRegistry: { get: () => null },
+      connectorRegistry: createStaticConnectorRegistry([]),
       seedDataMode: 'none',
       pgliteDataPath,
       workspaceId: 'workspace-retirement',
@@ -59,7 +60,7 @@ describe('local connector retirement HTTP contract', () => {
     await closeLocalValedictorianClient(localClient)
 
     const restarted = await createLocalValedictorianClient({
-      connectorRegistry: { get: () => null },
+      connectorRegistry: createStaticConnectorRegistry([]),
       seedDataMode: 'none',
       pgliteDataPath,
       workspaceId: 'workspace-retirement',
@@ -70,7 +71,7 @@ describe('local connector retirement HTTP contract', () => {
   it('returns the sanitized typed conflict for active work through HTTP', async () => {
     const pgliteDataPath = createTempDatabasePath()
     const localClient = await createLocalValedictorianClient({
-      connectorRegistry: { get: () => null },
+      connectorRegistry: createStaticConnectorRegistry([]),
       seedDataMode: 'none',
       pgliteDataPath,
       workspaceId: 'workspace-retirement',
