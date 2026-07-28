@@ -1,7 +1,19 @@
+# Every command is read-only, so partially staged work and unrelated
+# working-tree changes survive a hook run untouched.
 pre-commit:
+  parallel: true
   commands:
     line-limit-policy:
       run: pnpm run lint:line-limit-policy -- --staged
     oxlint:
       glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
       run: pnpm exec oxlint {staged_files}
+
+# Repository-wide checks run once per push instead of once per commit. CI stays
+# authoritative and repeats them.
+pre-push:
+  commands:
+    lint:
+      run: pnpm run lint
+    test:
+      run: pnpm run test
