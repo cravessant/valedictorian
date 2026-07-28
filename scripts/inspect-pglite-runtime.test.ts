@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createPackage } from '@electron/asar'
+import { createPackage, listPackage } from '@electron/asar'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   PGLITE_RUNTIME_BINARY_ASSETS,
@@ -97,6 +97,25 @@ describe('inspect-pglite-runtime', () => {
     await createPackage(sourceRoot, path.join(resourcesRoot, 'app.asar'))
 
     expect(inspectPgliteRuntimeArtifactLayout(resourcesRoot)).toEqual([])
+  })
+
+  // The artifact check normalizes listPackage output by hand, so a change in the
+  // separator or leading-slash convention would silently stop matching entries.
+  it('reads archive entries as root-anchored native paths', async () => {
+    const sourceRoot = tempRoot('pglite-asar-entries-')
+    const archiveRoot = tempRoot('pglite-asar-archive-')
+    const packageDist = path.join(sourceRoot, 'node_modules', '@electric-sql', 'pglite', 'dist')
+    fs.mkdirSync(packageDist, { recursive: true })
+    fs.writeFileSync(path.join(packageDist, 'index.js'), 'export {}\n')
+    const archivePath = path.join(archiveRoot, 'app.asar')
+    await createPackage(sourceRoot, archivePath)
+
+    const entries = listPackage(archivePath, { isPack: false })
+
+    expect(entries.every((entry) => entry.startsWith(path.sep))).toBe(true)
+    expect(entries.map((entry) => entry.replace(/^[/\\]/, '').replaceAll('\\', '/'))).toContain(
+      'node_modules/@electric-sql/pglite/dist/index.js',
+    )
   })
 
   it('reports an incomplete PGlite builder configuration', () => {

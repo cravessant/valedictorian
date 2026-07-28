@@ -52,7 +52,11 @@ describe('connector workflow dependencies', () => {
       /^packages:/m,
     )
     expect(lockfile).not.toMatch(/^overrides:/m)
-    expect(lockfile).not.toMatch(/^patchedDependencies:/m)
+    // Patches are allowed only as security backports into transitive packaging
+    // dependencies; no connector or @sparxie package may be altered locally.
+    const patchedBlock = lockfile.match(/^patchedDependencies:\n((?: {2}\S+: \S+\n)+)/m)?.[1] ?? ''
+    const patched = [...patchedBlock.matchAll(/^ {2}(\S+):/gm)].map((match) => match[1])
+    expect(patched).toEqual(['brace-expansion@1.1.16', 'brace-expansion@2.1.2'])
 
     for (const name of CONNECTOR_PACKAGES) {
       const specifier = connectorSpecifier(packageJson, name)

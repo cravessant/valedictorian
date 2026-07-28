@@ -1,8 +1,27 @@
 minimumReleaseAgeExclude:
   - '@sparxie/*'
 
+# GHSA-mh99-v99m-4gvg (CVE-2026-14257) is NOT risk-accepted. Both remaining
+# vulnerable copies carry the upstream fix through the tracked patches below,
+# backported from juliangruber/brace-expansion@a1bd339. The advisory still
+# matches because npm audit keys on the unchanged upstream version numbers:
+# upstream shipped the fix only on the 5.x line, and brace-expansion 5 exports a
+# named `expand` rather than a callable module, so electron-builder's CommonJS
+# minimatch 3.x/5.x/9.x consumers cannot load it.
+#
+# `pnpm run audit:high` proves the patches are installed and effective before it
+# runs `pnpm audit`, so this entry can never mask an unpatched copy. Drop both
+# the patches and this entry once a fixed 1.x/2.x release exists.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-mh99-v99m-4gvg
+
 allowBuilds:
   lefthook: true
   electron: true
   electron-winstaller: true
   esbuild: false
+
+patchedDependencies:
+  brace-expansion@1.1.16: patches/brace-expansion@1.1.16.patch
+  brace-expansion@2.1.2: patches/brace-expansion@2.1.2.patch

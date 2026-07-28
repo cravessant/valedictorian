@@ -20,6 +20,7 @@ function readElectronBuilderConfig() {
   const configText = fs.readFileSync(path.resolve('electron-builder.json5'), 'utf8')
   return JSON.parse(configText.replace(/^\s*\/\/.*\r?\n/, '')) as {
     appId?: string
+    asar?: boolean
     asarUnpack?: string[]
     detectUpdateChannel?: boolean
     extraResources?: Array<{
@@ -37,6 +38,7 @@ function readElectronBuilderConfig() {
       identity?: string
       notarize?: boolean
       target?: string[]
+      artifactName?: string
     }
     nsis?: {
       allowToChangeInstallationDirectory?: boolean
@@ -53,6 +55,7 @@ function readElectronBuilderConfig() {
         arch?: string[]
         target?: string
       }>
+      artifactName?: string
     }
   }
 }
@@ -76,6 +79,10 @@ describe('build configuration', () => {
     expect(config.mac?.entitlementsInherit).toBe('build/entitlements.mac.inherit.plist')
     expect(config.mac?.icon).toBe('build/icon.icns')
     expect(config.mac?.target).toEqual(['dmg', 'zip'])
+    // Published update metadata and the release workflow both key off these names.
+    expect(config.asar).toBe(true)
+    expect(config.mac?.artifactName).toBe('${productName}-Mac-${version}-Installer.${ext}')
+    expect(config.win?.artifactName).toBe('${productName}-Windows-${version}-Setup.${ext}')
     expect(fs.existsSync(path.resolve('build/icon.icns'))).toBe(true)
     expect(fs.existsSync(path.resolve('build/entitlements.mac.plist'))).toBe(true)
     expect(fs.existsSync(path.resolve('build/entitlements.mac.inherit.plist'))).toBe(true)
