@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
 const commentPattern = /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g
@@ -44,14 +44,46 @@ export function readWorkingTreePolicyFiles() {
     })
 }
 
-/** @returns {PolicyFile[]} */
+/**
+ * Paths the commit adds or modifies. `-z` keeps unusual filenames intact, and
+ * excluding deletions drops paths that are no longer readable from the index.
+ * @returns {string[]}
+ */
+export function listStagedPolicyPaths() {
+  return listGitFiles([
+    'diff',
+    '--cached',
+    '--name-only',
+    '--diff-filter=d',
+    '-z',
+  ]).filter(isPolicyFile)
+}
+
+/**
+ * @param {string} filePath
+ * @returns {PolicyFile[]}
+ */
+function readIndexPolicyFile(filePath) {
+  const result = spawnSync('git', ['show', `:${filePath}`], { encoding: 'utf8' })
+  if (result.error) throw result.error
+  // A path absent from the index is reported by its absence rather than by
+  // failing the run, so a staged deletion of the root configuration surfaces as
+  // the missing-configuration violation instead of a crash.
+  if (result.status !== 0) return []
+  return [{ path: filePath, source: result.stdout }]
+}
+
+/**
+ * Reads staged content for the commit's own paths plus the root configuration,
+ * whose single-global-rule requirement is a repository invariant any commit can
+ * break. Reading the whole index here would cost one subprocess per tracked
+ * file on every commit.
+ * @returns {PolicyFile[]}
+ */
 export function readStagedPolicyFiles() {
-  return listGitFiles(['ls-files', '--cached', '-z'])
-    .filter(isPolicyFile)
-    .map((filePath) => ({
-      path: filePath,
-      source: execFileSync('git', ['show', `:${filePath}`], { encoding: 'utf8' }),
-    }))
+  return [...new Set([rootConfigPath, ...listStagedPolicyPaths()])].flatMap(
+    readIndexPolicyFile,
+  )
 }
 
 /**

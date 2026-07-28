@@ -1,9 +1,14 @@
 import fs from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   findProfileSecretImportPolicyViolations,
   readWorkingTreePolicyFiles,
 } from './profile-secret-import-policy.mjs'
+import {
+  createStagedPolicyRepository,
+  removeStagedPolicyRepository,
+} from './staged-policy-repository.fixture.mjs'
 
 describe('profile/secret import policy', () => {
   it('rejects forbidden concrete adapter imports outside composition modules', () => {
@@ -172,5 +177,72 @@ describe('profile/secret import policy', () => {
     )
     expect(packageJson.scripts.lint).toContain('pnpm run lint:profile-secret-import-policy')
     expect(lefthook).toContain('pnpm run lint:profile-secret-import-policy -- --staged')
+    expect(lefthook).toMatch(
+      /profile-secret-import-policy:\n\s+glob: "\*\.\{js,jsx,mjs,cjs,ts,tsx,mts,cts\}"/,
+    )
+  })
+})
+
+const policyScriptPath = path.resolve('scripts/profile-secret-import-policy.mjs')
+const forbiddenSource = "import { createFileAppSecretStore } from './app-secret.store'\n"
+const cleanSource = 'export const value = 1\n'
+const forbiddenMessage =
+  'concrete profile/secret adapters may only be imported from approved composition modules'
+
+describe('profile/secret import policy staged selection', () => {
+  /** @type {ReturnType<typeof createStagedPolicyRepository> | undefined} */
+  let repository
+
+  afterEach(() => {
+    removeStagedPolicyRepository(repository)
+    repository = undefined
+  })
+
+  it('ignores tracked violations the commit does not touch', () => {
+    repository = createStagedPolicyRepository({ 'src/pre-existing.ts': forbiddenSource })
+    repository.write('src/added.ts', cleanSource)
+    repository.git('add', 'src/added.ts')
+
+    expect(repository.runStagedPolicy(policyScriptPath)).toEqual({ status: 0, stderr: '' })
+  })
+
+  it('rejects a violation introduced by the staged change', () => {
+    repository = createStagedPolicyRepository({ 'src/kept.ts': cleanSource })
+    repository.write('src/added.ts', forbiddenSource)
+    repository.git('add', 'src/added.ts')
+
+    const result = repository.runStagedPolicy(policyScriptPath)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(`src/added.ts: ${forbiddenMessage}`)
+  })
+
+  it('passes when no staged path matches the policy', () => {
+    repository = createStagedPolicyRepository({ 'src/kept.ts': cleanSource })
+    repository.write('docs/notes.md', '# notes\n')
+    repository.git('add', 'docs/notes.md')
+
+    expect(repository.runStagedPolicy(policyScriptPath)).toEqual({ status: 0, stderr: '' })
+  })
+
+  it('reads staged content rather than the partially staged working tree', () => {
+    repository = createStagedPolicyRepository({ 'src/kept.ts': cleanSource })
+    repository.write('src/partial.ts', cleanSource)
+    repository.git('add', 'src/partial.ts')
+    repository.write('src/partial.ts', forbiddenSource)
+
+    expect(repository.runStagedPolicy(policyScriptPath)).toEqual({ status: 0, stderr: '' })
+  })
+
+  it('inspects paths containing spaces, quotes, and newlines', () => {
+    const awkwardPath = 'src/od d "quoted"\nname.ts'
+    repository = createStagedPolicyRepository({ 'src/kept.ts': cleanSource })
+    repository.write(awkwardPath, forbiddenSource)
+    repository.git('add', awkwardPath)
+
+    const result = repository.runStagedPolicy(policyScriptPath)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(`${awkwardPath}: ${forbiddenMessage}`)
   })
 })

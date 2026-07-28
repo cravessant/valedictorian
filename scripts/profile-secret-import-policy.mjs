@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
 const maintainedCodePathPattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
@@ -198,14 +198,40 @@ export function readWorkingTreePolicyFiles() {
     })
 }
 
-/** @returns {PolicyFile[]} */
+/**
+ * Paths the commit adds or modifies. `-z` keeps unusual filenames intact, and
+ * excluding deletions drops paths that are no longer readable from the index.
+ * @returns {string[]}
+ */
+export function listStagedPolicyPaths() {
+  return listGitFiles([
+    'diff',
+    '--cached',
+    '--name-only',
+    '--diff-filter=d',
+    '-z',
+  ]).filter(isPolicyFile)
+}
+
+/**
+ * @param {string} filePath
+ * @returns {PolicyFile[]}
+ */
+function readIndexPolicyFile(filePath) {
+  const result = spawnSync('git', ['show', `:${filePath}`], { encoding: 'utf8' })
+  if (result.error) throw result.error
+  if (result.status !== 0) return []
+  return [{ path: filePath, source: result.stdout }]
+}
+
+/**
+ * Reads staged content for the commit's own paths only. This policy is
+ * per-file, so reading the whole index would cost one subprocess per tracked
+ * file on every commit without inspecting anything new.
+ * @returns {PolicyFile[]}
+ */
 export function readStagedPolicyFiles() {
-  return listGitFiles(['ls-files', '--cached', '-z'])
-    .filter(isPolicyFile)
-    .map((filePath) => ({
-      path: filePath,
-      source: execFileSync('git', ['show', `:${filePath}`], { encoding: 'utf8' }),
-    }))
+  return listStagedPolicyPaths().flatMap(readIndexPolicyFile)
 }
 
 /**

@@ -1,9 +1,28 @@
+# Every command is read-only, so partially staged work and unrelated
+# working-tree changes survive a hook run untouched.
 pre-commit:
+  parallel: true
   commands:
+    # Deliberately unglobbed: the policy also asserts that .oxlintrc.json still
+    # holds exactly one global max-lines rule, which a commit can break without
+    # staging any code file. It reads only the staged paths plus that root
+    # configuration, so an unrelated commit still costs two git calls.
     line-limit-policy:
       run: pnpm run lint:line-limit-policy -- --staged
     profile-secret-import-policy:
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
       run: pnpm run lint:profile-secret-import-policy -- --staged
     oxlint:
       glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
       run: pnpm exec oxlint {staged_files}
+
+# Repository-wide type checking runs once per push instead of once per commit.
+# `pnpm run lint` is deliberately not wired here: it needs network access for
+# `pnpm audit`, and the sharded suite, development proof, and package smokes
+# stay in CI, which remains authoritative.
+pre-push:
+  commands:
+    typecheck:
+      run: pnpm run typecheck
+    typecheck-tests:
+      run: pnpm run typecheck:tests

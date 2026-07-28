@@ -1,10 +1,15 @@
 import fs from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   findLineLimitPolicyViolations,
   findRepositoryLineLimitPolicyViolations,
   readWorkingTreePolicyFiles,
 } from './line-limit-policy.mjs'
+import {
+  createStagedPolicyRepository,
+  removeStagedPolicyRepository,
+} from './staged-policy-repository.fixture.mjs'
 
 describe('line-limit policy', () => {
   it('rejects a max-lines disable in maintained source', () => {
@@ -90,5 +95,120 @@ describe('line-limit policy', () => {
     expect(lefthook).toContain('pnpm run lint:line-limit-policy -- --staged')
     expect(lefthook).toContain('*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}')
     expect(ciWorkflow).toContain('run: pnpm lint')
+  })
+})
+
+const policyScriptPath = path.resolve('scripts/line-limit-policy.mjs')
+const validRootConfig = JSON.stringify({
+  rules: { 'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }] },
+})
+const disableDirective = ['oxlint', 'disable max-lines'].join('-')
+const violatingSource = `/* ${disableDirective} */\nexport const value = 1\n`
+const cleanSource = 'export const value = 1\n'
+
+describe('line-limit policy staged selection', () => {
+  /** @type {ReturnType<typeof createStagedPolicyRepository> | undefined} */
+  let repository
+
+  afterEach(() => {
+    removeStagedPolicyRepository(repository)
+    repository = undefined
+  })
+
+  it('ignores tracked violations the commit does not touch', () => {
+    repository = createStagedPolicyRepository({
+      '.oxlintrc.json': validRootConfig,
+      'src/pre-existing.ts': violatingSource,
+    })
+    repository.write('src/added.ts', cleanSource)
+    repository.git('add', 'src/added.ts')
+
+    expect(repository.runStagedPolicy(policyScriptPath)).toEqual({ status: 0, stderr: '' })
+  })
+
+  it('rejects a violation introduced by the staged change', () => {
+    repository = createStagedPolicyRepository({ '.oxlintrc.json': validRootConfig })
+    repository.write('src/added.ts', violatingSource)
+    repository.git('add', 'src/added.ts')
+
+    const result = repository.runStagedPolicy(policyScriptPath)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      'src/added.ts: max-lines disable directives are forbidden in maintained code',
+    )
+  })
+
+  it('passes when no staged path matches the policy', () => {
+    repository = createStagedPolicyRepository({ '.oxlintrc.json': validRootConfig })
+    repository.write('docs/notes.md', '# notes\n')
+    repository.git('add', 'docs/notes.md')
+
+    expect(repository.runStagedPolicy(policyScriptPath)).toEqual({ status: 0, stderr: '' })
+  })
+
+  it('reads staged content rather than the partially staged working tree', () => {
+    repository = createStagedPolicyRepository({ '.oxlintrc.json': validRootConfig })
+    repository.write('src/partial.ts', cleanSource)
+    repository.git('add', 'src/partial.ts')
+    repository.write('src/partial.ts', violatingSource)
+
+    expect(repository.runStagedPolicy(policyScriptPath)).toEqual({ status: 0, stderr: '' })
+  })
+
+  it('inspects paths containing spaces, quotes, and newlines', () => {
+    const awkwardPath = 'src/od d "quoted"\nname.ts'
+    repository = createStagedPolicyRepository({ '.oxlintrc.json': validRootConfig })
+    repository.write(awkwardPath, violatingSource)
+    repository.git('add', awkwardPath)
+
+    const result = repository.runStagedPolicy(policyScriptPath)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      `${awkwardPath}: max-lines disable directives are forbidden in maintained code`,
+    )
+  })
+
+  it('checks a renamed file under its new path', () => {
+    repository = createStagedPolicyRepository({
+      '.oxlintrc.json': validRootConfig,
+      'src/original.ts': violatingSource,
+    })
+    repository.git('mv', 'src/original.ts', 'src/renamed.ts')
+
+    const result = repository.runStagedPolicy(policyScriptPath)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      'src/renamed.ts: max-lines disable directives are forbidden in maintained code',
+    )
+  })
+
+  it('still requires the root configuration when the commit deletes it', () => {
+    repository = createStagedPolicyRepository({ '.oxlintrc.json': validRootConfig })
+    repository.git('rm', '--quiet', '.oxlintrc.json')
+
+    const result = repository.runStagedPolicy(policyScriptPath)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      '.oxlintrc.json: required global line-limit configuration is missing',
+    )
+  })
+
+  it('reads the root configuration from the index, not the working tree', () => {
+    repository = createStagedPolicyRepository({ '.oxlintrc.json': validRootConfig })
+    repository.write('.oxlintrc.json', JSON.stringify({ rules: { 'max-lines': 'off' } }))
+
+    expect(repository.runStagedPolicy(policyScriptPath)).toEqual({ status: 0, stderr: '' })
+
+    repository.git('add', '.oxlintrc.json')
+    const result = repository.runStagedPolicy(policyScriptPath)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      '.oxlintrc.json: max-lines must be one global 1,000-line rule without overrides',
+    )
   })
 })

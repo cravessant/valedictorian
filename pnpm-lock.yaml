@@ -182,7 +182,7 @@ importers:
         specifier: ^29.1.1
         version: 29.1.1(@noble/hashes@2.2.0)
       lefthook:
-        specifier: ^2.1.10
+        specifier: 2.1.10
         version: 2.1.10
       oxlint:
         specifier: ^1.68.0
