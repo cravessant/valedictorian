@@ -4,10 +4,9 @@ import {
   connectorRuns,
   connectorSchedules,
   connectorCaptureWork,
-  sourceExecutionScopes,
-  sourceExecutionSessions,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
+import { retireSourceExecutionScope } from '../source-execution/source-execution.persistence'
 import {
   connectorRetirementActiveWorkConflictMessage,
   type ConnectorRetirementActiveWorkConflict,
@@ -89,17 +88,7 @@ export async function retireConnectorInstance(
       eq(connectorCaptureWork.connectorInstanceId, connectorInstanceId),
       inArray(connectorCaptureWork.status, ['scheduled', 'claimed']),
     ))
-    await transaction.update(sourceExecutionScopes).set({
-      status: 'action_required',
-      blockedUntil: null,
-      refreshLeaseToken: null,
-      refreshLeaseExpiresAt: null,
-      actionReason: 'connector_retired',
-      updatedAt: retiredAt,
-    }).where(eq(sourceExecutionScopes.id, instance.executionScopeId))
-    await transaction.delete(sourceExecutionSessions).where(
-      eq(sourceExecutionSessions.executionScopeId, instance.executionScopeId),
-    )
+    await retireSourceExecutionScope(transaction, instance.executionScopeId, retiredAt)
 
     return {
       connectorInstanceId,

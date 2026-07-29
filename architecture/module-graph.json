@@ -176,51 +176,8 @@
       "to": "lifecycle-table"
     }
   ],
-  "exceptions": [
-    {
-      "owner": "source-execution",
-      "reason": "Transitional: src/modules/connectors/connector-instance.persistence.ts mutates source_execution_scopes, owned by source-execution. #491 moves this write behind a source-execution-owned command, after which connectors no longer import or mutate the table.",
-      "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-instance.persistence.ts",
-      "table": "source_execution_scopes",
-      "target": "src/db/schema.ts",
-      "retiredBy": "#491",
-      "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "source-execution",
-      "reason": "Transitional: src/modules/connectors/connector-retirement.persistence.ts mutates source_execution_scopes, owned by source-execution. #491 moves this write behind a source-execution-owned command, after which connectors no longer import or mutate the table.",
-      "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-retirement.persistence.ts",
-      "table": "source_execution_scopes",
-      "target": "src/db/schema.ts",
-      "retiredBy": "#491",
-      "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "source-execution",
-      "reason": "Transitional: src/modules/connectors/connector-retirement.persistence.ts mutates source_execution_sessions, owned by source-execution. #491 moves this write behind a source-execution-owned command, after which connectors no longer import or mutate the table.",
-      "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-retirement.persistence.ts",
-      "table": "source_execution_sessions",
-      "target": "src/db/schema.ts",
-      "retiredBy": "#491",
-      "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "source-execution",
-      "reason": "Transitional: src/modules/connectors/connector.repository.ts mutates source_execution_scopes, owned by source-execution. #491 moves this write behind a source-execution-owned command, after which connectors no longer import or mutate the table.",
-      "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.ts",
-      "table": "source_execution_scopes",
-      "target": "src/db/schema.ts",
-      "retiredBy": "#491",
-      "rule": "foreign-owner-table-access"
-    }
-  ],
-  "retiringIssues": [
-    "#491"
-  ],
+  "exceptions": [],
+  "retiringIssues": [],
   "canonicalSchemaAggregate": "src/db/schema.ts",
   "schemaRegistrar": "src/db/pglite.ts",
   "permissions": [
@@ -4037,6 +3994,15 @@
       "recordedIn": "#326",
       "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
       "table": "workspaces",
+      "target": "src/db/schema.ts",
+      "purpose": "test-state-access"
+    },
+    {
+      "owner": "source-execution",
+      "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
+      "recordedIn": "#326",
+      "source": "src/modules/connectors/connector.repository.retry-claim-cooldown.test.ts",
+      "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
     },

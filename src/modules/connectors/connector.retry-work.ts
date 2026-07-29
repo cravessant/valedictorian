@@ -140,35 +140,55 @@ export function mapAcquiredRetryWork(work: ConnectorCaptureWorkRow): AcquiredRet
   return { kind: 'connector_capture', retryWorkId: work.id }
 }
 
+/**
+ * Puts a tentatively claimed row back exactly as it was read, for a claim the caller
+ * decided not to keep. Restoring every field the claim wrote, including `updatedAt`,
+ * leaves the row as untouched as a claim predicate that had matched nothing. The
+ * conditions scope the restore to this run's own claim.
+ */
+export async function restoreUnclaimedConnectorWork(
+  database: RetryWorkDatabase,
+  work: ConnectorCaptureWorkRow,
+  acquisitionRunId: string,
+) {
+  await database.update(connectorCaptureWork).set({
+    status: work.status,
+    acquisitionToken: work.acquisitionToken,
+    acquisitionRunId: work.acquisitionRunId,
+    claimedAt: work.claimedAt,
+    claimExpiresAt: work.claimExpiresAt,
+    skippedRunId: work.skippedRunId,
+    updatedAt: work.updatedAt,
+  }).where(and(
+    eq(connectorCaptureWork.id, work.id),
+    eq(connectorCaptureWork.status, 'claimed'),
+    eq(connectorCaptureWork.acquisitionRunId, acquisitionRunId),
+  ))
+}
+
+/**
+ * Selects the retry work an admitted execution scope may run.
+ *
+ * The caller admits the scope first, and that admission holds the scope row for the
+ * rest of the transaction, so selection reads connector state only.
+ */
 export async function selectPendingRetryWork(
   database: RetryWorkDatabase,
   input: {
     connectorInstanceId: string
-    connectorId: string
-    executionScopeId: string
-    coverageStartedAt: string
     filterSignature: string
-    now: string
   },
 ) {
-  const availableScope = sql`exists (
-    select 1 from source_execution_scopes scope
-    where scope.id = ${input.executionScopeId}
-      and scope.status in ('available', 'cooldown')
-      and (scope.blocked_until is null or scope.blocked_until <= ${input.now})
-  )`
   const claimed = await database.select().from(connectorCaptureWork).where(and(
     eq(connectorCaptureWork.connectorInstanceId, input.connectorInstanceId),
     eq(connectorCaptureWork.filterSignature, input.filterSignature),
     eq(connectorCaptureWork.status, 'claimed'),
-    availableScope,
   )).orderBy(asc(connectorCaptureWork.id)).limit(1)
   if (claimed[0]) return claimed[0]
   const scheduled = await database.select().from(connectorCaptureWork).where(and(
     eq(connectorCaptureWork.connectorInstanceId, input.connectorInstanceId),
     eq(connectorCaptureWork.filterSignature, input.filterSignature),
     eq(connectorCaptureWork.status, 'scheduled'),
-    availableScope,
   )).orderBy(asc(connectorCaptureWork.nextEligibleAt), asc(connectorCaptureWork.createdAt), asc(connectorCaptureWork.id)).limit(1)
   return scheduled[0]
 }

@@ -11,14 +11,14 @@ const REASON = 'Recorded exactly for this fixture so the entry explains itself.'
 /**
  * A minimal repository the check accepts: four capability modules, one owned table
  * each where state is modelled, two declared edges, platform files outside
- * `src/modules`, one exact transitional exception covering the single foreign-owner
- * table mutation #491 still owes, and a runtime file reaching a capability the one
- * way that is allowed — a named value and type import from that module's exact
- * public surface. Every mutation starts from this tree and changes one thing, so a
- * failure names one cause.
+ * `src/modules`, and a runtime file reaching a capability the one way that is
+ * allowed — a named value and type import from that module's exact public surface.
+ * Every mutation starts from this tree and changes one thing, so a failure names one
+ * cause.
  *
- * The exception models #491 because it is the only retirement left: #328 moved every
- * capability definition into its owning module, so no `src/db` file holds one.
+ * It carries no transitional exception and nothing retiring, which is the steady
+ * state the real manifest reached: connectors reaches source-execution through an
+ * owner operation rather than that owner's tables.
  *
  * @returns {Record<string, string>}
  */
@@ -36,10 +36,10 @@ export function passingFixture() {
         { from: 'capture', recordedIn: '#326', to: 'job' },
         { from: 'connectors', recordedIn: '#326', to: 'source-execution' },
       ],
-      exceptions: [connectorsMutatesScopes()],
+      exceptions: [],
       moduleRoot: 'src/modules',
       permissions: [captureAccessesJobs()],
-      retiringIssues: ['#491'],
+      retiringIssues: [],
       schemaRegistrar: 'src/db/pglite.ts',
       stamps: ['#326'],
     }),
@@ -80,10 +80,9 @@ export function passingFixture() {
     'src/modules/capture/capture.service.ts':
       "import { jobs } from '../job/job.schema'\n\nvoid jobs\nexport const columns = 1\n",
     'src/modules/connectors/connector.repository.ts': [
-      "import { sourceExecutionScopes } from '../source-execution/source-execution.schema'",
+      "import { ensureScope } from '../source-execution/source-execution.persistence'",
       '',
-      'void sourceExecutionScopes',
-      'export const repository = 1',
+      'export const repository = ensureScope',
       '',
     ].join('\n'),
     'src/modules/job/job.schema.ts':
@@ -95,6 +94,12 @@ export function passingFixture() {
       '',
     ].join('\n'),
     'src/modules/job/public.ts': "export { runJob, type JobRun } from './job.service'\n",
+    'src/modules/source-execution/source-execution.persistence.ts': [
+      "import { sourceExecutionScopes } from './source-execution.schema'",
+      '',
+      'export const ensureScope = () => sourceExecutionScopes',
+      '',
+    ].join('\n'),
     'src/modules/source-execution/source-execution.schema.ts': [
       "import { pgTable } from 'drizzle-orm/pg-core'",
       '',
@@ -104,13 +109,19 @@ export function passingFixture() {
   }
 }
 
-/** @returns {Record<string, string>} */
-export function connectorsMutatesScopes() {
+/**
+ * A transitional exception the tree no longer carries. Every rule that governs the
+ * exception set is exercised against it, so the shape stays checked now that the
+ * manifest records none.
+ *
+ * @returns {Record<string, string>}
+ */
+export function transitionalException() {
   return {
     owner: 'source-execution',
-    reason: 'Transitional: connectors mutates a source-execution table until #491 lands.',
+    reason: 'Transitional: connectors mutates a source-execution table for now.',
     recordedIn: '#326',
-    retiredBy: '#491',
+    retiredBy: '#999',
     rule: 'foreign-owner-table-access',
     source: 'src/modules/connectors/connector.repository.ts',
     table: 'source_execution_scopes',
@@ -165,7 +176,7 @@ export function aggregateFixture() {
         { from: 'capture', recordedIn: '#326', to: 'job' },
         { from: 'connectors', recordedIn: '#326', to: 'source-execution' },
       ],
-      exceptions: [connectorsMutatesScopes()],
+      exceptions: [],
       moduleRoot: 'src/modules',
       permissions: [
         captureAccessesJobs(),
@@ -184,7 +195,7 @@ export function aggregateFixture() {
           target: 'src/db/schema.ts',
         }),
       ],
-      retiringIssues: ['#491'],
+      retiringIssues: [],
       schemaRegistrar: 'src/db/pglite.ts',
       stamps: ['#326'],
     }),

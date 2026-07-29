@@ -32,6 +32,35 @@ describe.sequential('connector scope admission', () => {
       .toBe(true)
   })
 
+  /**
+   * The owner holds the scope row instead of connectors restating the availability
+   * rule in its own predicates, so the lock is what the admission verdict rests on.
+   */
+  it('locks the execution scope row so its admission verdict holds for the transaction', async () => {
+    const owner = resettableOwner()
+    const queries: string[] = []
+    const database = drizzle(owner.client, {
+      schema,
+      logger: { logQuery(query) { queries.push(query) } },
+    })
+    const repository = createPgliteConnectorRepository(database)
+    const instance = await repository.upsertInstance({
+      id: 'scope-lock', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
+      displayName: 'Scope lock', enabled: true,
+    })
+    queries.length = 0
+
+    await repository.recordRunRequest({
+      connectorInstanceId: instance.id,
+      mode: 'manual',
+      startedAt: '2026-07-12T12:00:00.000Z',
+    })
+
+    expect(queries.some((query) => /from "source_execution_scopes"[\s\S]*for update/i.test(query)))
+      .toBe(true)
+    expect(queries.some((query) => /exists\s*\(/i.test(query))).toBe(false)
+  })
+
   it.each(['action_required', 'refreshing'] as const)('skips fresh discovery while scope is %s', async (status) => {
     const { database } = resettableOwner()
     const repository = createPgliteConnectorRepository(database)

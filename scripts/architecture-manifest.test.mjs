@@ -56,6 +56,24 @@ function mirrorRepository(mutate) {
   return root
 }
 
+/**
+ * A live foreign-owner access moved out of the stable permission set and recorded as
+ * a transitional exception instead. The manifest carries no exception of its own, so
+ * this is how the exception rules stay exercised against a real access.
+ *
+ * @param {any} graph Mutated to give up the permission the exception takes over.
+ * @param {string} retiredBy
+ * @returns {Record<string, string>}
+ */
+function asException(graph, retiredBy) {
+  const [borrowed] = graph.permissions.filter(
+    (entry) => entry.purpose === 'foreign-key-reference',
+  )
+  const { purpose: _purpose, ...rest } = borrowed
+  graph.permissions = graph.permissions.filter((entry) => key(entry) !== key(borrowed))
+  return { ...rest, retiredBy, rule: 'foreign-owner-table-access' }
+}
+
 afterEach(() => {
   for (const root of mirrorRoots.splice(0)) fs.rmSync(root, { recursive: true })
 })
@@ -103,18 +121,10 @@ describe('checked-in architecture manifests', () => {
   })
 
   it('keeps transitional exceptions and stable permissions separate and truthful', () => {
-    const byIssue = moduleGraph.exceptions.reduce(
-      (counts, entry) => ({ ...counts, [entry.retiredBy]: (counts[entry.retiredBy] ?? 0) + 1 }),
-      {},
-    )
-
-    expect(moduleGraph.exceptions).toHaveLength(4)
-    expect(moduleGraph.permissions).toHaveLength(646)
-    expect(byIssue).toEqual({ '#491': 4 })
-    expect(moduleGraph.retiringIssues).toEqual(['#491'])
+    expect(moduleGraph.exceptions).toEqual([])
+    expect(moduleGraph.retiringIssues).toEqual([])
+    expect(moduleGraph.permissions).toHaveLength(647)
     expect(moduleGraph.permissions.every((entry) => !('retiredBy' in entry))).toBe(true)
-    expect(moduleGraph.exceptions.every((entry) => entry.rule === 'foreign-owner-table-access'))
-      .toBe(true)
   })
 
   it('counts every stable permission under a purpose that fits its path', () => {
@@ -129,7 +139,7 @@ describe('checked-in architecture manifests', () => {
       'platform-ownership-root': 2,
       'schema-composition': 58,
       'schema-registration': 58,
-      'test-state-access': 460,
+      'test-state-access': 461,
     })
   })
 
@@ -336,15 +346,15 @@ describe('checked-in architecture manifests', () => {
 
   it('rejects a live exception given an undeclared retiring issue', () => {
     const root = mirrorRepository((graph) => {
-      graph.exceptions = graph.exceptions.map((entry, index) =>
-        index === 0 ? { ...entry, retiredBy: '#999' } : entry,
-      )
+      graph.exceptions = [asException(graph, '#999')]
     })
 
     const result = runArchitectureCheck(root)
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('[untruthful-retirement-claim]')
+    expect(result.stderr).toContain(
+      'claims retirement by #999, which is not a declared retiring issue',
+    )
   })
 
   it('rejects a stale permission entry', () => {
@@ -419,50 +429,18 @@ describe('checked-in architecture manifests', () => {
     )).toBe(true)
   })
 
-  it('claims #491 for exactly the four connector mutations its contract names', () => {
-    const retiredBy491 = moduleGraph.exceptions.filter((entry) => entry.retiredBy === '#491')
-
-    expect(retiredBy491.map((entry) => `${entry.source}|${entry.table}`).sort()).toEqual([
-      'src/modules/connectors/connector-instance.persistence.ts|source_execution_scopes',
-      'src/modules/connectors/connector-retirement.persistence.ts|source_execution_scopes',
-      'src/modules/connectors/connector-retirement.persistence.ts|source_execution_sessions',
-      'src/modules/connectors/connector.repository.ts|source_execution_scopes',
-    ])
-    expect(moduleGraph.permissions.some(
-      (entry) => retiredBy491.some((claim) => key(claim) === key(entry)),
-    )).toBe(false)
-  })
-
-  it('rejects a dropped #491 entry', () => {
+  it('rejects a live access rerecorded as a transitional exception', () => {
     const root = mirrorRepository((graph) => {
-      graph.exceptions = graph.exceptions.filter((entry) => entry.retiredBy !== '#491')
+      graph.exceptions = [asException(graph, '#900')]
+      graph.retiringIssues = ['#900']
     })
 
     const result = runArchitectureCheck(root)
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[foreign-owner-table-access] src/modules/connectors/connector.repository.ts imports source_execution_scopes owned by source-execution;',
+      'claims retirement by #900, which only covers nothing this check models',
     )
-  })
-
-  it('rejects #491 claimed for an unrelated live access', () => {
-    const root = mirrorRepository((graph) => {
-      const [borrowed] = graph.permissions.filter(
-        (entry) => entry.purpose === 'foreign-key-reference',
-      )
-      const { purpose: _purpose, ...rest } = borrowed
-      graph.permissions = graph.permissions.filter((entry) => key(entry) !== key(borrowed))
-      graph.exceptions = [
-        ...graph.exceptions,
-        { ...rest, retiredBy: '#491', rule: 'foreign-owner-table-access' },
-      ]
-    })
-
-    const result = runArchitectureCheck(root)
-
-    expect(result.status).toBe(1)
-    expect(result.stderr).toContain('[untruthful-retirement-claim]')
   })
 
   it('declares no runtime-analysis fields', () => {

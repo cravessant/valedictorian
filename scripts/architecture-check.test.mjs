@@ -4,10 +4,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   aggregateFixture,
   captureAccessesJobs,
-  connectorsMutatesScopes,
   passingFixture,
   permission,
   runArchitectureCheck,
+  transitionalException,
   withModuleGraph,
   withStateOwnership,
   writeFixture,
@@ -87,7 +87,7 @@ describe('architecture check manifests', () => {
     ['a glob', 'src/runtime/*.ts', 'uses a pattern for source'],
   ])('rejects an exception broadened to %s', (_label, source, expected) => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.exceptions = [{ ...connectorsMutatesScopes(), source }]
+      manifest.exceptions = [{ ...transitionalException(), source }]
     }))
 
     expect(result.status).toBe(1)
@@ -97,7 +97,7 @@ describe('architecture check manifests', () => {
 
   it('rejects an exception broadened by dropping the table it covers', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      const { table: _table, ...withoutTable } = connectorsMutatesScopes()
+      const { table: _table, ...withoutTable } = transitionalException()
       manifest.exceptions = [withoutTable]
     }))
 
@@ -109,7 +109,7 @@ describe('architecture check manifests', () => {
 
   it('rejects an exception relaxing a rule the check does not define', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.exceptions = [{ ...connectorsMutatesScopes(), rule: 'everything' }]
+      manifest.exceptions = [{ ...transitionalException(), rule: 'everything' }]
     }))
 
     expect(result.status).toBe(1)
@@ -117,10 +117,9 @@ describe('architecture check manifests', () => {
   })
 
   it('rejects an exception that no longer matches an import', () => {
-    const result = check({
-      ...passingFixture(),
-      'src/modules/connectors/connector.repository.ts': 'export const repository = 0\n',
-    })
+    const result = check(withModuleGraph(passingFixture(), (manifest) => {
+      manifest.exceptions = [transitionalException()]
+    }))
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
@@ -170,7 +169,7 @@ describe('architecture check manifests', () => {
     ['is not a declared retiring issue', '#999'],
   ])('rejects an exception whose retirement claim %s', (_label, retiredBy) => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.exceptions = [{ ...connectorsMutatesScopes(), retiredBy }]
+      manifest.exceptions = [{ ...transitionalException(), retiredBy }]
     }))
 
     expect(result.status).toBe(1)
@@ -1070,7 +1069,8 @@ describe('one exact access, one policy entry', () => {
 
   it('rejects an exception that a permission also claims', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.permissions.push(duplicateOf(connectorsMutatesScopes()))
+      manifest.exceptions.push(transitionalException())
+      manifest.permissions.push(duplicateOf(transitionalException()))
     }))
 
     expect(result.status).toBe(1)
@@ -1085,7 +1085,7 @@ describe('one exact access, one policy entry', () => {
   it('rejects a permission that an exception also claims, whichever order', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
       const { purpose: _purpose, ...access } = captureAccessesJobs()
-      manifest.exceptions.push({ ...access, retiredBy: '#491', rule: 'foreign-owner-table-access' })
+      manifest.exceptions.push({ ...access, retiredBy: '#999', rule: 'foreign-owner-table-access' })
     }))
 
     expect(result.status).toBe(1)
@@ -1099,7 +1099,7 @@ describe('one exact access, one policy entry', () => {
 
   it('rejects a duplicate inside the exception set', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.exceptions.push({ ...connectorsMutatesScopes() })
+      manifest.exceptions.push(transitionalException(), transitionalException())
     }))
 
     expect(result.status).toBe(1)

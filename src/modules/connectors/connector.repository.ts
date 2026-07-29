@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
 import {
   connectorCheckpoints,
   connectorInstances,
@@ -7,7 +7,6 @@ import {
   connectorRuns,
   connectorRunSynchronizations,
   connectorCaptureWork,
-  sourceExecutionScopes,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
@@ -28,6 +27,7 @@ import { stableJsonStringify, toJsonRecord } from './connector.persistence-json'
 import {
   mapAcquiredRetryWork,
   parseRetryAdviceJson,
+  restoreUnclaimedConnectorWork,
   retryAdviceFromWork,
   selectPendingRetryWork,
   synchronizeConnectorRetryWork,
@@ -47,6 +47,10 @@ import type { RecordConnectorRefreshResultInput, RecordConnectorRunRequestInput,
 import type { AcquiredRetryWork } from './connector-retry-work.identity-types'
 import type { ConnectorStatusSummaryRecord } from './connector-status.persistence-types'
 import { deriveSourceExecutionScopeId } from '../source-execution/source-execution-governor'
+import {
+  admitSourceExecutionScope,
+  ensureSourceExecutionScope,
+} from '../source-execution/source-execution.persistence'
 import {
   connectorSynchronizationSnapshot,
   finalizeInProgressConnectorSynchronization,
@@ -73,9 +77,7 @@ export function createPgliteConnectorRepository(
       const auth = normalizeConnectorAuthReferences(input.auth ?? [])
       const executionScopeId = deriveSourceExecutionScopeId(input.id)
       return database.transaction(async (transaction) => {
-      await transaction.insert(sourceExecutionScopes).values({
-        id: executionScopeId, createdAt, updatedAt: createdAt, deletedAt: null,
-      }).onConflictDoNothing()
+      await ensureSourceExecutionScope(transaction, executionScopeId, createdAt)
       const [existing] = await transaction
         .select({
           id: connectorInstances.id,
@@ -342,20 +344,10 @@ export function createPgliteConnectorRepository(
             run: mapConnectorRun(activeRun),
           }
         }
-        await transaction.update(sourceExecutionScopes).set({
-          status: 'available', blockedUntil: null, backoffAttempt: 0, updatedAt: now,
-        }).where(and(
-          eq(sourceExecutionScopes.id, instance.executionScopeId),
-          eq(sourceExecutionScopes.status, 'cooldown'),
-          lte(sourceExecutionScopes.blockedUntil, now),
-        ))
-        const [executionScope] = await transaction.select().from(sourceExecutionScopes)
-          .where(eq(sourceExecutionScopes.id, instance.executionScopeId)).limit(1)
-        const scopeAvailable = executionScope !== undefined
-          && executionScope.status !== 'action_required'
-          && executionScope.status !== 'refreshing'
-          && (executionScope.blockedUntil === null || executionScope.blockedUntil <= now)
-        if (!scopeAvailable) {
+        const admission = await admitSourceExecutionScope(
+          transaction, instance.executionScopeId, now,
+        )
+        if (!admission.admitted) {
           const runId = randomUUID()
           await transaction.insert(connectorRuns).values({
             id: runId, executionScopeId: instance.executionScopeId,
@@ -367,10 +359,9 @@ export function createPgliteConnectorRepository(
             retryHintsJson: 'null', createdAt: now, updatedAt: now, deletedAt: null,
           })
           const boundary = (coverageStartedAt ?? now).slice(0, 10)
-          const actionRequired = executionScope?.status === 'action_required' || executionScope?.status === 'refreshing'
-          const outcome = actionRequired
+          const outcome = admission.blocker === 'action_required'
             ? { kind: 'action_required' as const, operation: { kind: 'authentication_expired' as const, executionScopeId: instance.executionScopeId, requestRefresh: true as const } }
-            : { kind: 'cooling_down' as const, operation: { kind: 'scope_rate_limited' as const, executionScopeId: instance.executionScopeId, retryAt: executionScope?.blockedUntil ?? now, serverMinimumDelayMs: null } }
+            : { kind: 'cooling_down' as const, operation: { kind: 'scope_rate_limited' as const, executionScopeId: instance.executionScopeId, retryAt: admission.retryAt, serverMinimumDelayMs: null } }
           await writeConnectorRunSynchronization(
             transaction, runId, connectorSynchronizationSnapshot(boundary, outcome), now,
           )
@@ -380,15 +371,10 @@ export function createPgliteConnectorRepository(
             run: await persistFrozenConnectorRunLifecycleCounts(transaction, runId, now),
           }
         }
-        const retrySelection = {
+        const pendingRetry = await selectPendingRetryWork(transaction, {
           connectorInstanceId: input.connectorInstanceId,
-          connectorId: instance.connectorId,
-          executionScopeId: instance.executionScopeId,
-          coverageStartedAt,
           filterSignature,
-          now,
-        }
-        const pendingRetry = await selectPendingRetryWork(transaction, retrySelection)
+        })
         if (pendingRetry?.acquisitionRunId) {
           const [acquiredRun] = await transaction.select().from(connectorRuns)
             .where(eq(connectorRuns.id, pendingRetry.acquisitionRunId)).limit(1)
@@ -507,22 +493,19 @@ export function createPgliteConnectorRepository(
           }).where(and(
             eq(connectorCaptureWork.id, pendingRetry.id),
             eq(connectorCaptureWork.status, 'scheduled'),
-            sql`exists (
-              select 1 from source_execution_scopes scope
-              where scope.id = ${instance.executionScopeId}
-                and scope.status in ('available', 'cooldown')
-                and (scope.blocked_until is null or scope.blocked_until <= ${now})
-            )`,
           )).returning({ id: connectorCaptureWork.id })
           if (acquisition) {
-            await transaction.update(sourceExecutionScopes).set({
-              status: 'available', blockedUntil: null, backoffAttempt: 0, updatedAt: now,
-            }).where(and(
-              eq(sourceExecutionScopes.id, instance.executionScopeId),
-              eq(sourceExecutionScopes.status, 'cooldown'),
-              lte(sourceExecutionScopes.blockedUntil, now),
-            ))
-            acquiredWork = mapAcquiredRetryWork(pendingRetry)
+            // The claim is tentative. The scope row lock keeps other transactions
+            // out, but this transaction's own work runs between admission and here,
+            // so the scope is admitted again before the claim is kept.
+            const readmission = await admitSourceExecutionScope(
+              transaction, instance.executionScopeId, now,
+            )
+            if (readmission.admitted) {
+              acquiredWork = mapAcquiredRetryWork(pendingRetry)
+            } else {
+              await restoreUnclaimedConnectorWork(transaction, pendingRetry, runId)
+            }
           }
         }
         const [persisted] = await transaction

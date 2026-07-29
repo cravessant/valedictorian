@@ -1,10 +1,11 @@
 import { and, eq, isNull } from 'drizzle-orm'
-import { connectorInstances, sourceExecutionScopes } from '../../db/schema'
+import { connectorInstances } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import { assertPersistedEarliestBackfillDate, defaultEarliestBackfillDate } from './connector.earliest-backfill'
 import type { ConnectorAuthMode, ConnectorAuthReference, ConnectorInstanceRecord, UpsertConnectorInstanceInput } from './connector-instance.persistence-types'
 import { optionalNonEmptyString, requiredNonEmptyString, toJsonRecord } from './connector.persistence-json'
 import { deriveSourceExecutionScopeId } from '../source-execution/source-execution-governor'
+import { ensureSourceExecutionScope } from '../source-execution/source-execution.persistence'
 import { JOBRIGHT_CONNECTOR_ID } from './jobright.constants'
 
 export function createConnectorInstance(
@@ -28,9 +29,7 @@ export function createConnectorInstance(
         throw alreadyConfiguredError()
       }
     }
-    await transaction.insert(sourceExecutionScopes).values({
-      id: executionScopeId, createdAt, updatedAt: createdAt, deletedAt: null,
-    }).onConflictDoNothing()
+    await ensureSourceExecutionScope(transaction, executionScopeId, createdAt)
     const [persisted] = await transaction.insert(connectorInstances).values({
       id: input.id, executionScopeId, connectorId: input.connectorId,
       connectorVersion: input.connectorVersion, displayName: input.displayName,

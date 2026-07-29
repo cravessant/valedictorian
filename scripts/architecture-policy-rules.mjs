@@ -23,25 +23,15 @@ export const PERMISSION_PURPOSES = new Set([
   'test-state-access',
 ])
 
-/** The exact connectors mutations #491 promises to move behind source-execution. */
-const connectorSourceExecutionWrites = new Set([
-  'src/modules/connectors/connector-instance.persistence.ts|source_execution_scopes',
-  'src/modules/connectors/connector-retirement.persistence.ts|source_execution_scopes',
-  'src/modules/connectors/connector-retirement.persistence.ts|source_execution_sessions',
-  'src/modules/connectors/connector.repository.ts|source_execution_scopes',
-])
-
 /**
- * What each retiring issue is allowed to claim. #326 records debt truthfully, so
- * an issue may only be named where its own contract reaches.
+ * What each retiring issue is allowed to claim. #326 records debt truthfully, so an
+ * issue may only be named where its own contract reaches.
+ *
+ * Empty since #491 retired the last transitional exception: with nothing declared,
+ * every retirement claim fails, so recording new debt means adding the issue and the
+ * exact accesses its contract reaches here first.
  */
-const retirementScopes = {
-  '#491': {
-    // The four mutations #491's contract names. Nothing else may claim it.
-    describe: 'one of the four connectors mutations of a source-execution table that #491 names',
-    fits: (entry) => connectorSourceExecutionWrites.has(`${entry.source}|${entry.table}`),
-  },
-}
+const retirementScopes = {}
 
 const stampPattern = /^#\d+$/
 const globCharacterPattern = /[*?[\]{}!]/
