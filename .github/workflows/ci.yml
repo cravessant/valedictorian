@@ -100,6 +100,24 @@ jobs:
             sleep "$sleep_seconds"
           done
 
+      - name: Prepare Electron runtime
+        working-directory: valedictorian-app
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm run inspect:electron-runtime; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Electron runtime preparation failed after $attempt attempts"
+              exit 1
+            fi
+
+            sleep_seconds=$((attempt * 10))
+            echo "Electron runtime preparation failed (attempt $attempt), retrying in ${sleep_seconds}s..."
+            sleep "$sleep_seconds"
+          done
+
       - name: Restore Vitest transform and V8 compile caches
         uses: actions/cache@v4
         with:
@@ -166,6 +184,24 @@ jobs:
       - name: Install dependencies
         working-directory: valedictorian-app
         run: pnpm install --frozen-lockfile
+
+      - name: Prepare Electron runtime
+        working-directory: valedictorian-app
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm run inspect:electron-runtime; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Electron runtime preparation failed after $attempt attempts"
+              exit 1
+            fi
+
+            sleep_seconds=$((attempt * 10))
+            echo "Electron runtime preparation failed (attempt $attempt), retrying in ${sleep_seconds}s..."
+            sleep "$sleep_seconds"
+          done
 
       - name: Type-check maintained tests
         working-directory: valedictorian-app
