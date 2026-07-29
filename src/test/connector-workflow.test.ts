@@ -56,7 +56,7 @@ describe('connector workflow dependencies', () => {
     // dependencies; no connector or @sparxie package may be altered locally.
     const patchedBlock = lockfile.match(/^patchedDependencies:\n((?: {2}\S+: \S+\n)+)/m)?.[1] ?? ''
     const patched = [...patchedBlock.matchAll(/^ {2}(\S+):/gm)].map((match) => match[1])
-    expect(patched).toEqual(['brace-expansion@1.1.16', 'brace-expansion@2.1.2'])
+    expect(patched).toEqual(['brace-expansion@1.1.16'])
 
     for (const name of CONNECTOR_PACKAGES) {
       const specifier = connectorSpecifier(packageJson, name)

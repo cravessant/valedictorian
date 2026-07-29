@@ -13,10 +13,11 @@ const BASH_RESULT_SEPARATOR = '><><><><'
 
 /**
  * Bash cannot express the `${...}` literal cases, so upstream keeps them in
- * test/dollar.js instead of the bash corpus. The 1.x and 2.x lines deliberately
+ * test/dollar.js instead of the bash corpus. The published lines deliberately
  * disagree here — 1.x returns the whole remaining string literally once it sees
  * a `$`-prefixed group, 2.x keeps expanding the tail — so these patterns are
- * recorded per line with no bash oracle.
+ * recorded per line, with a null bash oracle, and only compared against the
+ * line that recorded them.
  */
 export const SUPPLEMENTAL_PATTERNS = Object.freeze([
   '${1..3}',

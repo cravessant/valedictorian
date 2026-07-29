@@ -5,7 +5,8 @@ import { createRequire } from 'node:module'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   EXPANSION_MAX_LENGTH,
-  PATCHED_VERSIONS,
+  LOCALLY_PATCHED_VERSIONS,
+  OFFICIAL_FIXED_RANGE,
   PATCH_MARKER,
   PERMITTED_AUDIT_CONFIG_KEYS,
   PERMITTED_GHSAS,
@@ -13,9 +14,12 @@ import {
   checkAdvisoryIgnores,
   checkPatchedDependencies,
   checkProbeIsBounded,
+  checkUntrackedPatchMappings,
   compareVersions,
   discoverBraceExpansionCopies,
+  findConsumerReachableCopies,
   findVulnerableConsumerLinks,
+  isOfficiallyFixedVersion,
   isVulnerableVersion,
   proveBraceExpansionPatches,
   reverseApplyUnifiedDiff,
@@ -24,7 +28,7 @@ import {
 
 const storeRoot = path.resolve('node_modules', '.pnpm')
 const patchesDir = path.resolve('patches')
-const trackedConfig = `patchedDependencies:\n${PATCHED_VERSIONS.map(
+const trackedConfig = `patchedDependencies:\n${LOCALLY_PATCHED_VERSIONS.map(
   (version) => `  brace-expansion@${version}: patches/brace-expansion@${version}.patch\n`,
 ).join('')}`
 
@@ -32,11 +36,42 @@ function patchedCopies() {
   return discoverBraceExpansionCopies(storeRoot).filter((copy) => copy.patchHash)
 }
 
+/** The consumer-reachable copies upstream itself fixed, so we carry no patch. */
+function officialFixedCopies() {
+  return findConsumerReachableCopies(storeRoot).filter((copy) =>
+    isOfficiallyFixedVersion(copy.version),
+  )
+}
+
 const tempRoots: string[] = []
 
 afterEach(() => {
   for (const root of tempRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
 })
+
+/**
+ * A throwaway store holding a real copy of the installed patched package, so a
+ * mutation can be proved to change the gate's verdict while the tracked patch,
+ * mapping and marker all stay exactly as committed.
+ */
+function clonePatchedStore(mutate: (source: string) => string) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'brace-expansion-clone-'))
+  tempRoots.push(root)
+  const store = path.join(root, 'node_modules', '.pnpm')
+  const [copy] = patchedCopies()
+  const entry = path.basename(path.dirname(path.dirname(copy.packageDir)))
+
+  const modules = path.join(store, entry, 'node_modules')
+  fs.cpSync(path.dirname(copy.packageDir), modules, { recursive: true, dereference: true })
+  const indexPath = path.join(modules, 'brace-expansion', 'index.js')
+  fs.writeFileSync(indexPath, mutate(fs.readFileSync(indexPath, 'utf8')))
+
+  // Nothing is proved about a copy no consumer resolves, so link one.
+  const consumer = path.join(store, 'minimatch@3.1.5', 'node_modules')
+  fs.mkdirSync(consumer, { recursive: true })
+  fs.symlinkSync(path.join(modules, 'brace-expansion'), path.join(consumer, 'brace-expansion'), 'dir')
+  return { store, version: copy.version }
+}
 
 function fixtureStore() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'brace-expansion-store-'))
@@ -68,15 +103,29 @@ describe('brace-expansion CVE-2026-14257 backport', () => {
     expect(proveBraceExpansionPatches()).toEqual([])
   }, 15_000)
 
-  it('tracks one pnpm patch per vulnerable version', () => {
+  it('tracks a pnpm patch only for the line with no fixed upstream release', () => {
     const workspaceConfig = fs.readFileSync(path.resolve('pnpm-workspace.yaml'), 'utf8')
     const tracked = [...workspaceConfig.matchAll(/^ {2}(\S+): (patches\/\S+)$/gm)].map((m) => m[1])
 
-    expect(tracked).toEqual(PATCHED_VERSIONS.map((version) => `brace-expansion@${version}`))
-    for (const version of PATCHED_VERSIONS) {
+    expect(tracked).toEqual(LOCALLY_PATCHED_VERSIONS.map((version) => `brace-expansion@${version}`))
+    expect(tracked).toEqual(['brace-expansion@1.1.16'])
+    for (const version of LOCALLY_PATCHED_VERSIONS) {
       const patch = fs.readFileSync(path.resolve(`patches/brace-expansion@${version}.patch`), 'utf8')
       expect(patch).toContain('a1bd339')
       expect(patch).toContain(PATCH_MARKER)
+    }
+    // The retired 2.x backport must leave nothing behind.
+    expect(fs.readdirSync(path.resolve('patches'))).toEqual(['brace-expansion@1.1.16.patch'])
+  })
+
+  it('resolves the 2.x line to an official fixed release carrying no local patch', () => {
+    const official = officialFixedCopies()
+
+    expect(official.length).toBeGreaterThan(0)
+    for (const copy of official) {
+      expect(isVulnerableVersion(copy.version), copy.version).toBe(true)
+      expect(copy.packageDir).not.toContain('patch_hash=')
+      expect(fs.readFileSync(path.join(copy.packageDir, 'index.js'), 'utf8')).toContain(PATCH_MARKER)
     }
   })
 
@@ -106,8 +155,16 @@ describe('brace-expansion CVE-2026-14257 backport', () => {
     }
   })
 
+  // Both installed lines stay load-bearing here: the 1.x copy because a local
+  // patch is the only thing bounding it, the 2.x copy because an official fixed
+  // release is still a release this repository has to keep proving.
   it('bounds the chained-group expansion that used to exhaust the heap', () => {
-    for (const copy of patchedCopies()) {
+    const advisoryCopies = findConsumerReachableCopies(storeRoot).filter((copy) =>
+      isVulnerableVersion(copy.version),
+    )
+
+    expect(advisoryCopies.map((copy) => copy.version).sort()).toEqual(['1.1.16', '2.1.3'])
+    for (const copy of advisoryCopies) {
       const outcome = runExpansionProbe({
         modulePath: path.join(copy.packageDir, 'index.js'),
         groups: PROBE_SCENARIOS.length,
@@ -116,10 +173,11 @@ describe('brace-expansion CVE-2026-14257 backport', () => {
       expect(checkProbeIsBounded(outcome, copy.version)).toEqual([])
       expect(outcome.result?.total).toBeLessThanOrEqual(EXPANSION_MAX_LENGTH)
     }
-  })
+  }, 15_000)
 
   it('survives the deep chaining that used to overflow the native stack', () => {
-    for (const copy of patchedCopies()) {
+    for (const copy of findConsumerReachableCopies(storeRoot)) {
+      if (!isVulnerableVersion(copy.version)) continue
       const outcome = runExpansionProbe({
         modulePath: path.join(copy.packageDir, 'index.js'),
         groups: PROBE_SCENARIOS.deep,
@@ -127,26 +185,39 @@ describe('brace-expansion CVE-2026-14257 backport', () => {
 
       expect(checkProbeIsBounded(outcome, copy.version)).toEqual([])
     }
-  })
+  }, 15_000)
 
   it('leaves ordinary expansion untouched on both lines', () => {
     const corpus = JSON.parse(
       fs.readFileSync(path.resolve('scripts/brace-expansion-corpus.json'), 'utf8'),
     ) as { patterns: string[]; bash: (string[] | null)[]; expected: Record<string, string[][]> }
+    const require = createRequire(import.meta.url)
 
     expect(corpus.patterns.length).toBeGreaterThan(150)
+    // The patched line is compared against its own recorded pre-patch output,
+    // which is what proves the backport changed nothing but the bound.
     for (const copy of patchedCopies()) {
-      const expand = createRequire(import.meta.url)(
-        path.join(copy.packageDir, 'index.js'),
-      ) as (pattern: string) => string[]
+      const expand = require(path.join(copy.packageDir, 'index.js')) as (p: string) => string[]
       expect(typeof expand).toBe('function')
 
       corpus.patterns.forEach((pattern, index) => {
         expect(expand(pattern), pattern).toEqual(corpus.expected[copy.version][index])
-        const bash = corpus.bash[index]
-        if (bash) expect(expand(pattern), `${pattern} vs bash`).toEqual(bash)
       })
     }
+
+    // The official line has no recorded pre-patch output of its own — comparing
+    // it against itself would prove nothing — so bash is the oracle.
+    for (const copy of officialFixedCopies()) {
+      const expand = require(path.join(copy.packageDir, 'index.js')) as (p: string) => string[]
+      expect(typeof expand).toBe('function')
+
+      corpus.patterns.forEach((pattern, index) => {
+        const bash = corpus.bash[index]
+        if (bash) expect(expand(pattern), `${copy.version} ${pattern} vs bash`).toEqual(bash)
+      })
+    }
+    expect(corpus.bash.filter(Boolean).length).toBeGreaterThan(140)
+    expect(Object.keys(corpus.expected)).toEqual([...LOCALLY_PATCHED_VERSIONS])
   })
 
   it('reports a crashed or unbounded probe as a failure', () => {
@@ -238,15 +309,17 @@ describe('brace-expansion advisory coverage', () => {
     expect(rejected[0].reason).toContain(PERMITTED_GHSAS[0])
   })
 
-  it('rejects unpatched 4.x and 5.0.7 copies but accepts 5.0.8 and patched backports', () => {
+  it('rejects unpatched 4.x and 5.0.7 copies but accepts 5.0.8, 2.1.3 and the backport', () => {
     const { store, addCopy, addConsumer } = fixtureStore()
     addConsumer('a@1.0.0', addCopy('brace-expansion@4.0.1', '4.0.1', 'module.exports = []'))
     addConsumer('b@1.0.0', addCopy('brace-expansion@5.0.7', '5.0.7', 'exports.expand = 1'))
     addConsumer('c@1.0.0', addCopy('brace-expansion@5.0.8', '5.0.8', 'exports.expand = 1'))
     addConsumer(
       'd@1.0.0',
-      addCopy('brace-expansion@2.1.2_patch_hash=abc', '2.1.2', `var ${PATCH_MARKER} = 4000000`),
+      addCopy('brace-expansion@1.1.16_patch_hash=abc', '1.1.16', `var ${PATCH_MARKER} = 4000000`),
     )
+    // Official and unpatched is exactly what #489 moved the 2.x line to.
+    addConsumer('e@1.0.0', addCopy('brace-expansion@2.1.3', '2.1.3', 'module.exports = []'))
 
     const rejected = findVulnerableConsumerLinks(store, {
       patchesDir,
@@ -254,6 +327,65 @@ describe('brace-expansion advisory coverage', () => {
     })
 
     expect(rejected.map((entry) => entry.consumer).sort()).toEqual(['a@1.0.0', 'b@1.0.0'])
+  })
+
+  it('accepts the 2.x line only from the official fixed floor upward', () => {
+    for (const version of ['2.1.3', '2.1.4', '2.2.0', '2.9.9']) {
+      expect(isOfficiallyFixedVersion(version), version).toBe(true)
+    }
+    // Below the floor, a prerelease of it, or off the 2.x line entirely.
+    for (const version of ['2.1.2', '2.1.0', '2.0.3', '2.1.3-rc.1', '3.0.0', '1.1.16', '5.0.8']) {
+      expect(isOfficiallyFixedVersion(version), version).toBe(false)
+    }
+    expect(OFFICIAL_FIXED_RANGE).toBe('>=2.1.3 <3.0.0')
+  })
+
+  it('rejects a residual 2.1.2 copy whether or not it still carries a patch', () => {
+    for (const entry of ['brace-expansion@2.1.2', 'brace-expansion@2.1.2_patch_hash=abc']) {
+      const { store, addCopy, addConsumer } = fixtureStore()
+      addConsumer('minimatch@5.1.9', addCopy(entry, '2.1.2', `var ${PATCH_MARKER} = 4000000`))
+
+      const rejected = findVulnerableConsumerLinks(store, {
+        patchesDir,
+        workspaceConfig: trackedConfig,
+      })
+
+      expect(rejected, entry).toHaveLength(1)
+      expect(rejected[0].reason, entry).toContain('brace-expansion@2.1.2')
+    }
+  })
+
+  // #489 handed the 2.x line back to upstream. Taking local ownership of it
+  // again must fail, and the marker cannot detect that: official 2.1.3 ships
+  // EXPANSION_MAX_LENGTH itself, so only the patch hash tells them apart.
+  it('rejects renewed local patch ownership of the official 2.1.3 release', () => {
+    const { store, addCopy, addConsumer } = fixtureStore()
+    addConsumer(
+      'minimatch@9.0.9',
+      addCopy('brace-expansion@2.1.3_patch_hash=abc', '2.1.3', `var ${PATCH_MARKER} = 4000000`),
+    )
+
+    const rejected = findVulnerableConsumerLinks(store, {
+      patchesDir,
+      workspaceConfig: trackedConfig,
+    })
+
+    expect(rejected).toHaveLength(1)
+    expect(rejected[0].reason).toContain('must not carry a local patch')
+  })
+
+  it('rejects a patchedDependencies mapping beyond the tracked backport', () => {
+    expect(checkUntrackedPatchMappings(trackedConfig)).toEqual([])
+    expect(
+      checkUntrackedPatchMappings(
+        `${trackedConfig}  brace-expansion@2.1.3: patches/brace-expansion@2.1.3.patch\n`,
+      ),
+    ).toEqual([
+      'patchedDependencies must not track brace-expansion@2.1.3; permitted: [brace-expansion@1.1.16]',
+    ])
+    expect(
+      checkUntrackedPatchMappings(fs.readFileSync(path.resolve('pnpm-workspace.yaml'), 'utf8')),
+    ).toEqual([])
   })
 
   it('leaves a stale vulnerable store entry alone while no consumer links to it', () => {
@@ -270,9 +402,9 @@ describe('brace-expansion advisory coverage', () => {
 
   it('rejects a tracked version that lost its patch hash, marker, or workspace entry', () => {
     const cases: Array<[string, string, string, string]> = [
-      ['brace-expansion@2.1.2', '2.1.2', `var ${PATCH_MARKER} = 4000000`, trackedConfig],
-      ['brace-expansion@2.1.2_patch_hash=abc', '2.1.2', 'var unpatched = 1', trackedConfig],
-      ['brace-expansion@2.1.2_patch_hash=abc', '2.1.2', `var ${PATCH_MARKER} = 4000000`, ''],
+      ['brace-expansion@1.1.16', '1.1.16', `var ${PATCH_MARKER} = 4000000`, trackedConfig],
+      ['brace-expansion@1.1.16_patch_hash=abc', '1.1.16', 'var unpatched = 1', trackedConfig],
+      ['brace-expansion@1.1.16_patch_hash=abc', '1.1.16', `var ${PATCH_MARKER} = 4000000`, ''],
     ]
 
     for (const [entry, version, source, workspaceConfig] of cases) {
@@ -340,21 +472,18 @@ describe('brace-expansion advisory coverage', () => {
     expect(checkPatchedDependencies(real)).toEqual([])
     expect(
       checkPatchedDependencies(real.replace(/^( {2}brace-expansion@.*)$/gm, '#$1')),
-    ).toHaveLength(PATCHED_VERSIONS.length)
-    expect(
-      checkPatchedDependencies(real.replace(/^( {2}brace-expansion@2\.1\.2.*)$/gm, '#$1')),
-    ).toHaveLength(1)
+    ).toHaveLength(LOCALLY_PATCHED_VERSIONS.length)
     expect(
       checkPatchedDependencies(real.replace(/^patchedDependencies:$/m, '#patchedDependencies:')),
-    ).toHaveLength(PATCHED_VERSIONS.length)
+    ).toHaveLength(LOCALLY_PATCHED_VERSIONS.length)
     expect(
       checkPatchedDependencies(
-        real.replace('patches/brace-expansion@2.1.2.patch', 'patches/other.patch'),
+        real.replace('patches/brace-expansion@1.1.16.patch', 'patches/other.patch'),
       ),
     ).toHaveLength(1)
   })
 
-  it('fails the gate when both expected patch mappings are commented out', () => {
+  it('fails the gate when the tracked patch mapping is commented out', () => {
     const real = fs.readFileSync(path.resolve('pnpm-workspace.yaml'), 'utf8')
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'brace-expansion-ws-'))
     tempRoots.push(root)
@@ -364,13 +493,37 @@ describe('brace-expansion advisory coverage', () => {
     const problems = proveBraceExpansionPatches({ workspaceConfigPath })
 
     expect(problems.length).toBeGreaterThan(0)
-    for (const version of PATCHED_VERSIONS) {
+    for (const version of LOCALLY_PATCHED_VERSIONS) {
       expect(
         problems.some((problem) => problem.includes(`no active patchedDependencies entry for brace-expansion@${version}`)),
         version,
       ).toBe(true)
     }
-  }, 15_000)
+  }, 20_000)
+
+  // The mutation nothing static can catch: mapping, patch file, patch hash and
+  // marker all survive, and only the bound's actual effect is removed. If the
+  // runtime probe ever stops being load-bearing, this is what notices.
+  it('fails the gate when the backport is present but no longer bounds anything', () => {
+    const control = clonePatchedStore((source) => source)
+    expect(proveBraceExpansionPatches({ storeRoot: control.store })).toEqual([])
+
+    const { store, version } = clonePatchedStore((source) => {
+      const disabled = source.replace(`var ${PATCH_MARKER} = 4000000;`, `var ${PATCH_MARKER} = Infinity;`)
+      expect(disabled).not.toBe(source)
+      return disabled
+    })
+
+    const problems = proveBraceExpansionPatches({ storeRoot: store })
+
+    // Still mapped, still patched, still marked — and still caught.
+    expect(checkPatchedDependencies(fs.readFileSync(path.resolve('pnpm-workspace.yaml'), 'utf8')))
+      .toEqual([])
+    expect(fs.existsSync(path.resolve(`patches/brace-expansion@${version}.patch`))).toBe(true)
+    expect(problems.some((problem) => problem.startsWith(`brace-expansion@${version} length`))).toBe(
+      true,
+    )
+  }, 60_000)
 
   it('fails the gate itself for both mutations, not just a companion test', () => {
     const { store, addCopy, addConsumer } = fixtureStore()

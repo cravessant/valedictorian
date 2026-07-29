@@ -1,17 +1,39 @@
 minimumReleaseAgeExclude:
   - '@sparxie/*'
+  # TEMPORARY, and deliberately pinned to one exact version rather than the
+  # package. brace-expansion@2.1.3 carries the official upstream fix for
+  # GHSA-mh99-v99m-4gvg and was published 2026-07-28T10:16:15Z, so adopting it
+  # here — which retires this repository's 2.x backport — would otherwise have
+  # to wait out the default 48-hour quarantine. The exact selector keeps that
+  # quarantine in force for every other brace-expansion release, including any
+  # future one. #503 removes this entry after 2026-07-30T10:16:15Z, once 2.1.3
+  # has aged past `minimumReleaseAge` on its own.
+  - 'brace-expansion@2.1.3'
 
-# GHSA-mh99-v99m-4gvg (CVE-2026-14257) is NOT risk-accepted. Both remaining
-# vulnerable copies carry the upstream fix through the tracked patches below,
-# backported from juliangruber/brace-expansion@a1bd339. The advisory still
-# matches because npm audit keys on the unchanged upstream version numbers:
-# upstream shipped the fix only on the 5.x line, and brace-expansion 5 exports a
-# named `expand` rather than a callable module, so electron-builder's CommonJS
-# minimatch 3.x/5.x/9.x consumers cannot load it.
+# GHSA-mh99-v99m-4gvg (CVE-2026-14257) is NOT risk-accepted. It is ignored only
+# because the advisory's published affected range is coarser than the fix:
+# GitHub still reports `<=5.0.7` affected and recognises only 5.0.8 as patched,
+# so `pnpm audit` keeps matching two installed copies that are not exploitable.
 #
-# `pnpm run audit:high` proves the patches are installed and effective before it
-# runs `pnpm audit`, so this entry can never mask an unpatched copy. Drop both
-# the patches and this entry once a fixed 1.x/2.x release exists.
+#   - brace-expansion@2.1.3 carries the official upstream fix. The advisory
+#     metadata simply has not been narrowed to exclude the fixed 2.x release.
+#   - brace-expansion@1.1.16 has no fixed upstream release at all. It reaches
+#     the tree through electron-builder's legacy minimatch 3.x consumers, which
+#     cannot load brace-expansion 5 (it exports a named `expand` rather than a
+#     callable module), so the fix is backported into it through the tracked
+#     patch below, taken from juliangruber/brace-expansion@a1bd339.
+#
+# `pnpm run audit:high` runs scripts/brace-expansion-patch-proof.mjs before
+# `pnpm audit`. That proof fails if any consumer-reachable copy inside the
+# advisory range is neither an official fixed release nor the tracked backport,
+# if the 2.x copy is old or carries a local patch, if the backport loses its
+# mapping, patch, marker or its actual effect at runtime, or if this ignore list
+# stops being exactly this one advisory. This entry therefore cannot mask an
+# unpatched installed copy.
+#
+# Remove this entry once both hold: the advisory metadata narrows its affected
+# range so the installed 2.x release stops matching, and #487 lands a stable
+# Electron Builder release that drops the 1.x copy and the patch below with it.
 auditConfig:
   ignoreGhsas:
     - GHSA-mh99-v99m-4gvg
@@ -24,4 +46,3 @@ allowBuilds:
 
 patchedDependencies:
   brace-expansion@1.1.16: patches/brace-expansion@1.1.16.patch
-  brace-expansion@2.1.2: patches/brace-expansion@2.1.2.patch

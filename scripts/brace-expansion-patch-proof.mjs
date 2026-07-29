@@ -6,22 +6,36 @@ import { FAILSAFE_SCHEMA, load as loadYaml } from 'js-yaml'
 import semver from 'semver'
 
 /**
- * npm audit keys GHSA-mh99-v99m-4gvg on upstream version numbers, and upstream
- * only shipped the fix on the 5.x line. These two copies reach the tree through
- * electron-builder's CommonJS minimatch consumers, which cannot load
- * brace-expansion 5 (it exports a named `expand`, not a callable module), so the
- * fix is backported into them through tracked pnpm patches instead.
+ * npm audit keys GHSA-mh99-v99m-4gvg on upstream version numbers, and the
+ * advisory's published range (`<=5.0.7`) is coarser than the actual fix. Two
+ * installed copies still match it, for different reasons:
+ *
+ *   - 2.x reaches the tree through electron-builder's minimatch 5.x/9.x and is
+ *     the official fixed 2.1.3 release, which the advisory metadata has simply
+ *     not been narrowed to exclude.
+ *   - 1.1.16 reaches it through minimatch 3.x, has no fixed upstream release,
+ *     and cannot move to brace-expansion 5 (it exports a named `expand` rather
+ *     than a callable module), so the fix is backported through a tracked pnpm
+ *     patch instead.
  *
  * This proof is what makes the advisory ignore honest, so it is the gate rather
- * than a companion test: it fails if any consumer resolves a copy anywhere in
- * the advisory's range without a tracked backport, if either tracked copy loses
- * its patch, if the bound stops working, or if the ignore list stops being
- * exactly the one permitted advisory.
+ * than a companion test. It fails if any consumer resolves a copy in the
+ * advisory range that is neither an official fixed release nor the tracked
+ * backport, if the 2.x copy is older than the official fix or carries a local
+ * patch this repository no longer owns, if the backport loses its mapping,
+ * patch or marker, if the bound stops working at runtime on either line, or if
+ * the ignore list stops being exactly the one permitted advisory.
  */
-export const PATCHED_VERSIONS = Object.freeze(['1.1.16', '2.1.2'])
+export const LOCALLY_PATCHED_VERSIONS = Object.freeze(['1.1.16'])
 export const PERMITTED_GHSAS = Object.freeze(['GHSA-mh99-v99m-4gvg'])
 /** The advisory covers every published version below this one. */
 export const FIRST_PATCHED_UPSTREAM_VERSION = '5.0.8'
+/**
+ * Upstream backported the fix to the 2.x maintenance line in 2.1.3, below the
+ * advisory's coarse floor. A copy in this range is accepted unpatched; #489
+ * retired this repository's own 2.x backport in favour of it.
+ */
+export const OFFICIAL_FIXED_RANGE = '>=2.1.3 <3.0.0'
 export const EXPANSION_MAX_LENGTH = 4_000_000
 export const PATCH_MARKER = 'EXPANSION_MAX_LENGTH'
 export const CORPUS_PATH = 'scripts/brace-expansion-corpus.json'
@@ -155,9 +169,24 @@ export function isVulnerableVersion(version) {
 }
 
 /**
+ * Whether a version inside the advisory's coarse range nonetheless carries the
+ * official upstream fix, because upstream patched that maintenance line after
+ * the advisory was published.
+ *
+ * @param {string} version
+ * @returns {boolean}
+ */
+export function isOfficiallyFixedVersion(version) {
+  const parsed = semver.parse(version, { loose: false })
+  if (!parsed || parsed.version !== version) return false
+  return semver.satisfies(parsed, OFFICIAL_FIXED_RANGE)
+}
+
+/**
  * Why a consumer-resolved copy is unacceptable, or null when it is fine. A copy
- * in the advisory range is accepted only as one of the tracked patch-hashed
- * backports, still carrying the marker and still backed by a tracked patch.
+ * in the advisory range is accepted only as an official fixed release carrying
+ * no local patch, or as one of the tracked patch-hashed backports still
+ * carrying the marker and still backed by a tracked patch.
  *
  * @param {string} target realpath of the resolved package directory
  * @param {{ patchesDir: string, workspaceConfig: string }} options
@@ -169,12 +198,25 @@ export function describeUnacceptableCopy(target, options) {
   const version = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).version
   if (!isVulnerableVersion(version)) return null
 
-  if (!PATCHED_VERSIONS.includes(version)) {
+  const storeEntry = path.basename(path.dirname(path.dirname(target)))
+  const hashed = /^brace-expansion@([^_]+)_patch_hash=.+$/.exec(storeEntry)
+
+  // An officially fixed release must stay official. Re-patching one would put
+  // this repository back in the ownership #489 handed to upstream, and the
+  // patch marker cannot tell the two apart: 2.1.3 ships EXPANSION_MAX_LENGTH
+  // itself, so only the absent patch hash distinguishes them.
+  if (isOfficiallyFixedVersion(version)) {
+    if (!hashed) return null
+    return (
+      `resolves brace-expansion@${version} from ${storeEntry}, but the official fixed ` +
+      'release must not carry a local patch'
+    )
+  }
+
+  if (!LOCALLY_PATCHED_VERSIONS.includes(version)) {
     return `resolves brace-expansion@${version}, covered by ${PERMITTED_GHSAS[0]} with no tracked backport`
   }
 
-  const storeEntry = path.basename(path.dirname(path.dirname(target)))
-  const hashed = /^brace-expansion@([^_]+)_patch_hash=.+$/.exec(storeEntry)
   if (!hashed || hashed[1] !== version) {
     return `resolves brace-expansion@${version} from ${storeEntry}, which pnpm did not patch`
   }
@@ -201,15 +243,10 @@ export function describeUnacceptableCopy(target, options) {
  * still links to is not.
  *
  * @param {string} storeRoot
- * @param {{ patchesDir?: string, workspaceConfig?: string }} [options]
- * @returns {Array<{ consumer: string, target: string, reason: string }>}
+ * @returns {Array<{ consumer: string, target: string }>}
  */
-export function findVulnerableConsumerLinks(storeRoot, options = {}) {
+export function findConsumerLinks(storeRoot) {
   if (!fs.existsSync(storeRoot)) return []
-  const resolved = {
-    patchesDir: path.resolve(options.patchesDir ?? 'patches'),
-    workspaceConfig: options.workspaceConfig ?? '',
-  }
 
   /** @type {Array<{ consumer: string, link: string }>} */
   const links = fs
@@ -227,15 +264,50 @@ export function findVulnerableConsumerLinks(storeRoot, options = {}) {
     link: path.join(path.dirname(storeRoot), 'brace-expansion'),
   })
 
+  return links
+    .filter(({ link }) => fs.existsSync(link))
+    .map(({ consumer, link }) => ({ consumer, target: fs.realpathSync(link) }))
+}
+
+/**
+ * @param {string} storeRoot
+ * @param {{ patchesDir?: string, workspaceConfig?: string }} [options]
+ * @returns {Array<{ consumer: string, target: string, reason: string }>}
+ */
+export function findVulnerableConsumerLinks(storeRoot, options = {}) {
+  const resolved = {
+    patchesDir: path.resolve(options.patchesDir ?? 'patches'),
+    workspaceConfig: options.workspaceConfig ?? '',
+  }
+
   /** @type {Array<{ consumer: string, target: string, reason: string }>} */
   const rejected = []
-  for (const { consumer, link } of links) {
-    if (!fs.existsSync(link)) continue
-    const target = fs.realpathSync(link)
+  for (const { consumer, target } of findConsumerLinks(storeRoot)) {
     const reason = describeUnacceptableCopy(target, resolved)
     if (reason) rejected.push({ consumer, target, reason })
   }
   return rejected
+}
+
+/**
+ * The distinct copies consumers actually resolve, deduplicated by directory.
+ * Runtime probes run over these rather than over every store entry, so a stale
+ * unreferenced directory stays harmless while every reachable copy is proved.
+ *
+ * @param {string} storeRoot
+ * @returns {Array<{ version: string, packageDir: string }>}
+ */
+export function findConsumerReachableCopies(storeRoot) {
+  /** @type {Map<string, { version: string, packageDir: string }>} */
+  const byDirectory = new Map()
+  for (const { target } of findConsumerLinks(storeRoot)) {
+    if (byDirectory.has(target)) continue
+    const manifestPath = path.join(target, 'package.json')
+    if (!fs.existsSync(manifestPath)) continue
+    const { version } = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    byDirectory.set(target, { version, packageDir: target })
+  }
+  return [...byDirectory.values()]
 }
 
 /** The only `auditConfig` key this repository is allowed to set. */
@@ -322,6 +394,28 @@ export function checkAdvisoryIgnores(workspaceConfig) {
 }
 
 /**
+ * The tracked backports are the only patches this repository may own. #489
+ * handed the 2.x line back to upstream, so reintroducing any mapping beyond the
+ * tracked ones — most obviously a renewed patch over the official 2.1.3 — has
+ * to fail the gate rather than quietly re-enter local ownership.
+ *
+ * @param {string} workspaceConfig
+ * @returns {string[]}
+ */
+export function checkUntrackedPatchMappings(workspaceConfig) {
+  const { document, problem } = parseWorkspaceConfig(workspaceConfig)
+  if (!document) return [/** @type {string} */ (problem)]
+
+  const mappings = asMapping(document.patchedDependencies)
+  if (!mappings) return []
+
+  const permitted = LOCALLY_PATCHED_VERSIONS.map((version) => `brace-expansion@${version}`)
+  return Object.keys(mappings)
+    .filter((key) => !permitted.includes(key))
+    .map((key) => `patchedDependencies must not track ${key}; permitted: [${permitted.join(', ')}]`)
+}
+
+/**
  * Confirm each expected patch is an active parsed mapping with the exact path.
  * A commented-out mapping is absent to pnpm, so it must be absent here too.
  *
@@ -329,7 +423,7 @@ export function checkAdvisoryIgnores(workspaceConfig) {
  * @param {string[]} [versions]
  * @returns {string[]}
  */
-export function checkPatchedDependencies(workspaceConfig, versions = PATCHED_VERSIONS) {
+export function checkPatchedDependencies(workspaceConfig, versions = LOCALLY_PATCHED_VERSIONS) {
   const { document, problem } = parseWorkspaceConfig(workspaceConfig)
   if (!document) return [/** @type {string} */ (problem)]
 
@@ -406,15 +500,18 @@ export function checkProbeIsBounded(outcome, label) {
 }
 
 /**
+ * Expand the whole corpus inside `packageDir` and compare against `expected`.
+ * A null entry means "no oracle for this pattern" and is skipped, which is how
+ * the bash oracle covers the patterns bash itself cannot express.
+ *
  * @param {string} packageDir
- * @param {string} version
- * @param {{ patterns: string[], expected: Record<string, string[][]> }} corpus
+ * @param {string} label
+ * @param {{ patterns: string[] }} corpus
+ * @param {(string[] | null)[] | undefined} expected
  * @returns {string[]}
  */
-export function checkCorpusCompatibility(packageDir, version, corpus) {
-  const source = fs.readFileSync(path.join(packageDir, 'index.js'), 'utf8')
-  const expected = corpus.expected[version]
-  if (!expected) return [`${version}: no recorded pre-patch expansions to compare against`]
+export function checkCorpusCompatibility(packageDir, label, corpus, expected) {
+  if (!expected) return [`${label}: no recorded expansions to compare against`]
 
   const child = spawnSync(
     process.execPath,
@@ -431,19 +528,17 @@ export function checkCorpusCompatibility(packageDir, version, corpus) {
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   )
   if (child.status !== 0) {
-    return [`${version}: corpus expansion failed: ${child.stderr.trim().split('\n').pop()}`]
+    return [`${label}: corpus expansion failed: ${child.stderr.trim().split('\n').pop()}`]
   }
 
   /** @type {string[]} */
   const problems = []
-  if (!source.includes(PATCH_MARKER)) {
-    problems.push(`${version}: installed copy is missing the backported ${PATCH_MARKER} bound`)
-  }
   const actual = JSON.parse(child.stdout)
   for (const [index, pattern] of corpus.patterns.entries()) {
+    if (expected[index] === null) continue
     if (JSON.stringify(actual[index]) === JSON.stringify(expected[index])) continue
     problems.push(
-      `${version}: expansion of ${JSON.stringify(pattern)} changed — ` +
+      `${label}: expansion of ${JSON.stringify(pattern)} changed — ` +
         `got ${JSON.stringify(actual[index])}, expected ${JSON.stringify(expected[index])}`,
     )
   }
@@ -498,12 +593,36 @@ export function proveBraceExpansionPatches(options = {}) {
 
   problems.push(...checkAdvisoryIgnores(workspaceConfig))
   problems.push(...checkPatchedDependencies(workspaceConfig))
+  problems.push(...checkUntrackedPatchMappings(workspaceConfig))
 
   for (const link of findVulnerableConsumerLinks(storeRoot, { patchesDir, workspaceConfig })) {
     problems.push(`${link.consumer} ${link.reason} (${link.target})`)
   }
 
-  for (const version of PATCHED_VERSIONS) {
+  // Every consumer-reachable copy the advisory still matches has to be proved
+  // non-exploitable at runtime, whichever line it is on and whoever fixed it.
+  // This is the only check that catches a backport which is present, mapped and
+  // marked but no longer actually bounds anything.
+  for (const copy of findConsumerReachableCopies(storeRoot)) {
+    if (!isVulnerableVersion(copy.version)) continue
+    for (const [scenario, groups] of Object.entries(PROBE_SCENARIOS)) {
+      problems.push(
+        ...checkProbeIsBounded(
+          runExpansionProbe({ modulePath: path.join(copy.packageDir, 'index.js'), groups }),
+          `brace-expansion@${copy.version} ${scenario}`,
+        ),
+      )
+    }
+    // The official fixed release has no recorded pre-patch oracle of its own,
+    // so bash is what proves upstream's fix left ordinary expansion alone.
+    if (isOfficiallyFixedVersion(copy.version)) {
+      problems.push(
+        ...checkCorpusCompatibility(copy.packageDir, copy.version, corpus, corpus.bash),
+      )
+    }
+  }
+
+  for (const version of LOCALLY_PATCHED_VERSIONS) {
     const patchPath = path.join(patchesDir, `brace-expansion@${version}.patch`)
     if (!fs.existsSync(patchPath)) {
       problems.push(`missing tracked patch ${path.relative(process.cwd(), patchPath)}`)
@@ -517,17 +636,13 @@ export function proveBraceExpansionPatches(options = {}) {
     }
 
     for (const copy of patched) {
-      problems.push(...checkCorpusCompatibility(copy.packageDir, version, corpus))
-
-      for (const [scenario, groups] of Object.entries(PROBE_SCENARIOS)) {
-        const modulePath = path.join(copy.packageDir, 'index.js')
-        problems.push(
-          ...checkProbeIsBounded(
-            runExpansionProbe({ modulePath, groups }),
-            `brace-expansion@${version} ${scenario}`,
-          ),
-        )
+      const source = fs.readFileSync(path.join(copy.packageDir, 'index.js'), 'utf8')
+      if (!source.includes(PATCH_MARKER)) {
+        problems.push(`${version}: installed copy is missing the backported ${PATCH_MARKER} bound`)
       }
+      problems.push(
+        ...checkCorpusCompatibility(copy.packageDir, version, corpus, corpus.expected[version]),
+      )
 
       // Negative control: the same probe must report the pre-patch source as
       // vulnerable, otherwise a passing run would prove nothing.
@@ -570,7 +685,9 @@ function run() {
   const problems = proveBraceExpansionPatches()
   if (problems.length === 0) {
     process.stdout.write(
-      `brace-expansion CVE-2026-14257 backport verified for ${PATCHED_VERSIONS.join(', ')}\n`,
+      'brace-expansion CVE-2026-14257 verified: official fix accepted for ' +
+        `${OFFICIAL_FIXED_RANGE}, tracked backport verified for ` +
+        `${LOCALLY_PATCHED_VERSIONS.join(', ')}\n`,
     )
     return
   }

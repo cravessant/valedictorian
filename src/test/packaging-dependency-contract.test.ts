@@ -68,7 +68,7 @@ describe('packaging dependency contract', () => {
 
     expect(resolvedVersions(lockfile, 'form-data').filter((v) => v.startsWith('4.') && v < '4.0.6'))
       .toEqual([])
-    expect(resolvedVersions(lockfile, 'brace-expansion')).toEqual(['1.1.16', '2.1.2', '5.0.8'])
+    expect(resolvedVersions(lockfile, 'brace-expansion')).toEqual(['1.1.16', '2.1.3', '5.0.8'])
   })
 
   it('gates high-severity advisories through the lint quality entrypoint', () => {
@@ -89,22 +89,37 @@ describe('packaging dependency contract', () => {
     expect(packageJson.pnpm).toBeUndefined()
   })
 
-  // The ignore above is only defensible because both matching copies carry the
-  // upstream fix locally; npm audit keys on the unchanged upstream versions.
-  it('pairs that ignore with a tracked patch for every copy it matches', () => {
+  // The ignore above is only defensible because every copy it matches carries
+  // the fix — 2.1.3 from upstream, 1.1.16 from the tracked backport — while npm
+  // audit keys on the unchanged upstream version numbers.
+  it('tracks a patch only for the matched copy with no fixed upstream release', () => {
     const workspaceConfig = readWorkspaceConfig()
     const patched = [...workspaceConfig.matchAll(/^ {2}(\S+): (patches\/\S+\.patch)$/gm)]
 
-    expect(patched.map((m) => m[1])).toEqual([
-      'brace-expansion@1.1.16',
-      'brace-expansion@2.1.2',
-    ])
+    expect(patched.map((m) => m[1])).toEqual(['brace-expansion@1.1.16'])
     for (const [, name, patchPath] of patched) {
       expect(fs.existsSync(path.resolve(patchPath)), patchPath).toBe(true)
       expect(resolvedVersions(readLockfile(), name.split('@')[0]).join()).toContain(
         name.split('@')[1],
       )
     }
+    expect(readLockfile()).not.toContain('brace-expansion@2.1.2')
     expect(workspaceConfig).toContain('is NOT risk-accepted')
+  })
+
+  // Adopting 2.1.3 inside its 48-hour quarantine needed an exception. It has to
+  // stay pinned to that one version, or it would silently waive the quarantine
+  // for every future brace-expansion release too.
+  it('waives the release-age quarantine for one exact version and nothing more', () => {
+    const workspaceConfig = readWorkspaceConfig()
+    const excluded = [...workspaceConfig.matchAll(/^ {2}- '([^']+)'$/gm)].map((m) => m[1])
+
+    expect(excluded).toEqual(['@sparxie/*', 'brace-expansion@2.1.3'])
+    expect(excluded).not.toContain('brace-expansion')
+    expect(workspaceConfig).not.toMatch(/^minimumReleaseAge:/m)
+    expect(workspaceConfig).not.toMatch(/^trustLockfile:/m)
+    // The exception is temporary, so it has to carry its own removal condition.
+    expect(workspaceConfig).toContain('#503')
+    expect(workspaceConfig).toContain('2026-07-30T10:16:15Z')
   })
 })
