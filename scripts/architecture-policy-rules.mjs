@@ -36,13 +36,6 @@ const connectorSourceExecutionWrites = new Set([
  * an issue may only be named where its own contract reaches.
  */
 const retirementScopes = {
-  '#328': {
-    describe: 'a file under src/db whose table definitions move into module slices',
-    fits: (entry, manifest) =>
-      entry.source.startsWith('src/db/')
-      && entry.source !== manifest.canonicalSchemaAggregate
-      && entry.source !== manifest.schemaRegistrar,
-  },
   '#491': {
     // The four mutations #491's contract names. Nothing else may claim it.
     describe: 'one of the four connectors mutations of a source-execution table that #491 names',

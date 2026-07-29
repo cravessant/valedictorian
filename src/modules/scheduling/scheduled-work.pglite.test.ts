@@ -12,13 +12,12 @@ import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
-import { connectorInstances } from '../../db/schema.connectors'
+import { connectorCaptureWork, connectorInstances } from '../connectors/connector.schema'
 import { sourceExecutionScopes } from '../../db/schema'
 import { createPgliteCaptureService } from '../capture/capture.service'
 import { createLocalScheduler } from '../../runtime/local-scheduler'
 import { createScheduledWorkSource } from './scheduled-work.source'
 import {
-  connectorCaptureWork,
   hostedResultPollingWork,
   hostedSubmissionWork,
   providerUrlResolutionWork,

@@ -29,9 +29,12 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type { PgliteDatabase } from '../../db/pglite'
 import { containsSensitiveJsonKey } from '../lifecycle/lifecycle-representation'
+// connector_capture_work is connector-owned; scheduling reads it through the
+// canonical aggregate so the connector slice can keep depending on the shared
+// scheduled-work vocabulary declared here without closing a module cycle.
+import { connectorCaptureWork } from '../../db/schema'
 import {
   captureDestinationResolutionWork,
-  connectorCaptureWork,
   hostedResultPollingWork,
   hostedSubmissionWork,
   normalizationWork,

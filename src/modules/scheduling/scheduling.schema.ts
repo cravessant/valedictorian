@@ -4,7 +4,6 @@
  * One durable identity per umbrella-named operation, each with a typed subject
  * foreign key and bounded columns rather than unbounded payload ownership:
  *
- *   - connector_capture_work        : connector capture intake resumption
  *   - normalization_work            : Capture -> Job normalization
  *   - provider_url_resolution_work  : provider intermediary URL resolution (#233)
  *   - hosted_submission_work        : hosted Job-resolution submission/connectivity
@@ -13,6 +12,10 @@
  * Separate rows in separate tables give each operation its own attempt budget,
  * status, and concurrency claim, so one operation can never exhaust or complete
  * another. Statuses and reasons are app-internal coordination values.
+ *
+ * `connector_capture_work` is the same kind of identity but is declared in the
+ * connector slice, which owns it; the shared column and check builders below are
+ * exported so it keeps exactly this vocabulary.
  */
 import { sql } from 'drizzle-orm'
 import { check, foreignKey, index, integer, pgTable, type PgColumn, text, uniqueIndex } from 'drizzle-orm/pg-core'
@@ -22,7 +25,6 @@ import {
   captureRevisions,
   captures,
 } from '../capture/capture.schema'
-import { connectorInstances } from '../../db/schema.connectors'
 import { workspaces } from '../../db/workspaces.schema'
 
 // 'terminal' is a typed deterministic failure, distinct from 'exhausted' (retryable
@@ -37,7 +39,7 @@ export const scheduledWorkDeterministicReasons = ['invalid_target', 'unresolvabl
 const FORBIDDEN_KEY = FORBIDDEN_JSON_KEY_PREDICATE
 
 /** Fresh common column builders for every scheduled-work identity table. */
-const scheduledWorkColumns = () => ({
+export const scheduledWorkColumns = () => ({
   id: text('id').primaryKey(),
   workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
   idempotencyKey: text('idempotency_key').notNull(),
@@ -55,7 +57,7 @@ const scheduledWorkColumns = () => ({
   updatedAt: text('updated_at').notNull(),
 })
 
-interface ScheduledWorkColumns {
+export interface ScheduledWorkColumns {
   workspaceId: PgColumn
   idempotencyKey: PgColumn
   attempt: PgColumn
@@ -69,7 +71,7 @@ interface ScheduledWorkColumns {
 }
 
 /** Common workspace-ownership, idempotency-bound, budget, status, failure, and claim checks. */
-function scheduledWorkChecks(prefix: string, t: ScheduledWorkColumns) {
+export function scheduledWorkChecks(prefix: string, t: ScheduledWorkColumns) {
   return {
     workspaceCheck: check(`chk_${prefix}_workspace`, sql`length(${t.workspaceId}) between 1 and 200`),
     idempotencyCheck: check(`chk_${prefix}_idempotency`, sql`length(${t.idempotencyKey}) between 1 and 200`),
@@ -84,36 +86,6 @@ function scheduledWorkChecks(prefix: string, t: ScheduledWorkColumns) {
     scheduledUnclaimedCheck: check(`chk_${prefix}_scheduled_unclaimed`, sql`${t.status} <> 'scheduled' or ${t.acquisitionToken} is null`),
   }
 }
-
-export const connectorCaptureWork = pgTable(
-  'connector_capture_work',
-  {
-    ...scheduledWorkColumns(),
-    connectorInstanceId: text('connector_instance_id').notNull(),
-    filterSignature: text('filter_signature').notNull(),
-    checkpointSchemaVersion: text('checkpoint_schema_version').notNull(),
-    checkpointGeneration: text('checkpoint_generation').notNull(),
-    lastAttemptAt: text('last_attempt_at').notNull(),
-    computedDelayMs: integer('computed_delay_ms'),
-    serverMinimumDelayMs: integer('server_minimum_delay_ms'),
-    horizonAt: text('horizon_at').notNull(),
-    acquisitionRunId: text('acquisition_run_id'),
-    skippedRunId: text('skipped_run_id'),
-  },
-  (table) => ({
-    idempotencyIdx: uniqueIndex('idx_connector_capture_work_idempotency').on(table.idempotencyKey),
-    dueIdx: index('idx_connector_capture_work_due').on(table.status, table.nextEligibleAt),
-    subjectIdx: index('idx_connector_capture_work_subject').on(table.connectorInstanceId, table.filterSignature),
-    // AC5 concurrency serialization: at most one ACTIVE row per subject.
-    activeSubjectIdx: uniqueIndex('idx_connector_capture_work_active_subject')
-      .on(table.connectorInstanceId, table.filterSignature)
-      .where(sql`${table.status} in ('scheduled','claimed')`),
-    connectorFk: foreignKey({ name: 'fk_connector_capture_work_instance', columns: [table.connectorInstanceId], foreignColumns: [connectorInstances.id] }),
-    filterCheck: check('chk_connector_capture_work_filter', sql`length(${table.filterSignature}) between 1 and 512`),
-    serverMinimumCheck: check('chk_connector_capture_work_server_minimum', sql`${table.serverMinimumDelayMs} is null or ${table.serverMinimumDelayMs} >= 0`),
-    ...scheduledWorkChecks('connector_capture_work', table),
-  }),
-)
 
 export const normalizationWork = pgTable(
   'normalization_work',

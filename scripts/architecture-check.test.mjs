@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   aggregateFixture,
   captureAccessesJobs,
-  dbReadsJobs,
+  connectorsMutatesScopes,
   passingFixture,
   permission,
   runArchitectureCheck,
@@ -87,7 +87,7 @@ describe('architecture check manifests', () => {
     ['a glob', 'src/runtime/*.ts', 'uses a pattern for source'],
   ])('rejects an exception broadened to %s', (_label, source, expected) => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.exceptions = [{ ...dbReadsJobs(), source }]
+      manifest.exceptions = [{ ...connectorsMutatesScopes(), source }]
     }))
 
     expect(result.status).toBe(1)
@@ -97,19 +97,19 @@ describe('architecture check manifests', () => {
 
   it('rejects an exception broadened by dropping the table it covers', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      const { table: _table, ...withoutTable } = dbReadsJobs()
+      const { table: _table, ...withoutTable } = connectorsMutatesScopes()
       manifest.exceptions = [withoutTable]
     }))
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[broadened-architecture-exception] architecture/module-graph.json entry foreign-owner-table-access src/db/legacy.schema.ts -> src/modules/job/job.schema.ts must carry exactly owner, reason, recordedIn, retiredBy, rule, source, table, target\n',
+      '[broadened-architecture-exception] architecture/module-graph.json entry foreign-owner-table-access src/modules/connectors/connector.repository.ts -> src/modules/source-execution/source-execution.schema.ts must carry exactly owner, reason, recordedIn, retiredBy, rule, source, table, target\n',
     )
   })
 
   it('rejects an exception relaxing a rule the check does not define', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.exceptions = [{ ...dbReadsJobs(), rule: 'everything' }]
+      manifest.exceptions = [{ ...connectorsMutatesScopes(), rule: 'everything' }]
     }))
 
     expect(result.status).toBe(1)
@@ -119,12 +119,12 @@ describe('architecture check manifests', () => {
   it('rejects an exception that no longer matches an import', () => {
     const result = check({
       ...passingFixture(),
-      'src/db/legacy.schema.ts': 'export const legacy = 0\n',
+      'src/modules/connectors/connector.repository.ts': 'export const repository = 0\n',
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[stale-architecture-exception] architecture/module-graph.json exception foreign-owner-table-access src/db/legacy.schema.ts -> src/modules/job/job.schema.ts for jobs matches no maintained import\n',
+      '[stale-architecture-exception] architecture/module-graph.json exception foreign-owner-table-access src/modules/connectors/connector.repository.ts -> src/modules/source-execution/source-execution.schema.ts for source_execution_scopes matches no maintained import\n',
     )
   })
 
@@ -170,12 +170,12 @@ describe('architecture check manifests', () => {
     ['is not a declared retiring issue', '#999'],
   ])('rejects an exception whose retirement claim %s', (_label, retiredBy) => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.exceptions = [{ ...dbReadsJobs(), retiredBy }]
+      manifest.exceptions = [{ ...connectorsMutatesScopes(), retiredBy }]
     }))
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[untruthful-retirement-claim] architecture/module-graph.json exception foreign-owner-table-access src/db/legacy.schema.ts -> src/modules/job/job.schema.ts claims retirement by ${retiredBy}, which is not a declared retiring issue\n`,
+      `[untruthful-retirement-claim] architecture/module-graph.json exception foreign-owner-table-access src/modules/connectors/connector.repository.ts -> src/modules/source-execution/source-execution.schema.ts claims retirement by ${retiredBy}, which is not a declared retiring issue\n`,
     )
   })
 
@@ -1070,26 +1070,22 @@ describe('one exact access, one policy entry', () => {
 
   it('rejects an exception that a permission also claims', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.permissions.push(duplicateOf(dbReadsJobs()))
+      manifest.permissions.push(duplicateOf(connectorsMutatesScopes()))
     }))
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(expected(
-      'src/db/legacy.schema.ts',
-      'src/modules/job/job.schema.ts',
-      'jobs',
+      'src/modules/connectors/connector.repository.ts',
+      'src/modules/source-execution/source-execution.schema.ts',
+      'source_execution_scopes',
       'exception and permission',
     ))
   })
 
   it('rejects a permission that an exception also claims, whichever order', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.exceptions.push({
-        ...dbReadsJobs(),
-        reason: 'Duplicated on purpose so the global exact-access key is proven.',
-        source: 'src/modules/capture/capture.service.ts',
-        retiredBy: '#328',
-      })
+      const { purpose: _purpose, ...access } = captureAccessesJobs()
+      manifest.exceptions.push({ ...access, retiredBy: '#491', rule: 'foreign-owner-table-access' })
     }))
 
     expect(result.status).toBe(1)
@@ -1103,14 +1099,14 @@ describe('one exact access, one policy entry', () => {
 
   it('rejects a duplicate inside the exception set', () => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
-      manifest.exceptions.push({ ...dbReadsJobs() })
+      manifest.exceptions.push({ ...connectorsMutatesScopes() })
     }))
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(expected(
-      'src/db/legacy.schema.ts',
-      'src/modules/job/job.schema.ts',
-      'jobs',
+      'src/modules/connectors/connector.repository.ts',
+      'src/modules/source-execution/source-execution.schema.ts',
+      'source_execution_scopes',
       'exception and exception',
     ))
   })

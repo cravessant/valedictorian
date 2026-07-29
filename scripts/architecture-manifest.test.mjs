@@ -13,7 +13,11 @@ import {
 import { isMaintainedTestPath } from './architecture-policy-rules.mjs'
 import { isProductionConsumer } from './architecture-public-surface-rules.mjs'
 import { moduleOfPath } from './architecture-source-graph.mjs'
-import { loadStateOwnership, ownerByTable } from './architecture-state-ownership-rules.mjs'
+import {
+  declarationRoot,
+  loadStateOwnership,
+  ownerByTable,
+} from './architecture-state-ownership-rules.mjs'
 import { declaredTables, scanMaintainedSource } from './architecture-state-resolution.mjs'
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -80,7 +84,7 @@ describe('checked-in architecture manifests', () => {
 
     expect(claimed.sort()).toEqual(declared.sort())
     expect(claimed).toHaveLength(58)
-    expect(ownership.schemaModules).toHaveLength(10)
+    expect(ownership.schemaModules).toHaveLength(12)
   })
 
   it('records exactly the directed capability edges production source has', () => {
@@ -88,7 +92,7 @@ describe('checked-in architecture manifests', () => {
 
     expect(moduleGraph.edges.map((edge) => `${edge.from} -> ${edge.to}`).sort())
       .toEqual([...edges.keys()].sort())
-    expect(moduleGraph.edges).toHaveLength(33)
+    expect(moduleGraph.edges).toHaveLength(34)
   })
 
   it('covers every foreign state access exactly once, with no entry left over', () => {
@@ -104,10 +108,10 @@ describe('checked-in architecture manifests', () => {
       {},
     )
 
-    expect(moduleGraph.exceptions).toHaveLength(5)
-    expect(moduleGraph.permissions).toHaveLength(638)
-    expect(byIssue).toEqual({ '#328': 1, '#491': 4 })
-    expect(moduleGraph.retiringIssues).toEqual(['#328', '#491'])
+    expect(moduleGraph.exceptions).toHaveLength(4)
+    expect(moduleGraph.permissions).toHaveLength(646)
+    expect(byIssue).toEqual({ '#491': 4 })
+    expect(moduleGraph.retiringIssues).toEqual(['#491'])
     expect(moduleGraph.permissions.every((entry) => !('retiredBy' in entry))).toBe(true)
     expect(moduleGraph.exceptions.every((entry) => entry.rule === 'foreign-owner-table-access'))
       .toBe(true)
@@ -121,9 +125,9 @@ describe('checked-in architecture manifests', () => {
 
     expect(byPurpose).toEqual({
       'cross-capability-state-access': 52,
-      'foreign-key-reference': 15,
+      'foreign-key-reference': 16,
       'platform-ownership-root': 2,
-      'schema-composition': 51,
+      'schema-composition': 58,
       'schema-registration': 58,
       'test-state-access': 460,
     })
@@ -138,12 +142,101 @@ describe('checked-in architecture manifests', () => {
     expect(moduleGraph.retiringIssues).not.toContain('#327')
   })
 
-  it('claims #328 only where the imported definition actually moves', () => {
-    const retiredBy328 = moduleGraph.exceptions.filter((entry) => entry.retiredBy === '#328')
+  it('has retired #328 and declares every table in an owning module', () => {
+    const underDb = Object.entries(ownership.tables).filter(
+      ([, entry]) => entry.schemaModule.startsWith('src/db/'),
+    )
 
-    expect(retiredBy328.map(key)).toEqual([
-      'src/db/schema.connectors.ts|src/db/source-execution.schema.ts|source_execution_scopes',
-    ])
+    expect(moduleGraph.exceptions.some((entry) => entry.retiredBy === '#328')).toBe(false)
+    expect(moduleGraph.retiringIssues).not.toContain('#328')
+    expect(underDb.map(([table]) => table)).toEqual(['workspaces'])
+    expect(ownership.owners[ownership.tables.workspaces.owner].kind).toBe('platform')
+    expect(ownership.tables.workspaces.schemaModule).toBe('src/db/workspaces.schema.ts')
+    expect(declaredTables(scan).filter(
+      (entry) => entry.schemaModule === moduleGraph.canonicalSchemaAggregate,
+    )).toEqual([])
+  })
+
+  it('declares every capability table inside its own owner declaration root', () => {
+    const misplaced = declaredTables(scan).filter((entry) => {
+      const owner = ownership.owners[ownership.tables[entry.table].owner]
+      return owner.kind === 'capability'
+        && !entry.schemaModule.startsWith(`${declarationRoot(owner)}/`)
+    })
+
+    expect(misplaced).toEqual([])
+  })
+
+  it('records the applications declaration split and no other override', () => {
+    const overrides = Object.entries(ownership.owners).filter(
+      ([, entry]) => entry.declarationModule !== undefined,
+    )
+
+    expect(overrides.map(([owner, entry]) => `${owner}: ${entry.declarationModule}`))
+      .toEqual(['applications: src/modules/application'])
+    expect(ownership.owners.applications.module).toBe('src/modules/applications')
+    expect(fs.existsSync(path.join(repositoryRoot, 'src/modules/applications/public.ts'))).toBe(true)
+    expect(fs.existsSync(path.join(repositoryRoot, 'src/modules/application/public.ts'))).toBe(false)
+  })
+
+  it('pins every capability owner to its canonical module directory', () => {
+    const byKind = (kind) => Object.entries(ownership.owners).filter(([, e]) => e.kind === kind)
+
+    expect(byKind('capability').map(([owner, entry]) => `${owner} ${entry.module}`))
+      .toEqual(byKind('capability').map(([owner]) => `${owner} src/modules/${owner}`))
+    expect(byKind('platform').map(([, entry]) => entry.module)).toEqual([null])
+  })
+
+  it('rejects the live tree when a capability module is broadened to the module root', () => {
+    const root = mirrorRepository((_graph, state) => {
+      state.owners.job.module = 'src/modules'
+    })
+
+    const result = runArchitectureCheck(root)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      '[misowned-state-location] architecture/state-ownership.json gives capability owner job module src/modules, not its canonical module src/modules/job;',
+    )
+  })
+
+  it('rejects the live tree when the applications declaration root is dropped', () => {
+    const root = mirrorRepository((_graph, state) => {
+      delete state.owners.applications.declarationModule
+    })
+
+    const result = runArchitectureCheck(root)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      '[misowned-state-location] src/modules/application/application.schema.ts declares applications, owned by capability applications, outside its declaration root src/modules/applications;',
+    )
+  })
+
+  it('rejects the live tree when an owner claims a sibling capability as its root', () => {
+    const root = mirrorRepository((_graph, state) => {
+      state.owners.job.declarationModule = 'src/modules/capture'
+    })
+
+    const result = runArchitectureCheck(root)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      "[misowned-state-location] architecture/state-ownership.json gives owner job declaration root src/modules/capture, which is capability capture's module;",
+    )
+  })
+
+  it('rejects the live tree when a capability claims the src/db declaration', () => {
+    const root = mirrorRepository((_graph, state) => {
+      state.tables.workspaces.owner = 'policy'
+    })
+
+    const result = runArchitectureCheck(root)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      '[misowned-state-location] src/db/workspaces.schema.ts declares workspaces, owned by capability policy, outside its declaration root src/modules/policy;',
+    )
   })
 
   it('never claims retirement for the canonical aggregate, the registrar, or a test', () => {
@@ -355,9 +448,15 @@ describe('checked-in architecture manifests', () => {
 
   it('rejects #491 claimed for an unrelated live access', () => {
     const root = mirrorRepository((graph) => {
-      graph.exceptions = graph.exceptions.map((entry, index) =>
-        index === 0 ? { ...entry, retiredBy: '#491' } : entry,
+      const [borrowed] = graph.permissions.filter(
+        (entry) => entry.purpose === 'foreign-key-reference',
       )
+      const { purpose: _purpose, ...rest } = borrowed
+      graph.permissions = graph.permissions.filter((entry) => key(entry) !== key(borrowed))
+      graph.exceptions = [
+        ...graph.exceptions,
+        { ...rest, retiredBy: '#491', rule: 'foreign-owner-table-access' },
+      ]
     })
 
     const result = runArchitectureCheck(root)
@@ -382,10 +481,13 @@ describe('checked-in architecture manifests', () => {
   })
 
   it('stamps every edge, exception, and permission', () => {
-    expect(moduleGraph.stamps).toEqual(['#326'])
-    expect(moduleGraph.edges.every((edge) => edge.recordedIn === '#326')).toBe(true)
+    const stamps = new Set(moduleGraph.stamps)
+
+    expect(moduleGraph.stamps).toEqual(['#326', '#328'])
+    expect(moduleGraph.edges.every((edge) => stamps.has(edge.recordedIn))).toBe(true)
     expect([...moduleGraph.exceptions, ...moduleGraph.permissions]
-      .every((entry) => entry.recordedIn === '#326')).toBe(true)
+      .every((entry) => stamps.has(entry.recordedIn))).toBe(true)
+    expect(moduleGraph.exceptions.every((entry) => entry.recordedIn === '#326')).toBe(true)
   })
 
   it('runs inside the single lint path', () => {

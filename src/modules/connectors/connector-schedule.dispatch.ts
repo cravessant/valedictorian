@@ -13,7 +13,7 @@ import {
   connectorScheduleEvents,
   connectorScheduleOccurrences,
   connectorSchedules,
-} from '../../db/schema.connectors'
+} from './connector.schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
   assertPersistedEarliestBackfillDate,

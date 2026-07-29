@@ -17,7 +17,7 @@ import {
   connectorScheduleOccurrences,
   connectorScheduleRevisions,
   connectorSchedules,
-} from '../../db/schema.connectors'
+} from './connector.schema'
 import { connectorCaptureWork, sourceExecutionScopes } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import { computeNextEligibleAt } from './connector-schedule.eligibility'

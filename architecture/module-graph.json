@@ -1,7 +1,8 @@
 {
   "moduleRoot": "src/modules",
   "stamps": [
-    "#326"
+    "#326",
+    "#328"
   ],
   "edges": [
     {
@@ -165,22 +166,17 @@
       "to": "connectors"
     },
     {
+      "from": "workflow-runs",
+      "recordedIn": "#328",
+      "to": "application"
+    },
+    {
       "from": "workspace-resources",
       "recordedIn": "#326",
       "to": "lifecycle-table"
     }
   ],
   "exceptions": [
-    {
-      "owner": "source-execution",
-      "reason": "Transitional: src/db/schema.connectors.ts names source_execution_scopes, owned by source-execution, from a file whose definitions #328 moves into module-owned schema slices, so repairing that import retires this entry.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.connectors.ts",
-      "table": "source_execution_scopes",
-      "target": "src/db/source-execution.schema.ts",
-      "retiredBy": "#328",
-      "rule": "foreign-owner-table-access"
-    },
     {
       "owner": "source-execution",
       "reason": "Transitional: src/modules/connectors/connector-instance.persistence.ts mutates source_execution_scopes, owned by source-execution. #491 moves this write behind a source-execution-owned command, after which connectors no longer import or mutate the table.",
@@ -223,7 +219,6 @@
     }
   ],
   "retiringIssues": [
-    "#328",
     "#491"
   ],
   "canonicalSchemaAggregate": "src/db/schema.ts",
@@ -1283,96 +1278,6 @@
       "purpose": "platform-ownership-root"
     },
     {
-      "owner": "connectors",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_checkpoints here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "connector_checkpoints",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "connectors",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_instances here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "connector_instances",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "connectors",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_observations here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "connector_observations",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "connectors",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_runs here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "connector_runs",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "connectors",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_schedule_events here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "connector_schedule_events",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "connectors",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_schedule_occurrences here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "connector_schedule_occurrences",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "connectors",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_schedule_revisions here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "connector_schedule_revisions",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "connectors",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_schedules here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "connector_schedules",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "source-execution",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing source_execution_scopes here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "source_execution_scopes",
-      "target": "src/db/source-execution.schema.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "source-execution",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing source_execution_sessions here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "source_execution_sessions",
-      "target": "src/db/source-execution.schema.ts",
-      "purpose": "schema-composition"
-    },
-    {
       "owner": "workspace-platform",
       "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing workspaces here is permanent rather than transitional.",
       "recordedIn": "#326",
@@ -1634,6 +1539,96 @@
       "purpose": "schema-composition"
     },
     {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_capture_work here is permanent rather than transitional.",
+      "recordedIn": "#328",
+      "source": "src/db/schema.ts",
+      "table": "connector_capture_work",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_checkpoints here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "connector_checkpoints",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_instances here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "connector_instances",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_observations here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "connector_observations",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_run_synchronizations here is permanent rather than transitional.",
+      "recordedIn": "#328",
+      "source": "src/db/schema.ts",
+      "table": "connector_run_synchronizations",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_runs here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "connector_runs",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_schedule_events here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "connector_schedule_events",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_schedule_occurrences here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "connector_schedule_occurrences",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_schedule_revisions here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "connector_schedule_revisions",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_schedules here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "connector_schedules",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
       "owner": "job",
       "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing job_capture_evidence_references here is permanent rather than transitional.",
       "recordedIn": "#326",
@@ -1688,20 +1683,29 @@
       "purpose": "schema-composition"
     },
     {
+      "owner": "policy",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing policy_config here is permanent rather than transitional.",
+      "recordedIn": "#328",
+      "source": "src/db/schema.ts",
+      "table": "policy_config",
+      "target": "src/modules/policy/policy.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "policy",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing policy_evidence here is permanent rather than transitional.",
+      "recordedIn": "#328",
+      "source": "src/db/schema.ts",
+      "table": "policy_evidence",
+      "target": "src/modules/policy/policy.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
       "owner": "scheduling",
       "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing capture_destination_resolution_work here is permanent rather than transitional.",
       "recordedIn": "#326",
       "source": "src/db/schema.ts",
       "table": "capture_destination_resolution_work",
-      "target": "src/modules/scheduling/scheduling.schema.ts",
-      "purpose": "schema-composition"
-    },
-    {
-      "owner": "connectors",
-      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing connector_capture_work here is permanent rather than transitional.",
-      "recordedIn": "#326",
-      "source": "src/db/schema.ts",
-      "table": "connector_capture_work",
       "target": "src/modules/scheduling/scheduling.schema.ts",
       "purpose": "schema-composition"
     },
@@ -1739,6 +1743,60 @@
       "source": "src/db/schema.ts",
       "table": "provider_url_resolution_work",
       "target": "src/modules/scheduling/scheduling.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "secrets",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing workspace_secrets here is permanent rather than transitional.",
+      "recordedIn": "#328",
+      "source": "src/db/schema.ts",
+      "table": "workspace_secrets",
+      "target": "src/modules/secrets/secret.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "source-execution",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing source_execution_scopes here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "source_execution_scopes",
+      "target": "src/modules/source-execution/source-execution.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "source-execution",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing source_execution_sessions here is permanent rather than transitional.",
+      "recordedIn": "#326",
+      "source": "src/db/schema.ts",
+      "table": "source_execution_sessions",
+      "target": "src/modules/source-execution/source-execution.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "workflow-runs",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing sources here is permanent rather than transitional.",
+      "recordedIn": "#328",
+      "source": "src/db/schema.ts",
+      "table": "sources",
+      "target": "src/modules/workflow-runs/workflow-run.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "workflow-runs",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing workflow_run_steps here is permanent rather than transitional.",
+      "recordedIn": "#328",
+      "source": "src/db/schema.ts",
+      "table": "workflow_run_steps",
+      "target": "src/modules/workflow-runs/workflow-run.schema.ts",
+      "purpose": "schema-composition"
+    },
+    {
+      "owner": "workflow-runs",
+      "reason": "Stable: src/db/schema.ts is the canonical Drizzle aggregate and re-export surface, which #328 explicitly preserves, so composing workflow_runs here is permanent rather than transitional.",
+      "recordedIn": "#328",
+      "source": "src/db/schema.ts",
+      "table": "workflow_runs",
+      "target": "src/modules/workflow-runs/workflow-run.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -4442,6 +4500,15 @@
       "purpose": "test-state-access"
     },
     {
+      "owner": "source-execution",
+      "reason": "Stable: this schema file declares a foreign-key column against source_execution_scopes, owned by source-execution, so the table object must be in scope where the column is defined. The reference lasts as long as the foreign key does.",
+      "recordedIn": "#328",
+      "source": "src/modules/connectors/connector.schema.ts",
+      "table": "source_execution_scopes",
+      "target": "src/modules/source-execution/source-execution.schema.ts",
+      "purpose": "foreign-key-reference"
+    },
+    {
       "owner": "workspace-platform",
       "reason": "Stable: this maintained test or test-support file reaches workspaces, owned by workspace-platform. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
@@ -5099,15 +5166,6 @@
       "purpose": "test-state-access"
     },
     {
-      "owner": "connectors",
-      "reason": "Stable: this maintained test or test-support file reaches connector_instances, owned by connectors. Recorded exactly so the access stays visible and scanned; no issue retires it.",
-      "recordedIn": "#326",
-      "source": "src/modules/scheduling/scheduled-work.pglite.test.ts",
-      "table": "connector_instances",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "test-state-access"
-    },
-    {
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
@@ -5128,29 +5186,29 @@
     {
       "owner": "connectors",
       "reason": "Stable: this maintained test or test-support file reaches connector_capture_work, owned by connectors. Recorded exactly so the access stays visible and scanned; no issue retires it.",
-      "recordedIn": "#326",
+      "recordedIn": "#328",
       "source": "src/modules/scheduling/scheduled-work.pglite.test.ts",
       "table": "connector_capture_work",
-      "target": "src/modules/scheduling/scheduling.schema.ts",
+      "target": "src/modules/connectors/connector.schema.ts",
+      "purpose": "test-state-access"
+    },
+    {
+      "owner": "connectors",
+      "reason": "Stable: this maintained test or test-support file reaches connector_instances, owned by connectors. Recorded exactly so the access stays visible and scanned; no issue retires it.",
+      "recordedIn": "#326",
+      "source": "src/modules/scheduling/scheduled-work.pglite.test.ts",
+      "table": "connector_instances",
+      "target": "src/modules/connectors/connector.schema.ts",
       "purpose": "test-state-access"
     },
     {
       "owner": "connectors",
       "reason": "Recorded: scheduling reaches connector_capture_work, owned by connectors, across the capability boundary. Exact and load-bearing; no open leaf promises to remove it, so no retirement is claimed.",
-      "recordedIn": "#326",
+      "recordedIn": "#328",
       "source": "src/modules/scheduling/scheduled-work.ts",
       "table": "connector_capture_work",
-      "target": "src/modules/scheduling/scheduling.schema.ts",
+      "target": "src/db/schema.ts",
       "purpose": "cross-capability-state-access"
-    },
-    {
-      "owner": "connectors",
-      "reason": "Stable: this schema file declares a foreign-key column against connector_instances, owned by connectors, so the table object must be in scope where the column is defined. The reference lasts as long as the foreign key does.",
-      "recordedIn": "#326",
-      "source": "src/modules/scheduling/scheduling.schema.ts",
-      "table": "connector_instances",
-      "target": "src/db/schema.connectors.ts",
-      "purpose": "foreign-key-reference"
     },
     {
       "owner": "workspace-platform",
@@ -5205,6 +5263,15 @@
       "table": "applications",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
+    },
+    {
+      "owner": "applications",
+      "reason": "Stable: this schema file declares a foreign-key column against applications, owned by applications, so the table object must be in scope where the column is defined. The reference lasts as long as the foreign key does.",
+      "recordedIn": "#328",
+      "source": "src/modules/workflow-runs/workflow-run.schema.ts",
+      "table": "applications",
+      "target": "src/modules/application/application.schema.ts",
+      "purpose": "foreign-key-reference"
     },
     {
       "owner": "capture",

@@ -5,7 +5,7 @@ import {
   connectorInstances,
   connectorScheduleRevisions,
   connectorSchedules,
-} from '../../db/schema.connectors'
+} from './connector.schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { createConnectorScheduleRepository } from './connector-schedule.repository'

@@ -1,6 +1,17 @@
+/**
+ * Connector-owned durable state: instances, runs, observations, checkpoints,
+ * schedules, run synchronization snapshots, and connector capture resumption work.
+ *
+ * `connector_capture_work` is a scheduled-work identity, so it reuses the shared
+ * column and check vocabulary the scheduling slice publishes. It is declared here
+ * rather than there because its subject foreign key is `connector_instances`:
+ * declaring it in scheduling would make the scheduling schema import the connector
+ * schema while the connector module already reads the work table, closing a cycle.
+ */
 import { boolean, check, foreignKey, index, integer, primaryKey, pgTable, text, unique, uniqueIndex } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { sourceExecutionScopes } from './source-execution.schema'
+import { scheduledWorkChecks, scheduledWorkColumns } from '../scheduling/scheduling.schema'
+import { sourceExecutionScopes } from '../source-execution/source-execution.schema'
 
 const timestamps = {
   createdAt: text('created_at').notNull(),
@@ -231,5 +242,43 @@ export const connectorScheduleOccurrences = pgTable(
       table.createdAt,
     ),
     runIdx: index('idx_connector_schedule_occurrences_run').on(table.connectorRunId),
+  }),
+)
+
+export const connectorRunSynchronizations = pgTable('connector_run_synchronizations', {
+  connectorRunId: text('connector_run_id').primaryKey().references(() => connectorRuns.id),
+  snapshotJson: text('snapshot_json').notNull(),
+  createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, (table) => ({
+  snapshotLength: check('chk_connector_run_synchronizations_length', sql`length(${table.snapshotJson}) between 2 and 8192`),
+}))
+
+export const connectorCaptureWork = pgTable(
+  'connector_capture_work',
+  {
+    ...scheduledWorkColumns(),
+    connectorInstanceId: text('connector_instance_id').notNull(),
+    filterSignature: text('filter_signature').notNull(),
+    checkpointSchemaVersion: text('checkpoint_schema_version').notNull(),
+    checkpointGeneration: text('checkpoint_generation').notNull(),
+    lastAttemptAt: text('last_attempt_at').notNull(),
+    computedDelayMs: integer('computed_delay_ms'),
+    serverMinimumDelayMs: integer('server_minimum_delay_ms'),
+    horizonAt: text('horizon_at').notNull(),
+    acquisitionRunId: text('acquisition_run_id'),
+    skippedRunId: text('skipped_run_id'),
+  },
+  (table) => ({
+    idempotencyIdx: uniqueIndex('idx_connector_capture_work_idempotency').on(table.idempotencyKey),
+    dueIdx: index('idx_connector_capture_work_due').on(table.status, table.nextEligibleAt),
+    subjectIdx: index('idx_connector_capture_work_subject').on(table.connectorInstanceId, table.filterSignature),
+    // AC5 concurrency serialization: at most one ACTIVE row per subject.
+    activeSubjectIdx: uniqueIndex('idx_connector_capture_work_active_subject')
+      .on(table.connectorInstanceId, table.filterSignature)
+      .where(sql`${table.status} in ('scheduled','claimed')`),
+    connectorFk: foreignKey({ name: 'fk_connector_capture_work_instance', columns: [table.connectorInstanceId], foreignColumns: [connectorInstances.id] }),
+    filterCheck: check('chk_connector_capture_work_filter', sql`length(${table.filterSignature}) between 1 and 512`),
+    serverMinimumCheck: check('chk_connector_capture_work_server_minimum', sql`${table.serverMinimumDelayMs} is null or ${table.serverMinimumDelayMs} >= 0`),
+    ...scheduledWorkChecks('connector_capture_work', table),
   }),
 )

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { drizzle } from 'drizzle-orm/pglite'
 import { schema, sourceExecutionScopes } from '../../db/schema'
-import { connectorInstances } from '../../db/schema.connectors'
+import { connectorInstances } from './connector.schema'
 import {
   type PgliteDatabase,
 } from '../../db/pglite'

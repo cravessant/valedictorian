@@ -1,8 +1,8 @@
 /**
- * Source execution scopes and their encrypted sessions.
+ * Source execution scopes and their encrypted sessions, owned by source-execution.
  *
- * Lives in src/db (not the barrel) so the connector schema can bind its
- * execution-scope foreign keys without importing the barrel (which would cycle).
+ * The connector schema binds its execution-scope foreign keys against this slice
+ * directly; reaching them through the canonical aggregate would cycle.
  */
 import { sql } from 'drizzle-orm'
 import { check, index, integer, pgTable, text } from 'drizzle-orm/pg-core'

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { drizzle } from 'drizzle-orm/pglite'
 import { schema, sourceExecutionScopes } from '../../db/schema'
-import { connectorInstances, connectorRuns } from '../../db/schema.connectors'
+import { connectorInstances, connectorRuns } from './connector.schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
   createPgliteTestDatabase,

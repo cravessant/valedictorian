@@ -1,6 +1,7 @@
 {
   "owners": {
     "applications": {
+      "declarationModule": "src/modules/application",
       "kind": "capability",
       "module": "src/modules/applications"
     },
@@ -50,16 +51,18 @@
     }
   },
   "schemaModules": [
-    "src/db/schema.connectors.ts",
-    "src/db/schema.ts",
-    "src/db/source-execution.schema.ts",
     "src/db/workspaces.schema.ts",
     "src/modules/application/application.schema.ts",
     "src/modules/capture/capture.schema.ts",
     "src/modules/company/company.schema.ts",
+    "src/modules/connectors/connector.schema.ts",
     "src/modules/job/job.schema.ts",
     "src/modules/opportunity/opportunity.schema.ts",
-    "src/modules/scheduling/scheduling.schema.ts"
+    "src/modules/policy/policy.schema.ts",
+    "src/modules/scheduling/scheduling.schema.ts",
+    "src/modules/secrets/secret.schema.ts",
+    "src/modules/source-execution/source-execution.schema.ts",
+    "src/modules/workflow-runs/workflow-run.schema.ts"
   ],
   "tables": {
     "application_attempt_records": {
@@ -190,52 +193,52 @@
     "connector_capture_work": {
       "owner": "connectors",
       "schemaExport": "connectorCaptureWork",
-      "schemaModule": "src/modules/scheduling/scheduling.schema.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "connector_checkpoints": {
       "owner": "connectors",
       "schemaExport": "connectorCheckpoints",
-      "schemaModule": "src/db/schema.connectors.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "connector_instances": {
       "owner": "connectors",
       "schemaExport": "connectorInstances",
-      "schemaModule": "src/db/schema.connectors.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "connector_observations": {
       "owner": "connectors",
       "schemaExport": "connectorObservations",
-      "schemaModule": "src/db/schema.connectors.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "connector_run_synchronizations": {
       "owner": "connectors",
       "schemaExport": "connectorRunSynchronizations",
-      "schemaModule": "src/db/schema.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "connector_runs": {
       "owner": "connectors",
       "schemaExport": "connectorRuns",
-      "schemaModule": "src/db/schema.connectors.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "connector_schedule_events": {
       "owner": "connectors",
       "schemaExport": "connectorScheduleEvents",
-      "schemaModule": "src/db/schema.connectors.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "connector_schedule_occurrences": {
       "owner": "connectors",
       "schemaExport": "connectorScheduleOccurrences",
-      "schemaModule": "src/db/schema.connectors.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "connector_schedule_revisions": {
       "owner": "connectors",
       "schemaExport": "connectorScheduleRevisions",
-      "schemaModule": "src/db/schema.connectors.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "connector_schedules": {
       "owner": "connectors",
       "schemaExport": "connectorSchedules",
-      "schemaModule": "src/db/schema.connectors.ts"
+      "schemaModule": "src/modules/connectors/connector.schema.ts"
     },
     "hosted_result_polling_work": {
       "owner": "scheduling",
@@ -295,12 +298,12 @@
     "policy_config": {
       "owner": "policy",
       "schemaExport": "policyConfig",
-      "schemaModule": "src/db/schema.ts"
+      "schemaModule": "src/modules/policy/policy.schema.ts"
     },
     "policy_evidence": {
       "owner": "policy",
       "schemaExport": "policyEvidence",
-      "schemaModule": "src/db/schema.ts"
+      "schemaModule": "src/modules/policy/policy.schema.ts"
     },
     "provider_url_resolution_work": {
       "owner": "scheduling",
@@ -315,27 +318,27 @@
     "source_execution_scopes": {
       "owner": "source-execution",
       "schemaExport": "sourceExecutionScopes",
-      "schemaModule": "src/db/source-execution.schema.ts"
+      "schemaModule": "src/modules/source-execution/source-execution.schema.ts"
     },
     "source_execution_sessions": {
       "owner": "source-execution",
       "schemaExport": "sourceExecutionSessions",
-      "schemaModule": "src/db/source-execution.schema.ts"
+      "schemaModule": "src/modules/source-execution/source-execution.schema.ts"
     },
     "sources": {
       "owner": "workflow-runs",
       "schemaExport": "sources",
-      "schemaModule": "src/db/schema.ts"
+      "schemaModule": "src/modules/workflow-runs/workflow-run.schema.ts"
     },
     "workflow_run_steps": {
       "owner": "workflow-runs",
       "schemaExport": "workflowRunSteps",
-      "schemaModule": "src/db/schema.ts"
+      "schemaModule": "src/modules/workflow-runs/workflow-run.schema.ts"
     },
     "workflow_runs": {
       "owner": "workflow-runs",
       "schemaExport": "workflowRuns",
-      "schemaModule": "src/db/schema.ts"
+      "schemaModule": "src/modules/workflow-runs/workflow-run.schema.ts"
     },
     "workspace_companies": {
       "owner": "company",
@@ -345,7 +348,7 @@
     "workspace_secrets": {
       "owner": "secrets",
       "schemaExport": "workspaceSecrets",
-      "schemaModule": "src/db/schema.ts"
+      "schemaModule": "src/modules/secrets/secret.schema.ts"
     },
     "workspaces": {
       "owner": "workspace-platform",

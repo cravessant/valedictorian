@@ -9,12 +9,16 @@ const checkScript = fileURLToPath(new URL('./architecture-check.mjs', import.met
 const REASON = 'Recorded exactly for this fixture so the entry explains itself.'
 
 /**
- * A minimal repository the check accepts: two capability modules, one owned table
- * each, one declared edge, a platform file outside `src/modules`, one exact
- * transitional exception covering the single foreign-owner table import, and a
- * runtime file reaching a capability the one way that is allowed — a named value
- * and type import from that module's exact public surface. Every mutation starts
- * from this tree and changes one thing, so a failure names one cause.
+ * A minimal repository the check accepts: four capability modules, one owned table
+ * each where state is modelled, two declared edges, platform files outside
+ * `src/modules`, one exact transitional exception covering the single foreign-owner
+ * table mutation #491 still owes, and a runtime file reaching a capability the one
+ * way that is allowed — a named value and type import from that module's exact
+ * public surface. Every mutation starts from this tree and changes one thing, so a
+ * failure names one cause.
+ *
+ * The exception models #491 because it is the only retirement left: #328 moved every
+ * capability definition into its owning module, so no `src/db` file holds one.
  *
  * @returns {Record<string, string>}
  */
@@ -28,22 +32,28 @@ export function passingFixture() {
     ].join('\n'),
     'architecture/module-graph.json': JSON.stringify({
       canonicalSchemaAggregate: 'src/db/schema.ts',
-      edges: [{ from: 'capture', recordedIn: '#326', to: 'job' }],
-      exceptions: [dbReadsJobs()],
+      edges: [
+        { from: 'capture', recordedIn: '#326', to: 'job' },
+        { from: 'connectors', recordedIn: '#326', to: 'source-execution' },
+      ],
+      exceptions: [connectorsMutatesScopes()],
       moduleRoot: 'src/modules',
       permissions: [captureAccessesJobs()],
-      retiringIssues: ['#328', '#491'],
+      retiringIssues: ['#491'],
       schemaRegistrar: 'src/db/pglite.ts',
       stamps: ['#326'],
     }),
     'architecture/state-ownership.json': JSON.stringify({
       owners: {
         capture: { kind: 'capability', module: 'src/modules/capture' },
+        connectors: { kind: 'capability', module: 'src/modules/connectors' },
         job: { kind: 'capability', module: 'src/modules/job' },
+        'source-execution': { kind: 'capability', module: 'src/modules/source-execution' },
       },
       schemaModules: [
         'src/modules/capture/capture.schema.ts',
         'src/modules/job/job.schema.ts',
+        'src/modules/source-execution/source-execution.schema.ts',
       ],
       tables: {
         captures: {
@@ -56,16 +66,26 @@ export function passingFixture() {
           schemaExport: 'jobs',
           schemaModule: 'src/modules/job/job.schema.ts',
         },
+        source_execution_scopes: {
+          owner: 'source-execution',
+          schemaExport: 'sourceExecutionScopes',
+          schemaModule: 'src/modules/source-execution/source-execution.schema.ts',
+        },
       },
     }),
     'src/db/pglite.ts': 'export const database = () => undefined\n',
     'src/db/schema.ts': "export const version = 'fixture'\n",
-    'src/db/legacy.schema.ts':
-      "import { jobs } from '../modules/job/job.schema'\n\nvoid jobs\nexport const legacy = 1\n",
     'src/modules/capture/capture.schema.ts':
       "import { pgTable } from 'drizzle-orm/pg-core'\n\nexport const captures = pgTable('captures', {})\n",
     'src/modules/capture/capture.service.ts':
       "import { jobs } from '../job/job.schema'\n\nvoid jobs\nexport const columns = 1\n",
+    'src/modules/connectors/connector.repository.ts': [
+      "import { sourceExecutionScopes } from '../source-execution/source-execution.schema'",
+      '',
+      'void sourceExecutionScopes',
+      'export const repository = 1',
+      '',
+    ].join('\n'),
     'src/modules/job/job.schema.ts':
       "import { pgTable } from 'drizzle-orm/pg-core'\n\nexport const jobs = pgTable('jobs', {})\n",
     'src/modules/job/job.service.ts': [
@@ -75,20 +95,26 @@ export function passingFixture() {
       '',
     ].join('\n'),
     'src/modules/job/public.ts': "export { runJob, type JobRun } from './job.service'\n",
+    'src/modules/source-execution/source-execution.schema.ts': [
+      "import { pgTable } from 'drizzle-orm/pg-core'",
+      '',
+      "export const sourceExecutionScopes = pgTable('source_execution_scopes', {})",
+      '',
+    ].join('\n'),
   }
 }
 
 /** @returns {Record<string, string>} */
-export function dbReadsJobs() {
+export function connectorsMutatesScopes() {
   return {
-    owner: 'job',
-    reason: 'Transitional: a src/db file holds the job table definition until #328 lands.',
+    owner: 'source-execution',
+    reason: 'Transitional: connectors mutates a source-execution table until #491 lands.',
     recordedIn: '#326',
-    retiredBy: '#328',
+    retiredBy: '#491',
     rule: 'foreign-owner-table-access',
-    source: 'src/db/legacy.schema.ts',
-    table: 'jobs',
-    target: 'src/modules/job/job.schema.ts',
+    source: 'src/modules/connectors/connector.repository.ts',
+    table: 'source_execution_scopes',
+    target: 'src/modules/source-execution/source-execution.schema.ts',
   }
 }
 
@@ -135,8 +161,11 @@ export function aggregateFixture() {
     ...files,
     'architecture/module-graph.json': JSON.stringify({
       canonicalSchemaAggregate: 'src/db/schema.ts',
-      edges: [{ from: 'capture', recordedIn: '#326', to: 'job' }],
-      exceptions: [dbReadsJobs()],
+      edges: [
+        { from: 'capture', recordedIn: '#326', to: 'job' },
+        { from: 'connectors', recordedIn: '#326', to: 'source-execution' },
+      ],
+      exceptions: [connectorsMutatesScopes()],
       moduleRoot: 'src/modules',
       permissions: [
         captureAccessesJobs(),
@@ -155,7 +184,7 @@ export function aggregateFixture() {
           target: 'src/db/schema.ts',
         }),
       ],
-      retiringIssues: ['#328', '#491'],
+      retiringIssues: ['#491'],
       schemaRegistrar: 'src/db/pglite.ts',
       stamps: ['#326'],
     }),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { sourceExecutionScopes } from '../../db/schema'
-import { connectorInstances, connectorRuns } from '../../db/schema.connectors'
+import { connectorInstances, connectorRuns } from './connector.schema'
 import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { admitConnectorScheduleDue } from './connector-schedule.dispatch'
 import { createConnectorScheduleRepository } from './connector-schedule.repository'
