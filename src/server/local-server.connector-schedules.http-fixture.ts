@@ -6,8 +6,8 @@ import {
   createLocalValedictorianClient,
   createOwnedPgliteTestDataPath,
 } from './local-valedictorian-client.test-harness'
-import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { createStaticConnectorRegistry } from '../modules/connectors/public'
+import type { AppJobConnector } from '../modules/connectors/public'
 import {
   createLocalServerHttpTestFixture,
   workspaceHttpClient,

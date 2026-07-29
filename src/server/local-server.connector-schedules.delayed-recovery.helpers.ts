@@ -1,8 +1,8 @@
 import type { DispatchConnectorScheduleDueResult } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../db/pglite'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
-import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { admitConnectorScheduleDue } from '../modules/connectors/public'
+import type { AppJobConnector } from '../modules/connectors/public'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createScheduleHttpFixtureConnector as fixtureConnector,

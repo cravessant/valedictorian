@@ -1,9 +1,4 @@
-export interface LocalScheduledWorkSource {
-  id: string
-  nextDueAt(): Promise<string | null> | string | null
-  runDue(signal?: AbortSignal): Promise<void>
-  onSignal?(): void
-}
+import type { LocalScheduledWorkSource } from '../modules/scheduling/public'
 
 export interface LocalSchedulerOptions {
   now?: () => Date

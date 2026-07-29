@@ -30,7 +30,7 @@ import {
   setNumberQuery,
   setStringQuery,
 } from './local-server.parsers.query-primitives'
-import { policyConfigPatchViolation } from '../modules/policy/policy.patch'
+import { policyConfigPatchViolation } from '../modules/policy/public'
 
 export function parseConnectorOverviewListQuery(requestUrl: URL): ConnectorOverviewListQuery {
   const query: Record<string, unknown> = {}

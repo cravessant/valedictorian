@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
-import { mapConnectorRunSummary, publicConnectorRunSummary } from './local-connector-public-run'
-import { createTestPgliteDatabase } from './local-valedictorian-client.test-harness'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import { publicConnectorRunSummary } from './connector.run-projection'
+import { mapConnectorRunSummary } from './connector.run-record.projection'
 
 describe('public terminal connector lifecycle projection', () => {
   it('publishes a valid terminal synchronization for a completed generic normalization retry', async () => {
-    const fixture = await createTestPgliteDatabase()
-    const repository = createPgliteConnectorRepository(fixture.database)
+    const { repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'generic-normalization-retry', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Generic normalization retry', enabled: true,
@@ -36,7 +35,6 @@ describe('public terminal connector lifecycle projection', () => {
         outcome: { kind: 'yielded', reason: 'invocation_budget' },
         lifecycleCounts: { source: 'frozen_terminal' },
       })
-    await fixture.close()
   })
 
   it.each([
@@ -83,8 +81,7 @@ describe('public terminal connector lifecycle projection', () => {
       outcome: () => ({ kind: 'failed' as const, reason: 'connector_execution_failed' as const }),
     },
   ])('publishes frozen zero-count lifecycle details for $name', async (terminal) => {
-    const fixture = await createTestPgliteDatabase()
-    const repository = createPgliteConnectorRepository(fixture.database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const instance = await repository.upsertInstance({
       id: `terminal-${terminal.name.replaceAll(' ', '-')}`,
       connectorId: 'fixture.jobs',
@@ -151,6 +148,5 @@ describe('public terminal connector lifecycle projection', () => {
         rejected: 0,
       },
     })
-    await fixture.close()
   })
 })

@@ -35,6 +35,7 @@ export const COMPUTED_SPECIFIER = '\0computed-module-specifier'
  * @property {{ bound: boolean, exported: boolean, name: string | null, table: string }[]} tableCalls
  * @property {boolean} computedDynamicImport
  * @property {string[]} dynamicSpecifiers Literal dynamic import targets.
+ * @property {boolean} defaultExport Whether the module exports a default binding.
  * @property {{ exported: string, local: string }[]} localExports
  * @property {string} normalised Module declarations only, ready for es-module-lexer.
  * @property {string | null} parseFailure
@@ -148,6 +149,7 @@ export function readModuleSyntax(source, filePath) {
   /** @type {ModuleSyntax} */
   const empty = {
     computedDynamicImport: false,
+    defaultExport: false,
     dynamicSpecifiers: [],
     localExports: [],
     normalised: '',
@@ -192,6 +194,7 @@ export function readModuleSyntax(source, filePath) {
   const reexports = []
   /** @type {{ exported: string, local: string }[]} */
   const localExports = []
+  let defaultExport = false
   for (const statement of parsed.module.staticExports) {
     // One declaration and one module request per statement, however many clauses
     // it forwards, so the parsed inventory matches what the lexer reports.
@@ -203,6 +206,9 @@ export function readModuleSyntax(source, filePath) {
     }
     for (const entry of statement.entries) {
       const request = entry.moduleRequest
+      defaultExport = defaultExport
+        || entry.exportName.name === 'default'
+        || entry.exportName.kind === 'Default'
       if (!request) {
         if (entry.exportName.name && entry.localName.name) {
           localExports.push({ exported: entry.exportName.name, local: entry.localName.name })
@@ -241,6 +247,7 @@ export function readModuleSyntax(source, filePath) {
   return {
     computedDynamicImport,
     constructorMisuse: valueFacts.constructorMisuse,
+    defaultExport,
     dynamicSpecifiers,
     localExports,
     normalised: `${declarations.join('\n')}\n`,

@@ -1,4 +1,4 @@
-import { validateDestinationUrl } from '../modules/capture/destination-url-safety'
+import { validateDestinationUrl } from '../modules/capture/public'
 
 export const isolatedValidationFixture = {
   captureId: '01986e01-4030-7000-8000-000000000001',

@@ -1,3 +1,12 @@
+/**
+ * Connector edge contract (issue #327).
+ *
+ * The connector-owned envelopes the desktop edge exchanges for retirement and
+ * skip actions, relocated from `src/ipc/connectors.public.ts` without any change
+ * to channel names, payloads, or return values. It depends on the sparxie
+ * schemas and connector-owned run projection only, so the connectors public
+ * surface carries no runtime, IPC, or Electron edge.
+ */
 import {
   connectorRetirementActiveWorkConflictSchema,
   connectorRetirementResultSchema,
@@ -7,7 +16,7 @@ import {
   type ConnectorRunSummary,
 } from '@sparxie/sdk'
 import { z } from 'zod'
-import { publicConnectorRunSummary } from '../runtime/local-connector-public-run'
+import { publicConnectorRunSummary } from './connector.run-projection'
 
 export interface ConnectorSkipActionResult {
   action: 'skip'

@@ -11,7 +11,8 @@ import {
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 
 const createLocalValedictorianClient = useResettablePgliteTestLocalValedictorianClient()
-import { createLocalScheduler, type LocalScheduledWorkSource } from './local-scheduler'
+import { createLocalScheduler } from './local-scheduler'
+import type { LocalScheduledWorkSource } from '../modules/scheduling/public'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createConnectorScheduleWorkSource } from '../modules/connectors/connector-schedule.source'

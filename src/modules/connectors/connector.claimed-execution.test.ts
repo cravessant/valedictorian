@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { createConnectorRunner } from '../modules/connectors/connector.runner'
-import { createConnectorRepositoryTestContext } from '../modules/connectors/connector.repository.pglite-test-helpers'
-import { executeClaimedConnectorRun } from './local-connector-claimed-execution'
+import { createStaticConnectorRegistry } from './connector.registry'
+import { createConnectorRunner } from './connector.runner'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import { executeClaimedConnectorRun } from './connector.claimed-execution'
 
 describe('shared claimed connector run executor', () => {
   it('rejects a claimed run whose stored connector version drifted, without mutating anything', async () => {

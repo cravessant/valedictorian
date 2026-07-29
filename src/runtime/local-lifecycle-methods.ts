@@ -9,7 +9,7 @@
  *   3. maps the result through the Stage-3 DTOs into the strict sparxie contract shape.
  *
  * It owns NO policy and reimplements no aggregate write. Reads populate presentation-only fields
- * (e.g. a blocked removal's `dependentIds`) — the ownership scanner tracks writes, not reads.
+ * (e.g. a blocked removal's `dependentIds`) through the owning module's dependent queries.
  *
  * Result convention (mirrors the typed HTTP client):
  *   - reads return the contract value; `get` returns null on a miss;
@@ -21,7 +21,6 @@
  * Aggregate coverage grows per the ratified sequencing: captures first, then jobs, then
  * opportunities/applications and the promotions.
  */
-import { and, eq, isNull } from 'drizzle-orm'
 import {
   addJobExternalIdentityInputSchema,
   captureListInputSchema,
@@ -83,79 +82,63 @@ import {
 } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../db/pglite'
 import {
+  createCaptureFieldOutcomeStore,
+  createPgliteCaptureReadModel,
   createPgliteCaptureService,
   type AcceptCaptureInput,
   type CaptureActor,
   type CaptureFailure,
   type CorrectCaptureInput as ServiceCorrectCaptureInput,
   type JsonValue,
-} from '../modules/capture/capture.service'
-import { createPgliteCaptureReadModel } from '../modules/capture/capture.read-model'
-import { createCaptureFieldOutcomeStore } from '../modules/capture/capture.field-outcomes'
+} from '../modules/capture/public'
+import {
+  createPgliteApplicationAggregateService,
+  createPgliteApplicationDependentQueries,
+  createPgliteApplicationReadModel,
+} from '../modules/applications/public'
 import {
   JOBRIGHT_PROVIDER_FIELD_RESOLVER_ID,
   JOBRIGHT_PROVIDER_FIELD_RESOLVER_VERSION,
-} from '../modules/connectors/jobright.constants'
-import { createPgliteJobService, type InitialCompanyAssignmentPort } from '../modules/job/job.service'
-import { createPgliteJobReadModel } from '../modules/job/job.read-model'
-import { createPgliteJobIdentityService } from '../modules/job/job.identity'
-import { createLifecycleJobOrchestration, type JobWriteFailure } from '../modules/lifecycle/job.orchestration'
-import { createLifecycleApplicationOrchestration, type ApplicationWriteFailure } from '../modules/lifecycle/application.orchestration'
-import { createPgliteJobPromotion } from '../modules/lifecycle/capture-to-job.promotion'
-import { createPgliteJobToOpportunityPromotion } from '../modules/lifecycle/job-to-opportunity.promotion'
-import { createPgliteOpportunityService } from '../modules/opportunity/opportunity.service'
-import { createPgliteOpportunityReadModel } from '../modules/opportunity/opportunity.read-model'
-import { createPgliteApplicationAggregateService } from '../modules/applications/application.aggregate.service'
-import { createPgliteApplicationReadModel } from '../modules/applications/application.read-model'
-import { createPgliteOpportunityToApplicationPromotion } from '../modules/lifecycle/opportunity-to-application.promotion'
+} from '../modules/connectors/public'
 import {
-  createLifecycleRemovalOrchestration,
-  type LifecycleActor,
-  type RemoveLifecycleResult,
-  type RestoreLifecycleResult,
-} from '../modules/lifecycle/removal.orchestration'
-import { toContractActor } from '../modules/lifecycle/lifecycle-audit.dto'
+  createPgliteJobDependentQueries,
+  createPgliteJobIdentityService,
+  createPgliteJobReadModel,
+  createPgliteJobService,
+  type InitialCompanyAssignmentPort,
+} from '../modules/job/public'
 import {
   classifyMutationFailure,
-  toBlockedMutationResult,
-  toSucceededMutationResult,
-} from '../modules/lifecycle/mutation.dto'
-import {
+  classifyPromotionFailure,
   classifyRemovalFailure,
+  createLifecycleApplicationOrchestration,
+  createLifecycleJobOrchestration,
+  createLifecycleRemovalOrchestration,
+  LifecycleHttpError,
+  createPgliteJobPromotion,
+  createPgliteJobToOpportunityPromotion,
+  createPgliteOpportunityToApplicationPromotion,
+  toBlockedMutationResult,
+  toBlockedPromotionResult,
   toBlockedRemovalResult,
   toBlockedRestoreResult,
+  toContractActor,
+  toPromotedResult,
   toRemovedResult,
   toRestoredResult,
-} from '../modules/lifecycle/removal.dto'
+  toSucceededMutationResult,
+  type ApplicationWriteFailure,
+  type JobWriteFailure,
+  type LifecycleActor,
+  type MutationBlocked,
+  type RemoveLifecycleResult,
+  type RestoreLifecycleResult,
+} from '../modules/lifecycle/public'
 import {
-  classifyPromotionFailure,
-  toBlockedPromotionResult,
-  toPromotedResult,
-} from '../modules/lifecycle/promotion.dto'
-import type { MutationBlocked } from '../modules/lifecycle/mutation.dto'
-import { jobs as jobRows, jobCaptureEvidenceReferences } from '../modules/job/job.schema'
-import { opportunities as opportunityRows } from '../modules/opportunity/opportunity.schema'
-import {
-  applications as applicationRows,
-  pursuitLinks,
-  applicationEventRecords,
-  applicationAttemptRecords,
-} from '../modules/application/application.schema'
-
-/**
- * A composition-boundary transport error. The routes map it to an HTTP `{status, body}`; the
- * in-process client lets it propagate (matching the typed HTTP client's `ValedictorianHttpError`).
- * Bodies are fixed and generic so no internal detail leaks across the boundary.
- */
-export class LifecycleHttpError extends Error {
-  constructor(
-    readonly status: number,
-    readonly body: unknown,
-  ) {
-    super(`lifecycle_http_error_${status}`)
-    this.name = 'LifecycleHttpError'
-  }
-}
+  createPgliteOpportunityDependentQueries,
+  createPgliteOpportunityReadModel,
+  createPgliteOpportunityService,
+} from '../modules/opportunity/public'
 
 const VALIDATION_BODY = Object.freeze({ message: 'The request is invalid.' })
 const NOT_FOUND_BODY = Object.freeze({ message: 'The requested resource was not found.' })
@@ -207,6 +190,9 @@ export function createLocalLifecycleMethods(
   const jobReadModel = createPgliteJobReadModel(database)
   const opportunityReadModel = createPgliteOpportunityReadModel(database)
   const applicationReadModel = createPgliteApplicationReadModel(database)
+  const jobDependents = createPgliteJobDependentQueries(database)
+  const opportunityDependents = createPgliteOpportunityDependentQueries(database)
+  const applicationDependents = createPgliteApplicationDependentQueries(database)
   const jobOrchestration = createLifecycleJobOrchestration(database, { jobService, jobIdentityService, now })
   const applicationOrchestration = createLifecycleApplicationOrchestration(database, { applicationService }, { now })
   const capturePromotion = createPgliteJobPromotion(database, captureService, jobService, {
@@ -252,16 +238,6 @@ export function createLocalLifecycleMethods(
     throw new LifecycleHttpError(classified.status, errorBodyFor(classified.status))
   }
 
-  /** Active immediate dependents of a capture (jobs whose evidence references it). Read-only. */
-  async function activeDependentJobIds(captureId: string): Promise<string[]> {
-    const rows = await database
-      .select({ jobId: jobCaptureEvidenceReferences.jobId })
-      .from(jobCaptureEvidenceReferences)
-      .innerJoin(jobRows, eq(jobRows.id, jobCaptureEvidenceReferences.jobId))
-      .where(and(eq(jobCaptureEvidenceReferences.captureId, captureId), isNull(jobRows.removedAt)))
-    return [...new Set(rows.map((row) => row.jobId))]
-  }
-
   async function renderCaptureRemoval(
     result: RemoveLifecycleResult,
     id: string,
@@ -276,7 +252,7 @@ export function createLocalLifecycleMethods(
       return toBlockedRemovalResult({
         id,
         message: 'removal blocked by active dependents',
-        dependentIds: await activeDependentJobIds(id),
+        dependentIds: await jobDependents.activeJobIdsForCapture(id),
       })
     }
     if (classified.surface === 'not_found') {
@@ -304,15 +280,6 @@ export function createLocalLifecycleMethods(
     throw new LifecycleHttpError(classified.status, errorBodyFor(classified.status))
   }
 
-  /** Active immediate dependents of a job (opportunities projecting it). Read-only. */
-  async function activeDependentOpportunityIds(jobId: string): Promise<string[]> {
-    const rows = await database
-      .select({ id: opportunityRows.id })
-      .from(opportunityRows)
-      .where(and(eq(opportunityRows.jobId, jobId), isNull(opportunityRows.removedAt)))
-    return [...new Set(rows.map((row) => row.id))]
-  }
-
   async function renderJobRemoval(
     result: RemoveLifecycleResult,
     id: string,
@@ -327,7 +294,7 @@ export function createLocalLifecycleMethods(
       return toBlockedRemovalResult({
         id,
         message: 'removal blocked by active dependents',
-        dependentIds: await activeDependentOpportunityIds(id),
+        dependentIds: await opportunityDependents.activeOpportunityIdsForJob(id),
       })
     }
     if (classified.surface === 'not_found') throw new LifecycleHttpError(404, NOT_FOUND_BODY)
@@ -378,25 +345,6 @@ export function createLocalLifecycleMethods(
     return resource
   }
 
-  /** Active immediate dependents of an opportunity (applications pursuing it). Read-only. */
-  async function activeDependentApplicationIds(opportunityId: string): Promise<string[]> {
-    const rows = await database
-      .select({ id: applicationRows.id })
-      .from(applicationRows)
-      .where(and(eq(applicationRows.opportunityId, opportunityId), isNull(applicationRows.removedAt)))
-    return [...new Set(rows.map((row) => row.id))]
-  }
-
-  /** The active opportunity for a job (the deterministic-duplicate conflict target on create). */
-  async function activeOpportunityForJob(jobId: string): Promise<string | null> {
-    const [row] = await database
-      .select({ id: opportunityRows.id })
-      .from(opportunityRows)
-      .where(and(eq(opportunityRows.jobId, jobId), isNull(opportunityRows.removedAt)))
-      .limit(1)
-    return row?.id ?? null
-  }
-
   async function renderOpportunityRemoval(
     result: RemoveLifecycleResult,
     id: string,
@@ -411,7 +359,7 @@ export function createLocalLifecycleMethods(
       return toBlockedRemovalResult({
         id,
         message: 'removal blocked by active dependents',
-        dependentIds: await activeDependentApplicationIds(id),
+        dependentIds: await applicationDependents.activeApplicationIdsForOpportunity(id),
       })
     }
     if (classified.surface === 'not_found') throw new LifecycleHttpError(404, NOT_FOUND_BODY)
@@ -445,7 +393,7 @@ export function createLocalLifecycleMethods(
     const classified = classifyMutationFailure(failure.code)
     if (classified.surface === 'blocked') {
       if (classified.code === 'deterministic_duplicate') {
-        const conflicting = context.jobId ? (await activeOpportunityForJob(context.jobId)) ?? undefined : undefined
+        const conflicting = context.jobId ? (await opportunityDependents.activeOpportunityIdForJob(context.jobId)) ?? undefined : undefined
         return toBlockedMutationResult({
           code: 'deterministic_duplicate',
           message: failure.message,
@@ -862,26 +810,6 @@ export function createLocalLifecycleMethods(
 
   // --- Applications vertical (#304, item 3c) ---
 
-  /** Active immediate child dependents of an application (its own links/events/attempts). Read-only. */
-  async function activeDependentChildIds(applicationId: string): Promise<string[]> {
-    const [links, events, attempts] = await Promise.all([
-      database.select({ id: pursuitLinks.id }).from(pursuitLinks).where(eq(pursuitLinks.applicationId, applicationId)),
-      database.select({ id: applicationEventRecords.id }).from(applicationEventRecords).where(eq(applicationEventRecords.applicationId, applicationId)),
-      database.select({ id: applicationAttemptRecords.id }).from(applicationAttemptRecords).where(eq(applicationAttemptRecords.applicationId, applicationId)),
-    ])
-    return [...links, ...events, ...attempts].map((row) => row.id)
-  }
-
-  /** The active application for an opportunity (the deterministic-duplicate conflict target on create). */
-  async function activeApplicationForOpportunity(opportunityId: string): Promise<string | null> {
-    const [row] = await database
-      .select({ id: applicationRows.id })
-      .from(applicationRows)
-      .where(and(eq(applicationRows.opportunityId, opportunityId), isNull(applicationRows.removedAt)))
-      .limit(1)
-    return row?.id ?? null
-  }
-
   async function renderApplicationRemoval(
     result: RemoveLifecycleResult,
     id: string,
@@ -896,7 +824,7 @@ export function createLocalLifecycleMethods(
       return toBlockedRemovalResult({
         id,
         message: 'removal blocked by active dependents',
-        dependentIds: await activeDependentChildIds(id),
+        dependentIds: await applicationDependents.applicationChildIds(id),
       })
     }
     if (classified.surface === 'not_found') throw new LifecycleHttpError(404, NOT_FOUND_BODY)
@@ -930,7 +858,7 @@ export function createLocalLifecycleMethods(
     const classified = classifyMutationFailure(failure.code)
     if (classified.surface === 'blocked') {
       if (classified.code === 'deterministic_duplicate') {
-        const conflicting = context.opportunityId ? (await activeApplicationForOpportunity(context.opportunityId)) ?? undefined : undefined
+        const conflicting = context.opportunityId ? (await applicationDependents.activeApplicationIdForOpportunity(context.opportunityId)) ?? undefined : undefined
         return toBlockedMutationResult({
           code: 'deterministic_duplicate',
           message: failure.message,

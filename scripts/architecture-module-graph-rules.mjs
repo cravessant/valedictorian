@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { moduleOfPath, readManifest } from './architecture-source-graph.mjs'
+import { isTestPath, moduleOfPath, readManifest } from './architecture-source-graph.mjs'
 import {
   opaqueTableDeclarations,
   resolveStateExports,
@@ -21,7 +21,6 @@ export { MODULE_GRAPH_MANIFEST, RELAXABLE_RULES } from './architecture-policy-ru
 const moduleNamePattern = /^[a-z][a-z0-9-]*$/
 const stampPattern = /^#\d+$/
 const edgeKeys = new Set(['from', 'recordedIn', 'to'])
-const testPathPattern = /\.(?:test|spec)\.(?:[cm]?[jt]s|[jt]sx)$/
 
 /**
  * @typedef {object} ModuleGraphManifest
@@ -53,7 +52,7 @@ export function observedModuleEdges(scan, moduleRoot) {
   /** @type {Map<string, { source: string, target: string }>} */
   const edges = new Map()
   for (const file of scan.files.values()) {
-    if (!file.module || testPathPattern.test(file.path)) continue
+    if (!file.module || isTestPath(file.path)) continue
     for (const target of file.targets.values()) {
       if (!target.startsWith(`${moduleRoot}/`)) continue
       const targetModule = moduleOfPath(target)

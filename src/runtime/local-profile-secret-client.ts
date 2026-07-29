@@ -1,12 +1,12 @@
 import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
-import type { ProfileService } from '../modules/profile/profile.service'
-import { createConnectorSecretResolver } from '../modules/secrets/connector-secret-resolver'
+import type { AppConnectorAuthHost } from '../modules/connectors/public'
+import type { ProfileService } from '../modules/profile/public'
 import {
+  createConnectorSecretResolver,
   rejectUnsupportedLocalSecretResolution,
   type LocalSecretResolutionService,
-} from '../modules/secrets/local-secret-resolution'
-import type { SecretService } from '../modules/secrets/secret.service'
-import type { AppConnectorAuthHost } from '../modules/connectors/connector.runner'
+  type SecretService,
+} from '../modules/secrets/public'
 
 export function composeTrustedConnectorAuth(
   secretService: Pick<SecretService, 'resolve'>,

@@ -10,24 +10,29 @@ const REASON = 'Recorded exactly for this fixture so the entry explains itself.'
 
 /**
  * A minimal repository the check accepts: two capability modules, one owned table
- * each, one declared edge, a platform file outside `src/modules`, and one exact
- * transitional exception covering the single foreign-owner table import. Every
- * mutation starts from this tree and changes one thing, so a failure names one
- * cause.
+ * each, one declared edge, a platform file outside `src/modules`, one exact
+ * transitional exception covering the single foreign-owner table import, and a
+ * runtime file reaching a capability the one way that is allowed — a named value
+ * and type import from that module's exact public surface. Every mutation starts
+ * from this tree and changes one thing, so a failure names one cause.
  *
  * @returns {Record<string, string>}
  */
 export function passingFixture() {
   return {
-    'src/runtime/runtime.ts':
-      "import { jobs } from '../modules/job/job.schema'\n\nvoid jobs\nexport const columns = 1\n",
+    'src/runtime/runtime.ts': [
+      "import { runJob, type JobRun } from '../modules/job/public'",
+      '',
+      'export const columns = (run: JobRun) => runJob(run)',
+      '',
+    ].join('\n'),
     'architecture/module-graph.json': JSON.stringify({
       canonicalSchemaAggregate: 'src/db/schema.ts',
       edges: [{ from: 'capture', recordedIn: '#326', to: 'job' }],
-      exceptions: [runtimeReadsJobs()],
+      exceptions: [dbReadsJobs()],
       moduleRoot: 'src/modules',
       permissions: [captureAccessesJobs()],
-      retiringIssues: ['#327', '#328', '#491'],
+      retiringIssues: ['#328', '#491'],
       schemaRegistrar: 'src/db/pglite.ts',
       stamps: ['#326'],
     }),
@@ -55,24 +60,33 @@ export function passingFixture() {
     }),
     'src/db/pglite.ts': 'export const database = () => undefined\n',
     'src/db/schema.ts': "export const version = 'fixture'\n",
+    'src/db/legacy.schema.ts':
+      "import { jobs } from '../modules/job/job.schema'\n\nvoid jobs\nexport const legacy = 1\n",
     'src/modules/capture/capture.schema.ts':
       "import { pgTable } from 'drizzle-orm/pg-core'\n\nexport const captures = pgTable('captures', {})\n",
     'src/modules/capture/capture.service.ts':
       "import { jobs } from '../job/job.schema'\n\nvoid jobs\nexport const columns = 1\n",
     'src/modules/job/job.schema.ts':
       "import { pgTable } from 'drizzle-orm/pg-core'\n\nexport const jobs = pgTable('jobs', {})\n",
+    'src/modules/job/job.service.ts': [
+      'export interface JobRun { readonly id: string }',
+      '',
+      'export const runJob = (run: JobRun) => run.id',
+      '',
+    ].join('\n'),
+    'src/modules/job/public.ts': "export { runJob, type JobRun } from './job.service'\n",
   }
 }
 
 /** @returns {Record<string, string>} */
-export function runtimeReadsJobs() {
+export function dbReadsJobs() {
   return {
     owner: 'job',
-    reason: 'Transitional: runtime reaches the job schema directly until #327 lands.',
+    reason: 'Transitional: a src/db file holds the job table definition until #328 lands.',
     recordedIn: '#326',
-    retiredBy: '#327',
+    retiredBy: '#328',
     rule: 'foreign-owner-table-access',
-    source: 'src/runtime/runtime.ts',
+    source: 'src/db/legacy.schema.ts',
     table: 'jobs',
     target: 'src/modules/job/job.schema.ts',
   }
@@ -122,7 +136,7 @@ export function aggregateFixture() {
     'architecture/module-graph.json': JSON.stringify({
       canonicalSchemaAggregate: 'src/db/schema.ts',
       edges: [{ from: 'capture', recordedIn: '#326', to: 'job' }],
-      exceptions: [runtimeReadsJobs()],
+      exceptions: [dbReadsJobs()],
       moduleRoot: 'src/modules',
       permissions: [
         captureAccessesJobs(),
@@ -141,7 +155,7 @@ export function aggregateFixture() {
           target: 'src/db/schema.ts',
         }),
       ],
-      retiringIssues: ['#327', '#328', '#491'],
+      retiringIssues: ['#328', '#491'],
       schemaRegistrar: 'src/db/pglite.ts',
       stamps: ['#326'],
     }),

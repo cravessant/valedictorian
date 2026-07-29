@@ -8,7 +8,7 @@ import { publicConnectorStatusSummary } from '../runtime/local-connector-public-
 import {
   publicConnectorRunsListResult,
   publicConnectorRunSummary,
-} from '../runtime/local-connector-public-run'
+} from '../modules/connectors/public'
 import { readJsonBody, writeJson } from './local-server.http'
 import {
   parseConnectorCheckpointsListQuery,

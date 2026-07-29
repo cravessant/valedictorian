@@ -5,7 +5,7 @@ import {
   type ConnectorSchedulingCapability,
   type ProfileUpdateInput,
 } from '@sparxie/sdk'
-import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
+import { resolveConnectorSchedulingCapability } from '../modules/connectors/public'
 import {
   readJsonBody,
   readOptionalBooleanField,

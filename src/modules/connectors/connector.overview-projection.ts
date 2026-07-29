@@ -2,13 +2,13 @@ import {
   connectorOverviewRecordSchema,
   type ConnectorOverviewRecord,
 } from '@sparxie/sdk'
-import type { ConnectorStatusSummaryRecord } from '../modules/connectors/connector.repository'
+import type { ConnectorStatusSummaryRecord } from './connector.repository'
 import {
   pendingResolutionCount,
   runFrontiers,
   runOutcome,
-} from './local-connector-run-summary'
-import { mapLocalConnectorStatusSummary } from './local-connector-status-mapping'
+} from './connector.run-record.projection'
+import { mapLocalConnectorStatusSummary } from './connector.instance-projection'
 
 export function mapLocalConnectorOverviewRecord(
   record: ConnectorStatusSummaryRecord,

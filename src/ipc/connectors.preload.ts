@@ -21,11 +21,15 @@ import type {
   LocalConnectorSkipActionInput,
   LocalConnectorStatusActionInput,
 } from '../runtime/local-valedictorian-client'
+// The preload runs in the sandboxed renderer, where `require('node:*')` throws and a
+// failed evaluation silently drops every later `exposeInMainWorld`. It therefore takes
+// the connector-owned wire contract directly rather than the connectors public surface,
+// whose barrel reaches composition, persistence, and Node built-ins.
 import {
-  publicConnectorSkipActionResult,
   parseConnectorRetirementIpcEnvelope,
+  publicConnectorSkipActionResult,
   type ConnectorSkipActionResult,
-} from './connectors.public'
+} from '../modules/connectors/connector.edge-contract'
 
 interface IpcRendererLike {
   invoke: (channel: string, input?: unknown) => Promise<unknown>

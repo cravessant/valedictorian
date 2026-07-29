@@ -1,11 +1,9 @@
-import { and, eq } from 'drizzle-orm'
 import { createPgliteClient, migratePgliteDatabase } from '../db/pglite'
 import type { PgliteDatabase } from '../db/pglite'
-import { createPgliteCaptureService } from '../modules/capture/capture.service'
 import {
-  captureResolutionGenerations,
-  captureResolutionStageResults,
-} from '../modules/capture/capture.schema'
+  createPgliteCaptureService,
+  seedResolvedCaptureDestination,
+} from '../modules/capture/public'
 import { createLocalValedictorianClient } from './local-valedictorian-client'
 export { isolatedValidationFixture } from './isolated-validation.fixture-contract'
 import {
@@ -154,28 +152,15 @@ async function resolveLongContentDestination({
   readonly database: PgliteDatabase
   readonly workspaceId: string
 }) {
-  const [generation] = await database
-    .select({ id: captureResolutionGenerations.id })
-    .from(captureResolutionGenerations)
-    .where(and(
-      eq(captureResolutionGenerations.captureId, captureId),
-      eq(captureResolutionGenerations.workspaceId, workspaceId),
-      eq(captureResolutionGenerations.status, 'active'),
-    ))
-    .limit(1)
-  if (!generation) {
+  const seeded = await seedResolvedCaptureDestination(database, {
+    captureId,
+    destinationUrl: captureCompletionLongContentFixture.destinationUrl,
+    resolvedAt: isolatedValidationFixture.timestamp,
+    workspaceId,
+  })
+  if (!seeded) {
     throw new Error('Could not find the active Capture resolution generation for the long-content fixture.')
   }
-  await database.update(captureResolutionStageResults).set({
-    issueJson: null,
-    nextAttemptAt: null,
-    resultJson: JSON.stringify({ url: captureCompletionLongContentFixture.destinationUrl }),
-    status: 'resolved',
-    updatedAt: isolatedValidationFixture.timestamp,
-  }).where(and(
-    eq(captureResolutionStageResults.generationId, generation.id),
-    eq(captureResolutionStageResults.stage, 'destination'),
-  ))
 }
 
 function fixtureIdGenerator(longContent = false) {

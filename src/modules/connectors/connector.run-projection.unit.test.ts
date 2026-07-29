@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   publicConnectorRunLifecycleCounts,
   publicConnectorRunSummary,
-} from './local-connector-public-run'
+} from './connector.run-projection'
 
 describe('public connector run projection', () => {
   it('translates internal sourcing totals into released opportunity counts', () => {

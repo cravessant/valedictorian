@@ -4,15 +4,13 @@ import {
   triggerConnectorRunInputSchema,
 } from '@sparxie/sdk'
 import {
-  publicConnectorRunsListResult,
-  publicConnectorRunSummary,
-} from '../runtime/local-connector-public-run'
-import { publicConnectorStatusSummary } from '../runtime/local-connector-public-status'
-import {
   connectorRetirementIpcConflict,
   connectorRetirementIpcSuccess,
+  publicConnectorRunsListResult,
+  publicConnectorRunSummary,
   publicConnectorSkipActionResult,
-} from './connectors.public'
+} from '../modules/connectors/public'
+import { publicConnectorStatusSummary } from '../runtime/local-connector-public-status'
 interface IpcMainLike {
   handle: (channel: string, handler: (_event: unknown, input?: unknown) => Promise<unknown>) => void
 }

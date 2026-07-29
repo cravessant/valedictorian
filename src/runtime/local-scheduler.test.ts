@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createLocalScheduler, type LocalScheduledWorkSource } from './local-scheduler'
+import { createLocalScheduler } from './local-scheduler'
+import type { LocalScheduledWorkSource } from '../modules/scheduling/public'
 
 describe('local scheduler lifecycle', () => {
   it('wakes due persisted work and rearms for the next due instant', async () => {

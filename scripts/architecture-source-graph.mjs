@@ -8,6 +8,7 @@ await init
 
 const codePathPattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
 const resolutionExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']
+const testPathPattern = /\.(?:test|spec)\.(?:[cm]?[jt]s|[jt]sx)$/
 
 /**
  * @typedef {object} ModuleRecord
@@ -111,6 +112,42 @@ export function toRepositoryPath(root, filePath) {
 }
 
 /**
+ * A maintained test. Test source describes a scenario rather than the shipped
+ * dependency direction, so the rules that model shipped structure skip it.
+ *
+ * @param {string} repositoryPath
+ * @returns {boolean}
+ */
+export function isTestPath(repositoryPath) {
+  return testPathPattern.test(repositoryPath)
+}
+
+/**
+ * Every path a specifier could name, in the order the toolchain would try them:
+ * the literal target, each extension spelling, then each index spelling. Shared so
+ * one resolution model answers every rule.
+ *
+ * @param {string} root
+ * @param {string} filePath
+ * @param {string} specifier
+ * @returns {string[]} Empty when the specifier names no path at all.
+ */
+export function resolutionCandidates(root, filePath, specifier) {
+  const target = specifier.startsWith('.')
+    ? path.resolve(path.dirname(filePath), specifier)
+    : specifier.startsWith('@/')
+      ? path.join(root, 'src', specifier.slice(2))
+      : null
+  if (target === null) return []
+
+  return [
+    target,
+    ...resolutionExtensions.map((extension) => `${target.replace(/\.js$/, '')}${extension}`),
+    ...resolutionExtensions.map((extension) => path.join(target, `index${extension}`)),
+  ]
+}
+
+/**
  * Resolves a relative or `@/`-aliased specifier to the repository path it names,
  * mirroring the `@/* -> ./src/*` mapping in tsconfig.json.
  *
@@ -120,22 +157,13 @@ export function toRepositoryPath(root, filePath) {
  * @returns {string | null}
  */
 export function resolveSpecifier(root, filePath, specifier) {
-  const target = specifier.startsWith('.')
-    ? path.resolve(path.dirname(filePath), specifier)
-    : specifier.startsWith('@/')
-      ? path.join(root, 'src', specifier.slice(2))
-      : null
-  if (target === null) return null
+  const candidates = resolutionCandidates(root, filePath, specifier)
+  if (candidates.length === 0) return null
 
-  const candidates = [
-    target,
-    ...resolutionExtensions.map((extension) => `${target.replace(/\.js$/, '')}${extension}`),
-    ...resolutionExtensions.map((extension) => path.join(target, `index${extension}`)),
-  ]
   const resolved = candidates.find(
     (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
   )
-  return resolved ? toRepositoryPath(root, resolved) : toRepositoryPath(root, target)
+  return toRepositoryPath(root, resolved ?? /** @type {string} */ (candidates[0]))
 }
 
 /**

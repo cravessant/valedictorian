@@ -14,7 +14,7 @@
  * re-dispatched exactly once — the stale token can no longer complete the re-claimed
  * record.
  */
-import type { LocalScheduledWorkSource } from '../../runtime/local-scheduler'
+import type { LocalScheduledWorkSource } from './scheduled-work.port'
 import type { ClaimedScheduledWork, ScheduledWorkRepository } from './scheduled-work'
 
 export interface ScheduledWorkSourceOptions<Claim> {

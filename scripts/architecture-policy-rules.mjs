@@ -36,13 +36,6 @@ const connectorSourceExecutionWrites = new Set([
  * an issue may only be named where its own contract reaches.
  */
 const retirementScopes = {
-  '#327': {
-    describe: 'a production server or runtime file deep-importing a module',
-    fits: (entry, manifest) =>
-      (entry.source.startsWith('src/server/') || entry.source.startsWith('src/runtime/'))
-      && entry.target.startsWith(`${manifest.moduleRoot}/`)
-      && !isMaintainedTestPath(entry.source),
-  },
   '#328': {
     describe: 'a file under src/db whose table definitions move into module slices',
     fits: (entry, manifest) =>

@@ -1,3 +1,13 @@
+/**
+ * Connector run projection (issue #327).
+ *
+ * Connector-owned sanitization of a connector run before it crosses an edge:
+ * every field is re-read from the sparxie schema, an internal cancellation
+ * reason is collapsed to its public form, and unattributable lifecycle counts
+ * are dropped rather than guessed. The connectors public surface and the
+ * runtime both consume it, so the normalization lives with the capability that
+ * owns the run rather than in the runtime shell that used to hold it.
+ */
 import {
   connectorRunLifecycleCountsSchema,
   connectorRunSummarySchema,
@@ -7,77 +17,6 @@ import {
   type ConnectorRunsListResult,
   type SourceExecutionScopeId,
 } from '@sparxie/sdk'
-import { mapConnectorWarnings } from '../modules/connectors/connector.status'
-import type { ConnectorRunRecord } from '../modules/connectors/connector.repository'
-import type { LocalConnectorRunSummary } from './local-connector-client.contract'
-import {
-  parseConnectorRetryAdvice,
-  pendingResolutionCount,
-  publicRunStatus,
-  runFrontiers,
-  runOutcome,
-} from './local-connector-run-summary'
-
-export function mapConnectorRunSummary(
-  record: ConnectorRunRecord,
-  scheduleOccurrence: ConnectorRunSummary['scheduleOccurrence'] = null,
-): LocalConnectorRunSummary {
-  const lifecycleCounts = publicConnectorRunLifecycleCounts(
-    record.stats,
-    record.id,
-    record.executionScopeId,
-  )
-  const lifecycleSummary = lifecycleCounts ? { lifecycleCounts } : {}
-  const shared = {
-    id: record.id,
-    connectorInstanceId: record.connectorInstanceId,
-    executionScopeId: record.executionScopeId,
-    status: publicRunStatus(record.status),
-    coverage: {
-      start: record.coverageStartedAt,
-      end: record.coverageEndedAt,
-    },
-    filterSignature: record.filterSignature,
-    observationCount: record.observationCount,
-    warningCount: record.warningCount,
-    ...runFrontiers(record),
-    pendingResolutionCount: pendingResolutionCount(record),
-    ...lifecycleSummary,
-    outcome: runOutcome(record),
-    stats: record.stats,
-    warnings: mapConnectorWarnings(record.warnings),
-    retryHints: parseConnectorRetryAdvice(record.retryHints),
-    startedAt: record.startedAt,
-    completedAt: record.completedAt,
-  } as const
-  if (
-    scheduleOccurrence
-    && record.mode === 'scheduled'
-    && scheduleOccurrence.admittedMode === 'scheduled'
-  ) {
-    return {
-      ...shared,
-      mode: 'scheduled',
-      scheduleOccurrence,
-    }
-  }
-  if (
-    scheduleOccurrence
-    && record.mode === 'catch_up'
-    && scheduleOccurrence.admittedMode === 'catch_up'
-  ) {
-    return {
-      ...shared,
-      mode: 'catch_up',
-      scheduleOccurrence,
-    }
-  }
-  return {
-    ...shared,
-    mode: 'manual',
-    scheduleOccurrence: null,
-  }
-}
 
 export function publicConnectorRunSummary(value: unknown): ConnectorRunSummary {
   const run = value && typeof value === 'object'

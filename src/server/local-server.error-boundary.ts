@@ -18,9 +18,9 @@ import {
   profileDocumentErrorBodySchema,
   profileDocumentErrorStatusByCode,
 } from '@sparxie/sdk'
-import { ConnectorExecutionError } from '../modules/connectors/connector-execution.errors'
-import { LifecycleHttpError } from '../runtime/local-lifecycle-methods'
-import { toLocalSecretResolutionHttpFailure } from '../modules/secrets/local-secret-resolution'
+import { ConnectorExecutionError } from '../modules/connectors/public'
+import { LifecycleHttpError } from '../modules/lifecycle/public'
+import { toLocalSecretResolutionHttpFailure } from '../modules/secrets/public'
 import {
   LocalHttpBodyTooLargeError,
   LocalHttpValidationError,

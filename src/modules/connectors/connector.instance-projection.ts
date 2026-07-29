@@ -1,16 +1,18 @@
-import type {
-  ConnectorAuthReference,
-  ConnectorInstanceRecord,
-  ConnectorRunRecord,
-} from '../modules/connectors/connector.repository'
-import {
-  mapConnectorStatusSummary,
-  type ConnectorStatusView,
-} from '../modules/connectors/connector.status'
+/**
+ * Connector instance projections (issue #327).
+ *
+ * Turns persisted connector instance, auth, and run rows into the consumer-shaped
+ * results the desktop client speaks, and parses caller-supplied auth references
+ * back into the persisted shape. Persistence rows never leave this module.
+ */
+import type { ConnectorAuthReferenceInput } from '@sparxie/sdk'
+import type { ConnectorAuthReference, ConnectorInstanceRecord, ConnectorRunRecord } from './connector.repository'
+import { mapConnectorStatusSummary, type ConnectorStatusView } from './connector.status'
 import type {
   LocalConnectorAuthSummary,
+  LocalConnectorInstanceSummary,
   LocalConnectorStatusSummary,
-} from './local-connector-client.contract'
+} from './connector.consumer-contract'
 
 export function mapLocalConnectorStatusSummary(
   record: ConnectorInstanceRecord & { latestRun: ConnectorRunRecord | null },
@@ -120,4 +122,47 @@ function actionRequiredForStatus(
     }
   }
   return actions
+}
+
+export function mapConnectorInstanceSummary(
+  record: ConnectorInstanceRecord,
+): LocalConnectorInstanceSummary {
+  return {
+    id: record.id,
+    connectorId: record.connectorId,
+    connectorVersion: record.connectorVersion,
+    displayName: record.displayName,
+    enabled: record.enabled,
+    lifecycle: record.enabled ? 'enabled' : 'disabled',
+    auth: record.auth.map(mapConnectorAuthSummary),
+    config: record.config,
+    filters: record.filters,
+    earliestBackfillDate: record.earliestBackfillDate,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  }
+}
+
+export function parseConnectorAuthReferenceInputs(
+  references: ConnectorAuthReferenceInput[] | undefined,
+): ConnectorAuthReference[] | undefined {
+  return references?.map((reference) => {
+    if (!isLocalConnectorAuthMode(reference.mode)) {
+      throw new Error(`Invalid connector auth mode: ${String(reference.mode)}`)
+    }
+    return {
+      id: reference.id,
+      mode: reference.mode,
+      ...(reference.label === undefined || reference.label === null ? {} : { label: reference.label }),
+      ...(reference.secretKey === undefined ? {} : { secretKey: reference.secretKey }),
+    }
+  })
+}
+
+const localConnectorAuthModes = new Set<ConnectorAuthReference['mode']>([
+  'none', 'api_key', 'bearer_token', 'oauth', 'cookie_jar', 'username_password',
+])
+
+function isLocalConnectorAuthMode(value: string): value is ConnectorAuthReference['mode'] {
+  return localConnectorAuthModes.has(value as ConnectorAuthReference['mode'])
 }

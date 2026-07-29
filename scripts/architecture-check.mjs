@@ -1,11 +1,21 @@
 import path from 'node:path'
 
 import { findModuleGraphViolations } from './architecture-module-graph-rules.mjs'
+import { findPublicSurfaceViolations } from './architecture-public-surface-rules.mjs'
 import { findStateOwnershipViolations } from './architecture-state-ownership-rules.mjs'
 import { scanMaintainedSource } from './architecture-state-resolution.mjs'
 
 /**
- * Mechanical architecture enforcement (issue #326).
+ * Mechanical architecture enforcement (issues #326 and #327).
+ *
+ * `module-public-surface-bypass` (issue #327) holds the other half of the
+ * boundary: production server and runtime composition reaches a capability only
+ * through its exact `src/modules/<module>/public.ts` surface; that surface's whole
+ * dependency closure reaches no runtime, server, IPC, or Electron edge; it
+ * publishes its own module and no other; and it names every export explicitly. Its
+ * scope, spellings, and refusals are described in
+ * architecture-public-surface-rules.mjs. It needs no manifest — the convention is
+ * the contract, so there is nothing to keep in step.
  *
  * `architecture/state-ownership.json` names one owner for every `pgTable` export.
  * `architecture/module-graph.json` records the exact directed capability edges and,
@@ -74,6 +84,7 @@ const violations = [
   ...scan.failures,
   ...findStateOwnershipViolations(root, scan),
   ...findModuleGraphViolations(root, scan),
+  ...findPublicSurfaceViolations(root, scan),
 ].sort()
 for (const violation of violations) process.stderr.write(`${violation}\n`)
 if (violations.length > 0) process.exitCode = 1

@@ -1,7 +1,4 @@
-import type {
-  ConnectorRunRecord,
-  createPgliteConnectorRepository,
-} from '../modules/connectors/connector.repository'
+import type { ConnectorRunRecord, createPgliteConnectorRepository } from './connector.repository'
 
 /** Finalize an already-durable connector capture run and its checkpoint. */
 export async function finalizeDeferredConnectorRefreshRecord({

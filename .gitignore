@@ -32,3 +32,4 @@ release
 
 # #309 connector-modal scroll probe harness build output
 electron/scroll-probe/dist
+.connector-row-proof-*/

@@ -12,19 +12,18 @@ import {
 } from '../server/local-server'
 import {
   createDefaultLocalConnectorPorts,
+  localDesktopConnectorSchedulingCapability,
+  type ConnectorRunRecoveryLifecycle,
   type DefaultLocalConnectorPorts,
-} from '../modules/connectors/connector.runtime-ports'
-import { localDesktopConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
+} from '../modules/connectors/public'
 import type { LocalWorkspaceClient } from './local-connector-client.contract'
 import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
-import type { SecretCodec } from '../modules/secrets/secret.codec'
-import { isSecretCodecAvailable } from '../modules/secrets/secret.codec'
+import { isSecretCodecAvailable, type SecretCodec } from '../modules/secrets/public'
 import {
   prepareWorkspaceProfileCapabilities,
   type PreparedWorkspaceProfileCapabilities,
-} from '../modules/profile/profile.composition'
-import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
+} from '../modules/profile/public'
 import {
   createLocalValedictorianClient,
   type LocalValedictorianClient,
@@ -37,8 +36,8 @@ import {
   type LocalSchedulerOptions,
 } from './local-scheduler'
 import { readNonEmptyEnvironmentApiToken } from './api-token-resolution'
-import type { ProfileService } from '../modules/profile/profile.service'
-import type { SecretService } from '../modules/secrets/secret.service'
+import type { ProfileService } from '../modules/profile/public'
+import type { SecretService } from '../modules/secrets/public'
 
 export type ValedictorianRuntimeMode = 'local-desktop' | 'local-shared' | 'remote'
 

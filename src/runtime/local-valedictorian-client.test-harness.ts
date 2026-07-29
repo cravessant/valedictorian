@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -12,9 +11,8 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../db/pglite'
-import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { completedConnectorRefreshContract } from '../modules/connectors/public'
+import type { AppJobConnector } from '../modules/connectors/public'
 import {
   createLocalValedictorianClient,
   type LocalValedictorianClient,
@@ -270,31 +268,5 @@ function fixtureJobsObservation(companyName: string, index: number, observedAt: 
         sourceUrl: `https://example.test/jobs/${slug}`,
       },
     ],
-  }
-}
-
-export async function createTestConnectorCaptureFixture(
-  client: LocalValedictorianClient,
-  connectorId: string,
-  connectorVersion: string,
-) {
-  const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
-  const suffix = randomUUID()
-  const instance = await repository.upsertInstance({
-    id: `fixture-instance-${suffix}`,
-    connectorId,
-    connectorVersion,
-    displayName: 'Fixture connector',
-    enabled: true,
-  })
-  const request = await repository.recordRunRequest({
-    connectorInstanceId: instance.id,
-    mode: 'manual',
-    startedAt: '2026-07-10T11:59:00.000Z',
-  })
-  return {
-    connectorInstanceId: instance.id,
-    connectorRunId: request.run.id,
-    executionScopeId: instance.executionScopeId,
   }
 }

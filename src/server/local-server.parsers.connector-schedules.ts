@@ -13,7 +13,7 @@ import {
   type UpsertConnectorScheduleInput,
 } from '@sparxie/sdk'
 import { ZodError } from 'zod'
-import { createConnectorScheduleError } from '../modules/connectors/connector-schedule.errors'
+import { createConnectorScheduleError } from '../modules/connectors/public'
 import { localHttpValidationError, parseLocalHttpInput, readRecord } from './local-server.http'
 
 function readScheduleBody(body: unknown): Record<string, unknown> {

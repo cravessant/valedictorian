@@ -11,6 +11,7 @@ import {
   observedStateAccess,
 } from './architecture-module-graph-rules.mjs'
 import { isMaintainedTestPath } from './architecture-policy-rules.mjs'
+import { isProductionConsumer } from './architecture-public-surface-rules.mjs'
 import { moduleOfPath } from './architecture-source-graph.mjs'
 import { loadStateOwnership, ownerByTable } from './architecture-state-ownership-rules.mjs'
 import { declaredTables, scanMaintainedSource } from './architecture-state-resolution.mjs'
@@ -103,10 +104,10 @@ describe('checked-in architecture manifests', () => {
       {},
     )
 
-    expect(moduleGraph.exceptions).toHaveLength(12)
-    expect(moduleGraph.permissions).toHaveLength(640)
-    expect(byIssue).toEqual({ '#327': 7, '#328': 1, '#491': 4 })
-    expect(moduleGraph.retiringIssues).toEqual(['#327', '#328', '#491'])
+    expect(moduleGraph.exceptions).toHaveLength(5)
+    expect(moduleGraph.permissions).toHaveLength(638)
+    expect(byIssue).toEqual({ '#328': 1, '#491': 4 })
+    expect(moduleGraph.retiringIssues).toEqual(['#328', '#491'])
     expect(moduleGraph.permissions.every((entry) => !('retiredBy' in entry))).toBe(true)
     expect(moduleGraph.exceptions.every((entry) => entry.rule === 'foreign-owner-table-access'))
       .toBe(true)
@@ -124,18 +125,17 @@ describe('checked-in architecture manifests', () => {
       'platform-ownership-root': 2,
       'schema-composition': 51,
       'schema-registration': 58,
-      'test-state-access': 462,
+      'test-state-access': 460,
     })
   })
 
-  it('claims #327 only where a server or runtime deep import into a module exists', () => {
-    const retiredBy327 = moduleGraph.exceptions.filter((entry) => entry.retiredBy === '#327')
+  it('leaves no production server or runtime deep import to retire', () => {
+    const productionReaches = [...observed.accesses.values()].filter(
+      (access) => isProductionConsumer(access.source) && access.target.startsWith('src/modules/'),
+    )
 
-    expect(retiredBy327.every(
-      (entry) => (entry.source.startsWith('src/server/') || entry.source.startsWith('src/runtime/'))
-        && entry.target.startsWith('src/modules/')
-        && !isMaintainedTestPath(entry.source),
-    )).toBe(true)
+    expect(productionReaches).toEqual([])
+    expect(moduleGraph.retiringIssues).not.toContain('#327')
   })
 
   it('claims #328 only where the imported definition actually moves', () => {
@@ -194,19 +194,19 @@ describe('checked-in architecture manifests', () => {
     )
   })
 
-  it('rejects the live runtime state access when its exceptions are dropped', () => {
-    const root = mirrorRepository((graph) => {
-      graph.exceptions = graph.exceptions.filter(
-        (entry) => entry.source !== 'src/runtime/local-lifecycle-methods.ts',
-      )
-    })
+  it('routes every live production server and runtime reach through a public surface', () => {
+    const reaches = [...scan.files.values()]
+      .filter((file) => isProductionConsumer(file.path))
+      .flatMap((file) => [...file.targets.values()])
+      .filter((target) => target.startsWith('src/modules/'))
+    const surfaces = new Set(reaches)
 
-    const result = runArchitectureCheck(root)
-
-    expect(result.status).toBe(1)
-    expect(result.stderr).toContain(
-      '[foreign-owner-table-access] src/runtime/local-lifecycle-methods.ts imports jobs owned by job; zone src/runtime needs an exact entry in architecture/module-graph.json\n',
-    )
+    expect(reaches.length).toBeGreaterThan(0)
+    expect([...surfaces].filter(
+      (target) => target !== `src/modules/${moduleOfPath(target)}/public.ts`,
+    )).toEqual([])
+    expect([...surfaces].every((target) => fs.existsSync(path.join(repositoryRoot, target))))
+      .toBe(true)
   })
 
   it('rejects the live registrar reach when one aggregate member is dropped', () => {

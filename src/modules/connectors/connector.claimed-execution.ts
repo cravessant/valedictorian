@@ -1,10 +1,10 @@
 import type { ConnectorRefreshMode } from '@sparxie/valedictorian-connectors-core'
-import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
-import type { createPgliteConnectorRepository, ConnectorRunRecord } from '../modules/connectors/connector.repository'
-import type { createConnectorRunner, AppConnectorRefreshRecord } from '../modules/connectors/connector.runner'
-import { connectorInstalledVersionMismatchError } from '../modules/connectors/connector-execution.errors'
-import { revalidatePersistedConnectorSettings } from '../modules/connectors/connector.settings-validation'
-import { finalizeDeferredConnectorRefreshRecord } from './local-connector-retry-dispatch'
+import { connectorInstalledVersionMismatchError } from './connector-execution.errors'
+import { revalidatePersistedConnectorSettings } from './connector.settings-validation'
+import type { ConnectorRunRecord, createPgliteConnectorRepository } from './connector.repository'
+import type { AppConnectorRefreshRecord, createConnectorRunner } from './connector.runner'
+import type { LocalConnectorRegistry } from './connector.registry'
+import { finalizeDeferredConnectorRefreshRecord } from './connector.retry-dispatch'
 
 export async function executeClaimedConnectorRun({
   connectorRegistry,

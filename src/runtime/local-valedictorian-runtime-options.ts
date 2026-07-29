@@ -1,13 +1,14 @@
 import type { ConnectorSchedulingCapability } from '@sparxie/sdk'
-import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
-import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
-import type { AppConnectorRuntimePorts } from '../modules/connectors/connector.runner'
-import type { SecretCodec } from '../modules/secrets/secret.codec'
+import type {
+  AppConnectorRuntimePorts,
+  ConnectorRunRecoveryLifecycle,
+  LocalConnectorRegistry,
+} from '../modules/connectors/public'
 import type { PgliteDatabase } from '../db/pglite'
 import type { UuidV7Generator } from '../db/uuidv7'
-import type { ProfileService } from '../modules/profile/profile.service'
-import type { SecretService } from '../modules/secrets/secret.service'
-import type { LocalScheduledWorkSource } from './local-scheduler'
+import type { ProfileService } from '../modules/profile/public'
+import type { SecretCodec, SecretService } from '../modules/secrets/public'
+import type { LocalScheduledWorkSource } from '../modules/scheduling/public'
 
 export interface LocalValedictorianClientOptions {
   /** Caller-owned, already-migrated shared workspace database. */

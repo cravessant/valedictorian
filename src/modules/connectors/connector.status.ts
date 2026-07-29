@@ -9,7 +9,7 @@ import {
   pendingResolutionCount,
   runFrontiers,
   runOutcome,
-} from '../../runtime/local-connector-run-summary'
+} from './connector.run-record.projection'
 
 export type ConnectorStatusSeverity = 'healthy' | 'warning' | 'blocked'
 

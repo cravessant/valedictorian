@@ -17,7 +17,7 @@ import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import { workspaces } from '../db/workspaces.schema'
 import { createPgliteJobServiceWithCompanies } from '../test/job-service-with-companies'
 import { jobCaptureEvidenceReferences } from '../modules/job/job.schema'
-import { LifecycleHttpError } from './local-lifecycle-methods'
+import { LifecycleHttpError } from '../modules/lifecycle/public'
 import { createLocalLifecycleMethodsWithCompanies } from '../test/lifecycle-methods-with-companies'
 
 const resettableOwner = useResettablePgliteTestOwner()

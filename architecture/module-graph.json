@@ -220,80 +220,9 @@
       "target": "src/db/schema.ts",
       "retiredBy": "#491",
       "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "applications",
-      "reason": "Transitional: src/runtime reaches application_attempt_records, owned by applications, by importing src/modules/application/application.schema.ts directly. #327 routes server and runtime through per-module public surfaces, which removes this deep import.",
-      "recordedIn": "#326",
-      "source": "src/runtime/local-lifecycle-methods.ts",
-      "table": "application_attempt_records",
-      "target": "src/modules/application/application.schema.ts",
-      "retiredBy": "#327",
-      "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "applications",
-      "reason": "Transitional: src/runtime reaches application_event_records, owned by applications, by importing src/modules/application/application.schema.ts directly. #327 routes server and runtime through per-module public surfaces, which removes this deep import.",
-      "recordedIn": "#326",
-      "source": "src/runtime/local-lifecycle-methods.ts",
-      "table": "application_event_records",
-      "target": "src/modules/application/application.schema.ts",
-      "retiredBy": "#327",
-      "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "applications",
-      "reason": "Transitional: src/runtime reaches applications, owned by applications, by importing src/modules/application/application.schema.ts directly. #327 routes server and runtime through per-module public surfaces, which removes this deep import.",
-      "recordedIn": "#326",
-      "source": "src/runtime/local-lifecycle-methods.ts",
-      "table": "applications",
-      "target": "src/modules/application/application.schema.ts",
-      "retiredBy": "#327",
-      "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "applications",
-      "reason": "Transitional: src/runtime reaches pursuit_links, owned by applications, by importing src/modules/application/application.schema.ts directly. #327 routes server and runtime through per-module public surfaces, which removes this deep import.",
-      "recordedIn": "#326",
-      "source": "src/runtime/local-lifecycle-methods.ts",
-      "table": "pursuit_links",
-      "target": "src/modules/application/application.schema.ts",
-      "retiredBy": "#327",
-      "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "job",
-      "reason": "Transitional: src/runtime reaches job_capture_evidence_references, owned by job, by importing src/modules/job/job.schema.ts directly. #327 routes server and runtime through per-module public surfaces, which removes this deep import.",
-      "recordedIn": "#326",
-      "source": "src/runtime/local-lifecycle-methods.ts",
-      "table": "job_capture_evidence_references",
-      "target": "src/modules/job/job.schema.ts",
-      "retiredBy": "#327",
-      "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "job",
-      "reason": "Transitional: src/runtime reaches jobs, owned by job, by importing src/modules/job/job.schema.ts directly. #327 routes server and runtime through per-module public surfaces, which removes this deep import.",
-      "recordedIn": "#326",
-      "source": "src/runtime/local-lifecycle-methods.ts",
-      "table": "jobs",
-      "target": "src/modules/job/job.schema.ts",
-      "retiredBy": "#327",
-      "rule": "foreign-owner-table-access"
-    },
-    {
-      "owner": "opportunity",
-      "reason": "Transitional: src/runtime reaches opportunities, owned by opportunity, by importing src/modules/opportunity/opportunity.schema.ts directly. #327 routes server and runtime through per-module public surfaces, which removes this deep import.",
-      "recordedIn": "#326",
-      "source": "src/runtime/local-lifecycle-methods.ts",
-      "table": "opportunities",
-      "target": "src/modules/opportunity/opportunity.schema.ts",
-      "retiredBy": "#327",
-      "rule": "foreign-owner-table-access"
     }
   ],
   "retiringIssues": [
-    "#327",
     "#328",
     "#491"
   ],
@@ -5275,24 +5204,6 @@
       "source": "src/modules/scoring/scoring.repository.test.ts",
       "table": "applications",
       "target": "src/db/schema.ts",
-      "purpose": "test-state-access"
-    },
-    {
-      "owner": "capture",
-      "reason": "Stable: this maintained test or test-support file reaches capture_resolution_generations, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
-      "recordedIn": "#326",
-      "source": "src/runtime/isolated-validation.fixture.ts",
-      "table": "capture_resolution_generations",
-      "target": "src/modules/capture/capture.schema.ts",
-      "purpose": "test-state-access"
-    },
-    {
-      "owner": "capture",
-      "reason": "Stable: this maintained test or test-support file reaches capture_resolution_stage_results, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
-      "recordedIn": "#326",
-      "source": "src/runtime/isolated-validation.fixture.ts",
-      "table": "capture_resolution_stage_results",
-      "target": "src/modules/capture/capture.schema.ts",
       "purpose": "test-state-access"
     },
     {

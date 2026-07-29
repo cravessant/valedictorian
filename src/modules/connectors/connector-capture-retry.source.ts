@@ -1,4 +1,4 @@
-import type { LocalScheduledWorkSource } from '../../runtime/local-scheduler'
+import type { LocalScheduledWorkSource } from '../scheduling/public'
 
 export interface ScheduledConnectorCaptureRetry {
   connectorInstanceId: string

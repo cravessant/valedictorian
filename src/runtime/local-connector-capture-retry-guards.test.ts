@@ -11,7 +11,7 @@ import {
   createTestLocalValedictorianClient as createLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
 } from './local-valedictorian-client.test-harness'
-import type { LocalScheduledWorkSource } from './local-scheduler'
+import type { LocalScheduledWorkSource } from '../modules/scheduling/public'
 
 describe('local connector capture retry guards', () => {
   it('does not advertise due retry work while its execution scope requires action', async () => {

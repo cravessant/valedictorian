@@ -23,7 +23,7 @@ import {
   type ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
-import { LifecycleHttpError } from '../../runtime/local-lifecycle-methods'
+import { LifecycleHttpError } from '../lifecycle/public'
 import {
   jobCaptureEvidenceReferences,
   jobs,

@@ -7,7 +7,7 @@ import {
   retryCaptureProcessingInputSchema,
 } from '@sparxie/sdk'
 import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
-import { LifecycleHttpError } from '../runtime/local-lifecycle-methods'
+import { LifecycleHttpError } from '../modules/lifecycle/public'
 import { parseLocalHttpInput, readJsonBody, writeJson } from './local-server.http'
 
 const NOT_FOUND = Object.freeze({ message: 'The requested resource was not found.' })

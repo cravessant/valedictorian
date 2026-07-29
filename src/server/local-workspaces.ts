@@ -7,22 +7,19 @@ import {
 } from '../runtime/local-valedictorian-client'
 import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
 import {
-  createDefaultLocalConnectorPorts,
-  type DefaultLocalConnectorPorts,
-} from '../modules/connectors/connector.runtime-ports'
-import type { SecretCodec } from '../modules/secrets/secret.codec'
-import { isSecretCodecAvailable } from '../modules/secrets/secret.codec'
-import {
   createConnectorRunRecoveryLifecycle,
+  createDefaultLocalConnectorPorts,
   type ConnectorRunRecoveryLifecycle,
-} from '../modules/connectors/connector.recovery'
+  type DefaultLocalConnectorPorts,
+} from '../modules/connectors/public'
+import { isSecretCodecAvailable, type SecretCodec } from '../modules/secrets/public'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
 import type { WorkspaceRecord, WorkspaceRegistryStore } from '../workspace/workspace.registry'
 import {
   prepareWorkspaceProfileCapabilities,
   type PreparedWorkspaceProfileCapabilities,
-} from '../modules/profile/profile.composition'
+} from '../modules/profile/public'
 
 export class LocalWorkspaceConflictError extends Error {
   readonly statusCode = 409
