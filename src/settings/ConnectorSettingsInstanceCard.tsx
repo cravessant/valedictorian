@@ -33,12 +33,10 @@ import type { ErrorPresentation } from '../app/error-presentation'
 import { Switch } from '@/components/ui/switch'
 import { fieldControlId } from '@/lib/field-control-id'
 import { AlertTriangle, ChevronDown, Pencil } from 'lucide-react'
-import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import {
   ConnectorRunLifecycleDetails,
   ConnectorRunSynchronizationDetails,
 } from './ConnectorRunDetails'
-import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import { ConnectorEarliestBackfillDateControl } from './ConnectorEarliestBackfillDateControl'
 import {
   connectorAuthStatusLabel,
@@ -55,10 +53,6 @@ import {
   isBrowserAlignedEmail,
   isConnectorCredentialDraftReady,
 } from './connector-action-state'
-import {
-  maximumSelectableEarliestBackfillDate,
-  validateSelectableEarliestBackfillDate,
-} from '../modules/connectors/connector.earliest-backfill'
 import type {
   ConnectorAuthCredentialDraft,
   ConnectorAuthUiState,
@@ -76,14 +70,18 @@ import {
   ConnectorSynchronizationConfiguration,
 } from './connector-filters/ConnectorProviderFilters'
 import {
-  validateConnectorConfigPersistenceValue,
-  validateConnectorSchemaValue,
-} from '../modules/connectors/connector.renderer-schema-validation'
-import {
   dynamicBindingPointers,
   evaluateVersionedPresentationCompatibility,
 } from './connector-filters/connector-presentation'
 import { connectorDetailsDismissalDecision } from './connector-details-dismissal'
+import {
+  JOBRIGHT_CONNECTOR_ID,
+  connectorRunSynchronizationCopy,
+  maximumSelectableEarliestBackfillDate,
+  validateConnectorConfigPersistenceValue,
+  validateConnectorSchemaValue,
+  validateSelectableEarliestBackfillDate,
+} from '../modules/connectors/renderer'
 
 export function ConnectorSettingsInstanceCard({
   instance,

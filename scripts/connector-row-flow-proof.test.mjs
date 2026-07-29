@@ -44,7 +44,7 @@ describe('connector persistence row flow', () => {
 
   it('rejects re-exporting the repository factory', () => {
     const result = runWithSurfaceLine(
-      "export { createPgliteConnectorRepository } from './connector.repository'",
+      "export { createPgliteConnectorRepository } from './adapters/persistence/connector.repository'",
     )
 
     expect(result.status).toBe(1)
@@ -54,22 +54,22 @@ describe('connector persistence row flow', () => {
   })
 
   it.each([
-    ['an instance projection', 'mapConnectorInstanceSummary', './connector.instance-projection', 'ConnectorInstanceRecord'],
-    ['a run projection', 'mapConnectorRunSummary', './connector.run-record.projection', 'ConnectorRunRecord'],
-    ['a checkpoint projection', 'mapConnectorCheckpoint', './connector.run-record.projection', 'ConnectorCheckpointRecord'],
-    ['an observation projection', 'mapConnectorObservation', './connector.run-record.projection', 'ConnectorObservationRecord'],
-    ['an overview projection', 'mapLocalConnectorOverviewRecord', './connector.overview-projection', 'ConnectorStatusSummaryRecord'],
+    ['an instance projection', 'mapConnectorInstanceSummary', './core/connector.instance-projection', 'ConnectorInstanceRecord'],
+    ['a run projection', 'mapConnectorRunSummary', './core/connector.run-record.projection', 'ConnectorRunRecord'],
+    ['a checkpoint projection', 'mapConnectorCheckpoint', './core/connector.run-record.projection', 'ConnectorCheckpointRecord'],
+    ['an observation projection', 'mapConnectorObservation', './core/connector.run-record.projection', 'ConnectorObservationRecord'],
+    ['an overview projection', 'mapLocalConnectorOverviewRecord', './core/connector.overview-projection', 'ConnectorStatusSummaryRecord'],
   ])('rejects %s that accepts a row without naming its type', (_label, name, specifier, row) => {
     const result = runWithSurfaceLine(`export { ${name} } from '${specifier}'`)
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('[connector-persistence-row-flow]')
-    expect(result.stderr).toContain(`reaches connector.repository.${row}`)
+    expect(result.stderr).toContain(`reaches ports/connector.repository.port.${row}`)
   })
 
   it('rejects a renamed repository factory', () => {
     const result = runWithSurfaceLine(
-      "export { createPgliteConnectorRepository as createConnectorStore } from './connector.repository'",
+      "export { createPgliteConnectorRepository as createConnectorStore } from './adapters/persistence/connector.repository'",
     )
 
     expect(result.status).toBe(1)
@@ -78,7 +78,7 @@ describe('connector persistence row flow', () => {
 
   it('rejects a facade whose row parameter is only inferred', () => {
     const result = runWithSurfaceLine(
-      "export { createConnectorRunner } from './connector.runner'",
+      "export { createConnectorRunner } from './adapters/connector.runner'",
     )
 
     expect(result.status).toBe(1)

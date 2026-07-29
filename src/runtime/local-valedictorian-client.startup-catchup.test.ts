@@ -5,10 +5,10 @@ import {
   getTestLocalValedictorianDatabase,
   useTestMissingReferenceTrackerPath,
 } from './local-valedictorian-client.test-harness'
-import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
-import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
+import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
+import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
+import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
 
 describe('runtime local Valedictorian client deferred refresh', () => {
   useTestMissingReferenceTrackerPath()

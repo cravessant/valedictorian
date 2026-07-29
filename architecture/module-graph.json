@@ -1501,7 +1501,7 @@
       "recordedIn": "#328",
       "source": "src/db/schema.ts",
       "table": "connector_capture_work",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -1510,7 +1510,7 @@
       "recordedIn": "#326",
       "source": "src/db/schema.ts",
       "table": "connector_checkpoints",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -1519,7 +1519,7 @@
       "recordedIn": "#326",
       "source": "src/db/schema.ts",
       "table": "connector_instances",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -1528,7 +1528,7 @@
       "recordedIn": "#326",
       "source": "src/db/schema.ts",
       "table": "connector_observations",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -1537,7 +1537,7 @@
       "recordedIn": "#328",
       "source": "src/db/schema.ts",
       "table": "connector_run_synchronizations",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -1546,7 +1546,7 @@
       "recordedIn": "#326",
       "source": "src/db/schema.ts",
       "table": "connector_runs",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -1555,7 +1555,7 @@
       "recordedIn": "#326",
       "source": "src/db/schema.ts",
       "table": "connector_schedule_events",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -1564,7 +1564,7 @@
       "recordedIn": "#326",
       "source": "src/db/schema.ts",
       "table": "connector_schedule_occurrences",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -1573,7 +1573,7 @@
       "recordedIn": "#326",
       "source": "src/db/schema.ts",
       "table": "connector_schedule_revisions",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -1582,7 +1582,7 @@
       "recordedIn": "#326",
       "source": "src/db/schema.ts",
       "table": "connector_schedules",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "schema-composition"
     },
     {
@@ -2174,7 +2174,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-retirement.persistence.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-retirement.persistence.pglite.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2183,7 +2183,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_sessions, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-retirement.persistence.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-retirement.persistence.pglite.test.ts",
       "table": "source_execution_sessions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2192,7 +2192,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_attempt_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "application_attempt_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2201,7 +2201,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_event_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "application_event_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2210,7 +2210,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_history, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "application_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2219,7 +2219,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_scores, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "application_scores",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2228,7 +2228,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_workflow_states, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "application_workflow_states",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2237,7 +2237,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches applications, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "applications",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2246,7 +2246,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches capture_destination_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_destination_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2255,7 +2255,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_effective_revision_inputs, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_effective_revision_inputs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2264,7 +2264,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_evidence_items, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_evidence_items",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2273,7 +2273,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_field_outcomes, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_field_outcomes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2282,7 +2282,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_issues, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_materialization_issues",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2291,7 +2291,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_state, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_materialization_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2300,7 +2300,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_occurrences, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_occurrences",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2309,7 +2309,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_command_receipts, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_resolution_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2318,7 +2318,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_generations, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_resolution_generations",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2327,7 +2327,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_stage_results, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_resolution_stage_results",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2336,7 +2336,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_revisions, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "capture_revisions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2345,7 +2345,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches captures, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "captures",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2354,7 +2354,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_aliases, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "company_aliases",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2363,7 +2363,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_command_receipts, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "company_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2372,7 +2372,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidate_reviews, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "company_duplicate_candidate_reviews",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2381,7 +2381,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidates, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "company_duplicate_candidates",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2390,7 +2390,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_index_state, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "company_duplicate_index_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2399,7 +2399,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_maintenance_work, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "company_duplicate_maintenance_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2408,7 +2408,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "company_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2417,7 +2417,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_result_polling_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "hosted_result_polling_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2426,7 +2426,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_submission_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "hosted_submission_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2435,7 +2435,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_capture_evidence_references, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "job_capture_evidence_references",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2444,7 +2444,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignment_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "job_company_assignment_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2453,7 +2453,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignments, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "job_company_assignments",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2462,7 +2462,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_external_identities, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "job_external_identities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2471,7 +2471,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_history, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "job_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2480,7 +2480,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches jobs, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "jobs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2489,7 +2489,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches normalization_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "normalization_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2498,7 +2498,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunities, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "opportunities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2507,7 +2507,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunity_history, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "opportunity_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2516,7 +2516,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_config, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "policy_config",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2525,7 +2525,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_evidence, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "policy_evidence",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2534,7 +2534,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches provider_url_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "provider_url_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2543,7 +2543,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches pursuit_links, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "pursuit_links",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2552,7 +2552,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2561,7 +2561,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_sessions, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "source_execution_sessions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2570,7 +2570,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches sources, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "sources",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2579,7 +2579,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_run_steps, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "workflow_run_steps",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2588,7 +2588,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_runs, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "workflow_runs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2597,7 +2597,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches workspace_companies, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "workspace_companies",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2606,7 +2606,7 @@
       "owner": "secrets",
       "reason": "Stable: this maintained test or test-support file reaches workspace_secrets, owned by secrets. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "workspace_secrets",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2615,7 +2615,7 @@
       "owner": "workspace-platform",
       "reason": "Stable: this maintained test or test-support file reaches workspaces, owned by workspace-platform. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.pglite.test.ts",
       "table": "workspaces",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2624,7 +2624,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.dispatch.schema-failure.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.dispatch.schema-failure.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2633,7 +2633,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_attempt_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "application_attempt_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2642,7 +2642,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_event_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "application_event_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2651,7 +2651,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_history, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "application_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2660,7 +2660,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_scores, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "application_scores",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2669,7 +2669,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_workflow_states, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "application_workflow_states",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2678,7 +2678,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches applications, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "applications",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2687,7 +2687,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches capture_destination_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_destination_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2696,7 +2696,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_effective_revision_inputs, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_effective_revision_inputs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2705,7 +2705,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_evidence_items, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_evidence_items",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2714,7 +2714,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_field_outcomes, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_field_outcomes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2723,7 +2723,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_issues, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_materialization_issues",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2732,7 +2732,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_state, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_materialization_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2741,7 +2741,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_occurrences, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_occurrences",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2750,7 +2750,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_command_receipts, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_resolution_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2759,7 +2759,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_generations, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_resolution_generations",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2768,7 +2768,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_stage_results, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_resolution_stage_results",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2777,7 +2777,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_revisions, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "capture_revisions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2786,7 +2786,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches captures, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "captures",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2795,7 +2795,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_aliases, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "company_aliases",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2804,7 +2804,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_command_receipts, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "company_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2813,7 +2813,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidate_reviews, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "company_duplicate_candidate_reviews",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2822,7 +2822,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidates, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "company_duplicate_candidates",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2831,7 +2831,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_index_state, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "company_duplicate_index_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2840,7 +2840,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_maintenance_work, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "company_duplicate_maintenance_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2849,7 +2849,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "company_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2858,7 +2858,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_result_polling_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "hosted_result_polling_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2867,7 +2867,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_submission_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "hosted_submission_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2876,7 +2876,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_capture_evidence_references, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "job_capture_evidence_references",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2885,7 +2885,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignment_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "job_company_assignment_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2894,7 +2894,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignments, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "job_company_assignments",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2903,7 +2903,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_external_identities, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "job_external_identities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2912,7 +2912,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_history, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "job_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2921,7 +2921,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches jobs, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "jobs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2930,7 +2930,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches normalization_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "normalization_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2939,7 +2939,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunities, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "opportunities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2948,7 +2948,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunity_history, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "opportunity_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2957,7 +2957,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_config, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "policy_config",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2966,7 +2966,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_evidence, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "policy_evidence",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2975,7 +2975,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches provider_url_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "provider_url_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2984,7 +2984,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches pursuit_links, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "pursuit_links",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -2993,7 +2993,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3002,7 +3002,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_sessions, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "source_execution_sessions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3011,7 +3011,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches sources, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "sources",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3020,7 +3020,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_run_steps, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "workflow_run_steps",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3029,7 +3029,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_runs, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "workflow_runs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3038,7 +3038,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches workspace_companies, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "workspace_companies",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3047,7 +3047,7 @@
       "owner": "secrets",
       "reason": "Stable: this maintained test or test-support file reaches workspace_secrets, owned by secrets. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "workspace_secrets",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3056,7 +3056,7 @@
       "owner": "workspace-platform",
       "reason": "Stable: this maintained test or test-support file reaches workspaces, owned by workspace-platform. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.pglite.test.ts",
       "table": "workspaces",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3065,7 +3065,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.schema-failure.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.schema-failure.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3074,7 +3074,7 @@
       "owner": "source-execution",
       "reason": "Recorded: connectors reaches source_execution_scopes, owned by source-execution, across the capability boundary. Exact and load-bearing; no open leaf promises to remove it, so no retirement is claimed.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector-schedule.repository.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector-schedule.repository.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "cross-capability-state-access"
@@ -3083,7 +3083,7 @@
       "owner": "workspace-platform",
       "reason": "Stable: this maintained test or test-support file reaches workspaces, owned by workspace-platform. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.capture-host.pglite.test.ts",
+      "source": "src/modules/connectors/adapters/capture/connector.capture-host.pglite.test.ts",
       "table": "workspaces",
       "target": "src/db/workspaces.schema.ts",
       "purpose": "test-state-access"
@@ -3092,7 +3092,7 @@
       "owner": "capture",
       "reason": "Recorded: connectors reaches capture_occurrences, owned by capture, across the capability boundary. Exact and load-bearing; no open leaf promises to remove it, so no retirement is claimed.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.lifecycle-counts.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.lifecycle-counts.ts",
       "table": "capture_occurrences",
       "target": "src/db/schema.ts",
       "purpose": "cross-capability-state-access"
@@ -3101,7 +3101,7 @@
       "owner": "capture",
       "reason": "Recorded: connectors reaches captures, owned by capture, across the capability boundary. Exact and load-bearing; no open leaf promises to remove it, so no retirement is claimed.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.lifecycle-counts.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.lifecycle-counts.ts",
       "table": "captures",
       "target": "src/db/schema.ts",
       "purpose": "cross-capability-state-access"
@@ -3110,7 +3110,7 @@
       "owner": "job",
       "reason": "Recorded: connectors reaches job_capture_evidence_references, owned by job, across the capability boundary. Exact and load-bearing; no open leaf promises to remove it, so no retirement is claimed.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.lifecycle-counts.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.lifecycle-counts.ts",
       "table": "job_capture_evidence_references",
       "target": "src/db/schema.ts",
       "purpose": "cross-capability-state-access"
@@ -3119,7 +3119,7 @@
       "owner": "job",
       "reason": "Recorded: connectors reaches jobs, owned by job, across the capability boundary. Exact and load-bearing; no open leaf promises to remove it, so no retirement is claimed.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.lifecycle-counts.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.lifecycle-counts.ts",
       "table": "jobs",
       "target": "src/db/schema.ts",
       "purpose": "cross-capability-state-access"
@@ -3128,7 +3128,7 @@
       "owner": "opportunity",
       "reason": "Recorded: connectors reaches opportunities, owned by opportunity, across the capability boundary. Exact and load-bearing; no open leaf promises to remove it, so no retirement is claimed.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.lifecycle-counts.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.lifecycle-counts.ts",
       "table": "opportunities",
       "target": "src/db/schema.ts",
       "purpose": "cross-capability-state-access"
@@ -3137,7 +3137,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_attempt_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "application_attempt_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3146,7 +3146,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_event_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "application_event_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3155,7 +3155,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_history, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "application_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3164,7 +3164,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_scores, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "application_scores",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3173,7 +3173,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_workflow_states, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "application_workflow_states",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3182,7 +3182,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches applications, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "applications",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3191,7 +3191,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches capture_destination_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_destination_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3200,7 +3200,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_effective_revision_inputs, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_effective_revision_inputs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3209,7 +3209,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_evidence_items, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_evidence_items",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3218,7 +3218,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_field_outcomes, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_field_outcomes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3227,7 +3227,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_issues, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_materialization_issues",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3236,7 +3236,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_state, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_materialization_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3245,7 +3245,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_occurrences, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_occurrences",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3254,7 +3254,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_command_receipts, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_resolution_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3263,7 +3263,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_generations, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_resolution_generations",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3272,7 +3272,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_stage_results, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_resolution_stage_results",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3281,7 +3281,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_revisions, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "capture_revisions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3290,7 +3290,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches captures, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "captures",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3299,7 +3299,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_aliases, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "company_aliases",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3308,7 +3308,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_command_receipts, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "company_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3317,7 +3317,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidate_reviews, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "company_duplicate_candidate_reviews",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3326,7 +3326,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidates, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "company_duplicate_candidates",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3335,7 +3335,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_index_state, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "company_duplicate_index_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3344,7 +3344,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_maintenance_work, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "company_duplicate_maintenance_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3353,7 +3353,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "company_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3362,7 +3362,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_result_polling_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "hosted_result_polling_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3371,7 +3371,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_submission_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "hosted_submission_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3380,7 +3380,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_capture_evidence_references, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "job_capture_evidence_references",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3389,7 +3389,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignment_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "job_company_assignment_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3398,7 +3398,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignments, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "job_company_assignments",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3407,7 +3407,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_external_identities, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "job_external_identities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3416,7 +3416,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_history, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "job_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3425,7 +3425,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches jobs, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "jobs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3434,7 +3434,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches normalization_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "normalization_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3443,7 +3443,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunities, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "opportunities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3452,7 +3452,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunity_history, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "opportunity_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3461,7 +3461,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_config, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "policy_config",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3470,7 +3470,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_evidence, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "policy_evidence",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3479,7 +3479,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches provider_url_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "provider_url_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3488,7 +3488,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches pursuit_links, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "pursuit_links",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3497,7 +3497,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3506,7 +3506,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_sessions, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "source_execution_sessions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3515,7 +3515,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches sources, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "sources",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3524,7 +3524,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_run_steps, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "workflow_run_steps",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3533,7 +3533,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_runs, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "workflow_runs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3542,7 +3542,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches workspace_companies, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "workspace_companies",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3551,7 +3551,7 @@
       "owner": "secrets",
       "reason": "Stable: this maintained test or test-support file reaches workspace_secrets, owned by secrets. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "workspace_secrets",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3560,7 +3560,7 @@
       "owner": "workspace-platform",
       "reason": "Stable: this maintained test or test-support file reaches workspaces, owned by workspace-platform. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.overview.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.overview.repository.test.ts",
       "table": "workspaces",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3569,7 +3569,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_attempt_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "application_attempt_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3578,7 +3578,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_event_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "application_event_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3587,7 +3587,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_history, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "application_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3596,7 +3596,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_scores, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "application_scores",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3605,7 +3605,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_workflow_states, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "application_workflow_states",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3614,7 +3614,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches applications, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "applications",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3623,7 +3623,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches capture_destination_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_destination_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3632,7 +3632,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_effective_revision_inputs, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_effective_revision_inputs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3641,7 +3641,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_evidence_items, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_evidence_items",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3650,7 +3650,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_field_outcomes, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_field_outcomes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3659,7 +3659,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_issues, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_materialization_issues",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3668,7 +3668,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_state, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_materialization_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3677,7 +3677,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_occurrences, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_occurrences",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3686,7 +3686,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_command_receipts, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_resolution_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3695,7 +3695,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_generations, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_resolution_generations",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3704,7 +3704,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_stage_results, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_resolution_stage_results",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3713,7 +3713,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_revisions, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "capture_revisions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3722,7 +3722,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches captures, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "captures",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3731,7 +3731,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_aliases, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "company_aliases",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3740,7 +3740,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_command_receipts, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "company_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3749,7 +3749,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidate_reviews, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "company_duplicate_candidate_reviews",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3758,7 +3758,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidates, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "company_duplicate_candidates",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3767,7 +3767,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_index_state, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "company_duplicate_index_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3776,7 +3776,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_maintenance_work, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "company_duplicate_maintenance_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3785,7 +3785,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "company_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3794,7 +3794,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_result_polling_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "hosted_result_polling_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3803,7 +3803,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_submission_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "hosted_submission_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3812,7 +3812,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_capture_evidence_references, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "job_capture_evidence_references",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3821,7 +3821,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignment_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "job_company_assignment_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3830,7 +3830,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignments, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "job_company_assignments",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3839,7 +3839,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_external_identities, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "job_external_identities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3848,7 +3848,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_history, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "job_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3857,7 +3857,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches jobs, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "jobs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3866,7 +3866,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches normalization_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "normalization_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3875,7 +3875,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunities, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "opportunities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3884,7 +3884,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunity_history, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "opportunity_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3893,7 +3893,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_config, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "policy_config",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3902,7 +3902,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_evidence, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "policy_evidence",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3911,7 +3911,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches provider_url_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "provider_url_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3920,7 +3920,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches pursuit_links, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "pursuit_links",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3929,7 +3929,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3938,7 +3938,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_sessions, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "source_execution_sessions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3947,7 +3947,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches sources, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "sources",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3956,7 +3956,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_run_steps, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "workflow_run_steps",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3965,7 +3965,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_runs, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "workflow_runs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3974,7 +3974,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches workspace_companies, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "workspace_companies",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3983,7 +3983,7 @@
       "owner": "secrets",
       "reason": "Stable: this maintained test or test-support file reaches workspace_secrets, owned by secrets. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "workspace_secrets",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -3992,7 +3992,7 @@
       "owner": "workspace-platform",
       "reason": "Stable: this maintained test or test-support file reaches workspaces, owned by workspace-platform. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.bounded-history.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.bounded-history.test.ts",
       "table": "workspaces",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4001,7 +4001,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.retry-claim-cooldown.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.retry-claim-cooldown.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4010,7 +4010,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.schema-failure.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.schema-failure.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4019,7 +4019,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_attempt_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "application_attempt_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4028,7 +4028,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_event_records, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "application_event_records",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4037,7 +4037,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_history, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "application_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4046,7 +4046,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_scores, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "application_scores",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4055,7 +4055,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches application_workflow_states, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "application_workflow_states",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4064,7 +4064,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches applications, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "applications",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4073,7 +4073,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches capture_destination_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_destination_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4082,7 +4082,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_effective_revision_inputs, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_effective_revision_inputs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4091,7 +4091,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_evidence_items, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_evidence_items",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4100,7 +4100,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_field_outcomes, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_field_outcomes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4109,7 +4109,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_issues, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_materialization_issues",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4118,7 +4118,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_materialization_state, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_materialization_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4127,7 +4127,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_occurrences, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_occurrences",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4136,7 +4136,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_command_receipts, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_resolution_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4145,7 +4145,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_generations, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_resolution_generations",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4154,7 +4154,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_resolution_stage_results, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_resolution_stage_results",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4163,7 +4163,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches capture_revisions, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "capture_revisions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4172,7 +4172,7 @@
       "owner": "capture",
       "reason": "Stable: this maintained test or test-support file reaches captures, owned by capture. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "captures",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4181,7 +4181,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_aliases, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "company_aliases",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4190,7 +4190,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_command_receipts, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "company_command_receipts",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4199,7 +4199,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidate_reviews, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "company_duplicate_candidate_reviews",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4208,7 +4208,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_candidates, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "company_duplicate_candidates",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4217,7 +4217,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_index_state, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "company_duplicate_index_state",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4226,7 +4226,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_duplicate_maintenance_work, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "company_duplicate_maintenance_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4235,7 +4235,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches company_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "company_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4244,7 +4244,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_result_polling_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "hosted_result_polling_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4253,7 +4253,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches hosted_submission_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "hosted_submission_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4262,7 +4262,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_capture_evidence_references, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "job_capture_evidence_references",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4271,7 +4271,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignment_history, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "job_company_assignment_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4280,7 +4280,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches job_company_assignments, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "job_company_assignments",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4289,7 +4289,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_external_identities, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "job_external_identities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4298,7 +4298,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches job_history, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "job_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4307,7 +4307,7 @@
       "owner": "job",
       "reason": "Stable: this maintained test or test-support file reaches jobs, owned by job. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "jobs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4316,7 +4316,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches normalization_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "normalization_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4325,7 +4325,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunities, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "opportunities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4334,7 +4334,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunity_history, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "opportunity_history",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4343,7 +4343,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_config, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "policy_config",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4352,7 +4352,7 @@
       "owner": "policy",
       "reason": "Stable: this maintained test or test-support file reaches policy_evidence, owned by policy. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "policy_evidence",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4361,7 +4361,7 @@
       "owner": "scheduling",
       "reason": "Stable: this maintained test or test-support file reaches provider_url_resolution_work, owned by scheduling. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "provider_url_resolution_work",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4370,7 +4370,7 @@
       "owner": "applications",
       "reason": "Stable: this maintained test or test-support file reaches pursuit_links, owned by applications. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "pursuit_links",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4379,7 +4379,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4388,7 +4388,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_sessions, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "source_execution_sessions",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4397,7 +4397,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches sources, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "sources",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4406,7 +4406,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_run_steps, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "workflow_run_steps",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4415,7 +4415,7 @@
       "owner": "workflow-runs",
       "reason": "Stable: this maintained test or test-support file reaches workflow_runs, owned by workflow-runs. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "workflow_runs",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4424,7 +4424,7 @@
       "owner": "company",
       "reason": "Stable: this maintained test or test-support file reaches workspace_companies, owned by company. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "workspace_companies",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4433,7 +4433,7 @@
       "owner": "secrets",
       "reason": "Stable: this maintained test or test-support file reaches workspace_secrets, owned by secrets. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "workspace_secrets",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4442,7 +4442,7 @@
       "owner": "workspace-platform",
       "reason": "Stable: this maintained test or test-support file reaches workspaces, owned by workspace-platform. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.scope-admission.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.scope-admission.test.ts",
       "table": "workspaces",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4451,7 +4451,7 @@
       "owner": "opportunity",
       "reason": "Stable: this maintained test or test-support file reaches opportunities, owned by opportunity. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.test.ts",
       "table": "opportunities",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4460,7 +4460,7 @@
       "owner": "source-execution",
       "reason": "Stable: this maintained test or test-support file reaches source_execution_scopes, owned by source-execution. Recorded exactly so the access stays visible and scanned; no issue retires it.",
       "recordedIn": "#326",
-      "source": "src/modules/connectors/connector.repository.test.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.repository.test.ts",
       "table": "source_execution_scopes",
       "target": "src/db/schema.ts",
       "purpose": "test-state-access"
@@ -4469,7 +4469,7 @@
       "owner": "source-execution",
       "reason": "Stable: this schema file declares a foreign-key column against source_execution_scopes, owned by source-execution, so the table object must be in scope where the column is defined. The reference lasts as long as the foreign key does.",
       "recordedIn": "#328",
-      "source": "src/modules/connectors/connector.schema.ts",
+      "source": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "table": "source_execution_scopes",
       "target": "src/modules/source-execution/source-execution.schema.ts",
       "purpose": "foreign-key-reference"
@@ -5155,7 +5155,7 @@
       "recordedIn": "#328",
       "source": "src/modules/scheduling/scheduled-work.pglite.test.ts",
       "table": "connector_capture_work",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "test-state-access"
     },
     {
@@ -5164,7 +5164,7 @@
       "recordedIn": "#326",
       "source": "src/modules/scheduling/scheduled-work.pglite.test.ts",
       "table": "connector_instances",
-      "target": "src/modules/connectors/connector.schema.ts",
+      "target": "src/modules/connectors/adapters/persistence/connector.schema.ts",
       "purpose": "test-state-access"
     },
     {

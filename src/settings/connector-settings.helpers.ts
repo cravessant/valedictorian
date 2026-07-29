@@ -4,13 +4,13 @@ import {
   isCanonicalAlreadyConfigured,
 } from '../app/error-presentation'
 import { ValedictorianHttpError, ValedictorianTransportError } from '@sparxie/sdk'
-import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import type {
   ConnectorAuthUiState,
   ConnectorSettingsDraft,
   ConnectorSettingsInstance,
 } from './connector-settings.types'
 import { secureStorageUnavailableMessage } from './connector-settings.types'
+import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/renderer'
 
 export function jobrightSecretKeyForInstance(instanceId: string): string {
   const normalizedInstanceId = instanceId

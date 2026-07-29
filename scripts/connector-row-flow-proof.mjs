@@ -16,8 +16,8 @@ import { parseSync } from 'oxc-parser'
  *
  * Every name `public.ts` exports is followed to the declaration that defines it, and
  * every type identifier that declaration mentions is followed in turn, to a fixpoint.
- * Landing in a connectors persistence module — a `*.persistence-types` file or the
- * repository — is the violation, whatever route reached it.
+ * Landing in a connectors row module — a port record file, the repository port, or
+ * the store — is the violation, whatever route reached it.
  *
  * Consumers cannot bypass this: `module-public-surface-bypass` already proves that
  * production server and runtime code reaches connectors only through `public.ts`, so
@@ -25,7 +25,8 @@ import { parseSync } from 'oxc-parser'
  */
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 const MODULE = 'connectors'
-const ROW_MODULE = /(?:[a-z-]+\.persistence-types|connector\.repository)$/
+const ROW_MODULE =
+  /(?:ports\/connector-[a-z-]+\.records|ports\/connector\.repository\.port|persistence\/connector(?:-[a-z-]+)?\.repository)$/
 const REPOSITORY_FACTORY = 'createPgliteConnectorRepository'
 
 const declarationRoot = fs.mkdtempSync(path.join(repositoryRoot, '.connector-row-proof-'))

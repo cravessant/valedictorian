@@ -11,10 +11,6 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { AlertTriangle, X } from 'lucide-react'
 import {
-  validateConnectorConfigPersistenceValue,
-  validateConnectorSchemaValue,
-} from '../../modules/connectors/connector.renderer-schema-validation'
-import {
   dynamicActionLabel,
   dynamicBindingPointers,
   escapePointer,
@@ -33,6 +29,10 @@ import {
 } from './connector-dynamic-clear'
 import { StaticFilterControl } from './ConnectorStaticControls'
 import { orderFilterProperties } from './connector-filter-ordering'
+import {
+  validateConnectorConfigPersistenceValue,
+  validateConnectorSchemaValue,
+} from '../../modules/connectors/renderer'
 
 type OptionsApi = ValedictorianWorkspaceClient['connectors']['options']
 type DynamicOptions = NonNullable<InstalledConnectorDescriptor['dynamicOptions']>

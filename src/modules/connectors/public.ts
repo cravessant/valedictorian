@@ -1,68 +1,77 @@
 /**
- * Connectors public surface (issue #327).
- *
- * The contracts production server and runtime composition consume, plus the
- * desktop edge envelopes relocated here from `src/ipc`. Module internals stay
- * private: nothing here re-exports a table, a persistence DTO, or an API no
- * consumer has, and this file reaches no runtime, server, IPC, or Electron edge.
- *
- * The connectors core/ports/adapters reorganization is #329's; this surface only
- * names what already crosses the boundary.
+ * The supported external surface for connectors. Everything outside this module
+ * imports from here, and nothing here exposes a table, a persistence row, or a
+ * runtime, server, IPC, or Electron edge.
  */
-export { ConnectorExecutionError } from './connector-execution.errors'
-export { completedConnectorRefreshContract } from './connector-refresh-result.test-helpers'
+export { ConnectorExecutionError } from './public/connector.execution-errors'
+export { completedConnectorRefreshContract } from './public/connector.refresh-result.test-helpers'
 export {
   localDesktopConnectorSchedulingCapability,
   resolveConnectorSchedulingCapability,
-} from './connector-schedule.capability'
-export { admitConnectorScheduleDue } from './connector-schedule.dispatch'
-export { createConnectorScheduleError } from './connector-schedule.errors'
-export { createConnectorCaptureHost } from './connector.capture-host'
-export { createConnectorWorkspaceClient } from './connector.workspace-client'
-export type {
-  LocalConnectorAuthGrantSummary,
-  LocalConnectorAuthSummary,
-  LocalConnectorClient,
-  LocalConnectorExecutionIntent,
-  LocalConnectorInstanceSummary,
-  LocalConnectorInternalRunTriggerInput,
-  LocalConnectorObservationListInput,
-  LocalConnectorReconnectActionResult,
-  LocalConnectorRunSummary,
-  LocalConnectorSkipActionInput,
-  LocalConnectorSkipActionResult,
-  LocalConnectorStatusActionInput,
-  LocalConnectorStatusSummary,
-} from './connector.consumer-contract'
+} from './public/connector.schedule-capability'
+export { createConnectorScheduleError } from './public/connector.schedule-errors'
+export {
+  assertPersistedEarliestBackfillDate,
+  defaultEarliestBackfillDate,
+  maximumSelectableEarliestBackfillDate,
+  minimumSelectableEarliestBackfillDate,
+  validateSelectableEarliestBackfillDate,
+} from './public/connector.earliest-backfill'
 export {
   connectorRetirementIpcConflict,
   connectorRetirementIpcSuccess,
+  parseConnectorRetirementIpcEnvelope,
   publicConnectorSkipActionResult,
-} from './connector.edge-contract'
+  type ConnectorSkipActionResult,
+} from './public/connector.edge-contract'
 export {
   createConnectorRunRecoveryLifecycle,
   type ConnectorRunRecoveryLifecycle,
-} from './connector.recovery'
+} from './public/connector.recovery'
 export {
-  createDefaultLocalConnectorRegistry,
-  createStaticConnectorRegistry,
-  type LocalConnectorRegistry,
-} from './connector.registry'
+  validateConnectorConfigPersistenceValue,
+  validateConnectorSchemaValue,
+  type ConnectorSchemaValidationIssue,
+} from './public/connector.renderer-schema-validation'
+export { connectorRunSynchronizationCopy } from './public/connector.run-presentation'
 export {
   publicConnectorRunSummary,
   publicConnectorRunsListResult,
-} from './connector.run-projection'
-export type {
-  AppConnectorAuthHost,
-  AppConnectorRuntimePorts,
-  AppJobConnector,
-} from './connector.runner'
-export {
-  createDefaultLocalConnectorPorts,
-  type DefaultLocalConnectorPorts,
-} from './connector.runtime-ports'
+} from './public/connector.run-projection'
 export {
   JOBRIGHT_CONNECTOR_ID,
+  JOBRIGHT_CONNECTOR_VERSION,
+} from './public/jobright.constants'
+
+export {
+  admitConnectorScheduleDue,
+  createConnectorCaptureHost,
+  createConnectorWorkspaceClient,
+  createDefaultLocalConnectorPorts,
+  createDefaultLocalConnectorRegistry,
+  createStaticConnectorRegistry,
   JOBRIGHT_PROVIDER_FIELD_RESOLVER_ID,
   JOBRIGHT_PROVIDER_FIELD_RESOLVER_VERSION,
-} from './jobright.constants'
+  type AppConnectorAuthHost,
+  type AppConnectorRuntime,
+  type AppConnectorRuntimePorts,
+  type AppConnectorSecretResolver,
+  type AppJobConnector,
+  type ConnectorStatusListResult,
+  type ConnectorStatusView,
+  type DefaultLocalConnectorPorts,
+  type LocalConnectorAuthGrantSummary,
+  type LocalConnectorAuthSummary,
+  type LocalConnectorClient,
+  type LocalConnectorExecutionIntent,
+  type LocalConnectorInstanceSummary,
+  type LocalConnectorInternalRunTriggerInput,
+  type LocalConnectorObservationListInput,
+  type LocalConnectorReconnectActionResult,
+  type LocalConnectorRegistry,
+  type LocalConnectorRunSummary,
+  type LocalConnectorSkipActionInput,
+  type LocalConnectorSkipActionResult,
+  type LocalConnectorStatusActionInput,
+  type LocalConnectorStatusSummary,
+} from './module'

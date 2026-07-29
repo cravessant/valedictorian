@@ -22,10 +22,13 @@ import { scanMaintainedSource } from './architecture-state-resolution.mjs'
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 const proofScript = path.join(repositoryRoot, 'scripts/source-execution-ownership-proof.mjs')
 
-const REPOSITORY = 'src/modules/connectors/connector.repository.ts'
-const INSTANCE = 'src/modules/connectors/connector-instance.persistence.ts'
-const RETIREMENT = 'src/modules/connectors/connector-retirement.persistence.ts'
-const SCHEDULE = 'src/modules/connectors/connector-schedule.repository.ts'
+const PERSISTENCE = 'src/modules/connectors/adapters/persistence'
+const ADMISSION = `${PERSISTENCE}/connector-run-request.repository.ts`
+const INSTANCE_STORE = `${PERSISTENCE}/connector-instance.repository.ts`
+const INSTANCE = `${PERSISTENCE}/connector-instance.persistence.ts`
+const RETIREMENT = `${PERSISTENCE}/connector-retirement.persistence.ts`
+const SCHEDULE = `${PERSISTENCE}/connector-schedule.repository.ts`
+const SCHEMA = `${PERSISTENCE}/connector.schema.ts`
 
 /** @type {Map<string, string>} */
 const originals = new Map()
@@ -82,12 +85,12 @@ describe('source-execution write ownership', () => {
     ['a session delete', '`delete from source_execution_sessions`'],
     ['a plain string', "'select blocked_until from source_execution_scopes'"],
   ])('rejects %s naming an owner table in raw SQL', (_label, expression) => {
-    write(REPOSITORY, (source) => `${source}\nexport const probe = () => ${expression}\n`)
+    write(ADMISSION, (source) => `${source}\nexport const probe = () => ${expression}\n`)
 
     const result = runProof()
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(`[source-execution-write-ownership] ${REPOSITORY} names source_execution_`)
+    expect(result.stderr).toContain(`[source-execution-write-ownership] ${ADMISSION} names source_execution_`)
     expect(result.stderr).toContain('not through SQL the module graph cannot read')
   })
 
@@ -96,18 +99,18 @@ describe('source-execution write ownership', () => {
     ['the owner schema slice', "import { sourceExecutionScopes } from '../source-execution/source-execution.schema'"],
     ['an alias', "import { sourceExecutionScopes as scopes } from '../../db/schema'\nvoid scopes"],
   ])('rejects a direct table import from %s', (_label, statement) => {
-    write(REPOSITORY, (source) => `${statement}\n${source}`)
+    write(ADMISSION, (source) => `${statement}\n${source}`)
 
     const result = runProof()
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[source-execution-write-ownership] ${REPOSITORY} reaches sourceExecutionScopes, owned by source-execution;`,
+      `[source-execution-write-ownership] ${ADMISSION} reaches sourceExecutionScopes, owned by source-execution;`,
     )
   })
 
   it('rejects a table reached as a namespace member', () => {
-    write(REPOSITORY, (source) => [
+    write(ADMISSION, (source) => [
       "import * as canonicalSchema from '../../db/schema'",
       source,
       'export const probe = () => canonicalSchema.sourceExecutionScopes',
@@ -118,7 +121,7 @@ describe('source-execution write ownership', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[source-execution-write-ownership] ${REPOSITORY} reaches sourceExecutionScopes, owned by source-execution;`,
+      `[source-execution-write-ownership] ${ADMISSION} reaches sourceExecutionScopes, owned by source-execution;`,
     )
   })
 
@@ -145,11 +148,11 @@ describe('source-execution write ownership', () => {
   }
 
   it.each([
-    ['a comment', REPOSITORY, 'admitSourceExecutionScope', 1, (call) => `// ${call}`],
-    ['a comment', REPOSITORY, 'ensureSourceExecutionScope', 0, (call) => `// ${call}`],
+    ['a comment', ADMISSION, 'admitSourceExecutionScope', 1, (call) => `// ${call}`],
+    ['a comment', INSTANCE_STORE, 'ensureSourceExecutionScope', 0, (call) => `// ${call}`],
     ['a comment', INSTANCE, 'ensureSourceExecutionScope', 0, (call) => `// ${call}`],
     ['a comment', RETIREMENT, 'retireSourceExecutionScope', 0, (call) => `// ${call}`],
-    ['a string', REPOSITORY, 'admitSourceExecutionScope', 1, (call) => `void ${JSON.stringify(call)}`],
+    ['a string', ADMISSION, 'admitSourceExecutionScope', 1, (call) => `void ${JSON.stringify(call)}`],
     ['a string', INSTANCE, 'ensureSourceExecutionScope', 0, (call) => `void ${JSON.stringify(call)}`],
   ])('rejects an owner call deleted but left in %s', (_label, file, operation, remaining, launder) => {
     write(file, (source) => launderCall(source, operation, launder))
@@ -168,13 +171,13 @@ describe('source-execution write ownership', () => {
    * count pins it: deleting it leaves the first admission and every name in place.
    */
   it('rejects dropping the post-claim readmission and keeping the first admission', () => {
-    write(REPOSITORY, (source) => launderCall(source, 'admitSourceExecutionScope', (call) => `// ${call}`))
+    write(ADMISSION, (source) => launderCall(source, 'admitSourceExecutionScope', (call) => `// ${call}`))
 
     const result = runProof()
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[source-execution-write-ownership] ${REPOSITORY} calls admitSourceExecutionScope from source-execution/source-execution.persistence 1 time(s), not the 2 its contract needs;`,
+      `[source-execution-write-ownership] ${ADMISSION} calls admitSourceExecutionScope from source-execution/source-execution.persistence 1 time(s), not the 2 its contract needs;`,
     )
   })
 
@@ -212,7 +215,7 @@ describe('source-execution ownership in the module graph', () => {
 
     expect(reaches.map((access) => `${access.source}|${access.table}`).sort()).toEqual([
       `${SCHEDULE}|source_execution_scopes`,
-      'src/modules/connectors/connector.schema.ts|source_execution_scopes',
+      `${SCHEMA}|source_execution_scopes`,
     ])
   })
 

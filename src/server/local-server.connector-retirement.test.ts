@@ -3,8 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { ConnectorRetirementConflictError, createHttpValedictorianClient } from '@sparxie/sdk'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
-import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
+import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
+import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
 import {
   closeLocalValedictorianClient,
   createLocalValedictorianClient,

@@ -7,9 +7,9 @@ import {
   useResettablePgliteTestLocalValedictorianClient,
   useTestMissingReferenceTrackerPath,
 } from './local-valedictorian-client.test-harness'
-import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
-import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
+import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
+import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
 
 describe.sequential('runtime local Valedictorian client', () => {
   const createRuntimeLocalValedictorianClient

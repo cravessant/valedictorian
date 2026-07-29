@@ -11,12 +11,12 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import type { ConnectorSchemaValidationIssue } from '../../modules/connectors/connector.renderer-schema-validation'
 import {
   durationDisplayToStorage,
   durationStorageToDisplay,
   optionPresentationLabel,
 } from './connector-presentation'
+import type { ConnectorSchemaValidationIssue } from '../../modules/connectors/renderer'
 
 export function StaticFilterControl({
   description,

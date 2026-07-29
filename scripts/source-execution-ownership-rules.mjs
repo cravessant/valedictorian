@@ -40,8 +40,8 @@ export const OWNER_MODULE = 'source-execution/source-execution.persistence'
  * exactly, so a new access cannot arrive unnoticed and a retired one cannot linger.
  */
 export const RETAINED_TABLE_READS = new Map([
-  ['src/modules/connectors/connector-schedule.repository.ts', ['sourceExecutionScopes']],
-  ['src/modules/connectors/connector.schema.ts', ['sourceExecutionScopes']],
+  ['src/modules/connectors/adapters/persistence/connector-schedule.repository.ts', ['sourceExecutionScopes']],
+  ['src/modules/connectors/adapters/persistence/connector.schema.ts', ['sourceExecutionScopes']],
 ])
 
 /**
@@ -53,12 +53,14 @@ export const RETAINED_TABLE_READS = new Map([
  * call is the regression the second admission exists to prevent, so one call fails.
  */
 export const REQUIRED_OWNER_CALLS = new Map([
-  ['src/modules/connectors/connector-instance.persistence.ts',
+  ['src/modules/connectors/adapters/persistence/connector-instance.persistence.ts',
     new Map([['ensureSourceExecutionScope', 1]])],
-  ['src/modules/connectors/connector-retirement.persistence.ts',
+  ['src/modules/connectors/adapters/persistence/connector-instance.repository.ts',
+    new Map([['ensureSourceExecutionScope', 1]])],
+  ['src/modules/connectors/adapters/persistence/connector-retirement.persistence.ts',
     new Map([['retireSourceExecutionScope', 1]])],
-  ['src/modules/connectors/connector.repository.ts',
-    new Map([['admitSourceExecutionScope', 2], ['ensureSourceExecutionScope', 1]])],
+  ['src/modules/connectors/adapters/persistence/connector-run-request.repository.ts',
+    new Map([['admitSourceExecutionScope', 2]])],
 ])
 
 /**

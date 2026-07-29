@@ -15,7 +15,7 @@ export const CI_TEST_SHARD_CAPACITIES = [1, 1] as const
 const defaultFileWeight = 1_000
 const currentWeightOverrides = new Map<string, number>([
   ['src/modules/profile/ProfileSettingsPanel.test.tsx', 6_000],
-  ['src/modules/connectors/connector.runner.refresh-contract.test.ts', 4_000],
+  ['src/modules/connectors/adapters/connector.runner.refresh-contract.test.ts', 4_000],
   ['src/server/local-server.connector-capabilities.edge-contracts.test.ts', 5_000],
   ['src/modules/source-execution/source-execution-governor.test.ts', 7_000],
   ['src/modules/source-execution/source-session-executor.test.ts', 7_000],

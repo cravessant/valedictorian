@@ -55,7 +55,7 @@
     "src/modules/application/application.schema.ts",
     "src/modules/capture/capture.schema.ts",
     "src/modules/company/company.schema.ts",
-    "src/modules/connectors/connector.schema.ts",
+    "src/modules/connectors/adapters/persistence/connector.schema.ts",
     "src/modules/job/job.schema.ts",
     "src/modules/opportunity/opportunity.schema.ts",
     "src/modules/policy/policy.schema.ts",
@@ -193,52 +193,52 @@
     "connector_capture_work": {
       "owner": "connectors",
       "schemaExport": "connectorCaptureWork",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_checkpoints": {
       "owner": "connectors",
       "schemaExport": "connectorCheckpoints",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_instances": {
       "owner": "connectors",
       "schemaExport": "connectorInstances",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_observations": {
       "owner": "connectors",
       "schemaExport": "connectorObservations",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_run_synchronizations": {
       "owner": "connectors",
       "schemaExport": "connectorRunSynchronizations",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_runs": {
       "owner": "connectors",
       "schemaExport": "connectorRuns",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_schedule_events": {
       "owner": "connectors",
       "schemaExport": "connectorScheduleEvents",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_schedule_occurrences": {
       "owner": "connectors",
       "schemaExport": "connectorScheduleOccurrences",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_schedule_revisions": {
       "owner": "connectors",
       "schemaExport": "connectorScheduleRevisions",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_schedules": {
       "owner": "connectors",
       "schemaExport": "connectorSchedules",
-      "schemaModule": "src/modules/connectors/connector.schema.ts"
+      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "hosted_result_polling_work": {
       "owner": "scheduling",

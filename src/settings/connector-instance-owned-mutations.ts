@@ -2,11 +2,6 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { ToastInput } from '@/components/ui/use-toast'
 import { actionFailureToastInput } from '../app/error-presentation'
 import {
-  maximumSelectableEarliestBackfillDate,
-  validateSelectableEarliestBackfillDate,
-} from '../modules/connectors/connector.earliest-backfill'
-import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
-import {
   beginTrackedMutation,
   buildConnectorSettingsUpdate,
   isCurrentMutation,
@@ -24,6 +19,11 @@ import type {
   ConnectorSettingsUiApi,
 } from './connector-settings.types'
 import type { InstalledConnectorDescriptor } from '@sparxie/sdk'
+import {
+  JOBRIGHT_CONNECTOR_ID,
+  maximumSelectableEarliestBackfillDate,
+  validateSelectableEarliestBackfillDate,
+} from '../modules/connectors/renderer'
 
 export function isCurrentConnectorMutationTarget(
   isMountedRef: MutableRefObject<boolean>,

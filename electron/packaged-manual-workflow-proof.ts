@@ -8,16 +8,16 @@ import {
   captureResolutionStageResults,
   captureRevisions,
 } from '../src/modules/capture/capture.schema'
-import { createStaticConnectorRegistry } from '../src/modules/connectors/connector.registry'
-import type {
-  AppConnectorRuntime,
-  AppJobConnector,
-} from '../src/modules/connectors/connector.runner'
 import { jobCompanyAssignments } from '../src/modules/company/company.schema'
 import { jobs } from '../src/modules/job/job.schema'
 import { jobFactsTiming } from '../src/modules/job/job.timing'
 import type { LocalScheduledWorkSource } from '@/modules/scheduling/public'
 import { createLocalValedictorianClient } from '../src/runtime/local-valedictorian-client'
+import {
+  type AppConnectorRuntime,
+  type AppJobConnector,
+  createStaticConnectorRegistry,
+} from '../src/modules/connectors/public'
 
 const BUILD_IDENTITY = process.env.VALEDICTORIAN_PACKAGE_MANUAL_WORKFLOW_BUILD_IDENTITY
   ?? 'unspecified-build'

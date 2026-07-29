@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'
-import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
-import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
-import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
+import { admitConnectorScheduleDue } from '../modules/connectors/adapters/persistence/connector-schedule.dispatch'
+import { createConnectorScheduleRepository } from '../modules/connectors/adapters/persistence/connector-schedule.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
+import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,

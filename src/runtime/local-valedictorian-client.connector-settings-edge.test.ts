@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
-import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { admitInstalledConnectorDescriptor } from '../modules/connectors/connector.installed-descriptor'
-import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
+import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
+import type { LocalConnectorRegistry } from '../modules/connectors/core/connector.registry'
+import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
+import { admitInstalledConnectorDescriptor } from '../modules/connectors/core/connector.installed-descriptor'
+import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
 import {
   createOwnedTestPgliteDataPath,
   createTestLocalValedictorianClient as createLocalValedictorianClient,

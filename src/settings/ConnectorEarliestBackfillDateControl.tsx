@@ -14,7 +14,7 @@ import {
   maximumSelectableEarliestBackfillDate,
   minimumSelectableEarliestBackfillDate,
   validateSelectableEarliestBackfillDate,
-} from '../modules/connectors/connector.earliest-backfill'
+} from '../modules/connectors/renderer'
 
 export function ConnectorEarliestBackfillDateControl({
   createdAt,

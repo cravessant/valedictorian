@@ -3,7 +3,7 @@ import {
   ConnectorExecutionError,
   connectorInstalledVersionMismatchError,
   unexpectedConnectorExecutionError,
-} from '../modules/connectors/connector-execution.errors'
+} from '../modules/connectors/public/connector.execution-errors'
 import {
   createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,

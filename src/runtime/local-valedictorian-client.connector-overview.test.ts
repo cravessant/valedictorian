@@ -1,8 +1,8 @@
 import { connectorOverviewListResultSchema } from '@sparxie/sdk'
 import { describe, expect, it } from 'vitest'
-import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
+import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
+import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
+import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
 import { useResettablePgliteTestLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 
 const createLocalValedictorianClient = useResettablePgliteTestLocalValedictorianClient()

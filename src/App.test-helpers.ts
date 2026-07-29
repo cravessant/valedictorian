@@ -6,9 +6,6 @@ import type { UpdatesPreloadApi, UpdateState } from './ipc/updates.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
-import type { ConnectorStatusListResult, ConnectorStatusView } from './modules/connectors/connector.status'
-import { createDefaultLocalConnectorRegistry } from './modules/connectors/connector.registry'
-import { defaultEarliestBackfillDate } from './modules/connectors/connector.earliest-backfill'
 import type {
   LocalConnectorReconnectActionResult,
   LocalConnectorStatusActionInput,
@@ -34,6 +31,12 @@ import {
   type AppSettings,
   type AppSettingsPatch,
 } from './settings/app-settings'
+import {
+  type ConnectorStatusListResult,
+  type ConnectorStatusView,
+  createDefaultLocalConnectorRegistry,
+  defaultEarliestBackfillDate,
+} from './modules/connectors/public'
 
 export function createActionQueueItem(overrides: Partial<ActionQueueListItem> = {}): ActionQueueListItem {
   return {

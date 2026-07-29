@@ -1,4 +1,4 @@
-import type { AppConnectorSecretResolver } from '../connectors/connector.runner'
+import type { AppConnectorSecretResolver } from '../connectors/public'
 import type { SecretService } from './secret.service'
 import { isReservedIdentitySecretKey } from './secret.identity'
 

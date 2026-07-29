@@ -21,12 +21,10 @@ import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { AlertCircle, History } from 'lucide-react'
 import { typography } from '@/components/ui/typography'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
-import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import {
   ConnectorRunLifecycleDetails,
   ConnectorRunSynchronizationDetails,
 } from './ConnectorRunDetails'
-import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
 import { ownedLoadFailure, presentLoadFailure, type ErrorPresentation } from '../app/error-presentation'
 import {
@@ -34,6 +32,10 @@ import {
   type CaptureRunFilter,
   type ConnectorProvenanceTarget,
 } from '../app/capture-navigation'
+import {
+  JOBRIGHT_CONNECTOR_ID,
+  connectorRunSynchronizationCopy,
+} from '../modules/connectors/renderer'
 
 export interface ConnectorRunHistoryItem {
   connectorId: string

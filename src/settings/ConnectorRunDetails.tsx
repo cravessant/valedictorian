@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
 import { recordFromUnknown } from './connector-settings.helpers'
+import { connectorRunSynchronizationCopy } from '../modules/connectors/renderer'
 
 export function ConnectorRunSynchronizationDetails({
   ariaLabel = 'Connector synchronization state',

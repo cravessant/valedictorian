@@ -26,10 +26,10 @@ import type {
 // the connector-owned wire contract directly rather than the connectors public surface,
 // whose barrel reaches composition, persistence, and Node built-ins.
 import {
+  type ConnectorSkipActionResult,
   parseConnectorRetirementIpcEnvelope,
   publicConnectorSkipActionResult,
-  type ConnectorSkipActionResult,
-} from '../modules/connectors/connector.edge-contract'
+} from '../modules/connectors/public/connector.edge-contract'
 
 interface IpcRendererLike {
   invoke: (channel: string, input?: unknown) => Promise<unknown>

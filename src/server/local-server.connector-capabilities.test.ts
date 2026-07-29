@@ -1,10 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from '@sparxie/sdk'
-import {
-  createDefaultLocalConnectorRegistry,
-  createStaticConnectorRegistry,
-} from '../modules/connectors/connector.registry'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
+import { createDefaultLocalConnectorRegistry } from '../modules/connectors/adapters/provider/connector.default-registry'
+import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
 import {
   closeLocalValedictorianClient,
   createLocalValedictorianClient,

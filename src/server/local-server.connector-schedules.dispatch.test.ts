@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
+import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,

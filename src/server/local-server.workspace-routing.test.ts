@@ -4,10 +4,10 @@ import path from 'node:path'
 import { createHttpValedictorianClient } from '@sparxie/sdk'
 import { emptyPageInfo } from '../modules/lifecycle-table/lifecycle.test-helpers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
+import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
 import { prepareWorkspaceProfileCapabilities } from '../modules/profile/profile.composition'
-import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
+import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
 import {
   createLocalValedictorianClient as createRuntimeLocalValedictorianClient,
   type LocalValedictorianClient,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
+import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
 import {
   availableConnectorSchedulingCapability,
   createScheduleHttpTempDatabasePath,

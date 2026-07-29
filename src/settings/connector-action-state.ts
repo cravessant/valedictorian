@@ -1,5 +1,5 @@
-import type { ConnectorSchemaValidationIssue } from '../modules/connectors/connector.renderer-schema-validation'
 import type { ConnectorAuthCredentialDraft } from './connector-settings.types'
+import type { ConnectorSchemaValidationIssue } from '../modules/connectors/renderer'
 
 /** WHATWG HTML living standard valid e-mail address production. */
 const BROWSER_ALIGNED_EMAIL_PATTERN =

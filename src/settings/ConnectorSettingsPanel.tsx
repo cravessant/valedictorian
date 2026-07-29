@@ -20,10 +20,6 @@ import {
 } from '../app/error-presentation'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import {
-  JOBRIGHT_CONNECTOR_ID,
-  JOBRIGHT_CONNECTOR_VERSION,
-} from '../modules/connectors/jobright.constants'
-import {
   defaultConnectorSettingsDraft,
   jobrightSecretKeyForInstance,
   sanitizedConnectorAuthErrorMessage,
@@ -59,6 +55,10 @@ import {
   createInitialInstanceScheduleState,
   useConnectorInstanceSchedules,
 } from './useConnectorInstanceSchedules'
+import {
+  JOBRIGHT_CONNECTOR_ID,
+  JOBRIGHT_CONNECTOR_VERSION,
+} from '../modules/connectors/renderer'
 
 type RendererBackendBinding = {
   onBackendStateChanged?(listener: (state: { status: string }) => void): () => void

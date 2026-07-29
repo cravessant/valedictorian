@@ -2,9 +2,9 @@ import { connectorRetirementResultSchema } from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { sourceExecutionScopes, sourceExecutionSessions } from '../db/schema'
-import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
-import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
+import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
+import { createConnectorScheduleRepository } from '../modules/connectors/adapters/persistence/connector-schedule.repository'
 import {
   createSourceExecutionGovernor,
 } from '../modules/source-execution/source-execution-governor'

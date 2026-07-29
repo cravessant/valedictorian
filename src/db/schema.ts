@@ -10,7 +10,7 @@ import {
   connectorCaptureWork, connectorCheckpoints, connectorInstances, connectorObservations,
   connectorRunSynchronizations, connectorRuns, connectorScheduleEvents,
   connectorScheduleOccurrences, connectorScheduleRevisions, connectorSchedules,
-} from '../modules/connectors/connector.schema'
+} from '../modules/connectors/adapters/persistence/connector.schema'
 import {
   captureEffectiveRevisionInputs, captureEvidenceItems, captureFieldOutcomes,
   captureMaterializationIssues, captureMaterializationState, captureOccurrences,
@@ -49,7 +49,7 @@ export {
   connectorCaptureWork, connectorCheckpoints, connectorInstances, connectorObservations,
   connectorRunSynchronizations, connectorRuns, connectorScheduleEvents,
   connectorScheduleOccurrences, connectorScheduleRevisions, connectorSchedules,
-} from '../modules/connectors/connector.schema'
+} from '../modules/connectors/adapters/persistence/connector.schema'
 export {
   captureEffectiveRevisionInputs, captureEvidenceItems, captureFieldOutcomes,
   captureMaterializationIssues, captureMaterializationState, captureOccurrences,

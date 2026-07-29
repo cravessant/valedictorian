@@ -1,10 +1,5 @@
 import type { InstalledConnectorDescriptor } from '@sparxie/sdk'
 import {
-  maximumSelectableEarliestBackfillDate,
-  validateSelectableEarliestBackfillDate,
-} from '../modules/connectors/connector.earliest-backfill'
-import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
-import {
   defaultConnectorSettingsDraft,
   isUnchangedConnectorDisable,
 } from './connector-settings.helpers'
@@ -13,6 +8,11 @@ import type {
   ConnectorSettingsInstance,
   ConnectorSettingsUiApi,
 } from './connector-settings.types'
+import {
+  JOBRIGHT_CONNECTOR_ID,
+  maximumSelectableEarliestBackfillDate,
+  validateSelectableEarliestBackfillDate,
+} from '../modules/connectors/renderer'
 
 function selectInstalledConnectorDescriptor(
   descriptors: InstalledConnectorDescriptor[],

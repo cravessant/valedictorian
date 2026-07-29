@@ -34,6 +34,7 @@ if (!fs.existsSync(resultPath)) {
 const result = JSON.parse(fs.readFileSync(resultPath, 'utf8')) as {
   assertions?: unknown
   cli?: unknown
+  diagnostics?: unknown
   outcome?: unknown
   schemaVersion?: unknown
   screenshots?: unknown
@@ -47,7 +48,12 @@ if (
   || !hasPinnedCli(result.cli)
   || !hasRequiredScreenshots(result.screenshots)
 ) {
-  throw new Error(`CLI/UI development proof failed. ${safeOutput(output)}`)
+  const resultSummary = safeOutput(JSON.stringify({
+    assertions: result.assertions,
+    diagnostics: result.diagnostics,
+    outcome: result.outcome,
+  }))
+  throw new Error(`CLI/UI development proof failed. Result: ${resultSummary}. Output: ${safeOutput(output)}`)
 }
 process.stdout.write(`CLI/UI development proof evidence: ${resultPath}\n`)
 

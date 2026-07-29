@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { InstalledConnectorDescriptor } from '@sparxie/sdk'
-import { createDefaultLocalConnectorRegistry } from '../modules/connectors/connector.registry'
+import { createDefaultLocalConnectorRegistry } from '../modules/connectors/adapters/provider/connector.default-registry'
 import {
   boundOptionResult,
   createFixtureApi,
