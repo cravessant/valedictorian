@@ -1,5 +1,6 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest'
 import { createPgliteClient, migratePgliteDatabase, type PgliteDatabase } from '../../db/pglite'
+import { applicationScores } from '../../db/schema'
 import { createPgliteActionQueueRepository } from './action-queue.repository'
 
 describe('canonical Application Action Queue projection', () => {
@@ -41,7 +42,7 @@ describe('canonical Application Action Queue projection', () => {
   })
 
   it('uses the newest score and breaks equal timestamps by score id', async () => {
-    await database.insert((await import('../../db/schema')).applicationScores).values([
+    await database.insert(applicationScores).values([
       {
         id: 'score-old', applicationId: 'queue-application', score: 10, band: 'high',
         roleRelevance: 4, careerSignal: 3, cityWorkMode: 2, compensationLogistics: 1,

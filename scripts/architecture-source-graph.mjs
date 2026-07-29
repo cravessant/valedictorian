@@ -1,0 +1,173 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { init, parse } from 'es-module-lexer'
+
+import { COMPUTED_SPECIFIER, readModuleSyntax } from './architecture-module-syntax.mjs'
+
+await init
+
+const codePathPattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
+const resolutionExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']
+
+/**
+ * @typedef {object} ModuleRecord
+ * @property {boolean} computedDynamicImport
+ * @property {string | null} failure Set when the file could not be read whole.
+ * @property {import('./architecture-module-syntax.mjs').ModuleSyntax} syntax
+ * @property {string[]} specifiers Lexed module specifiers, in source order.
+ */
+
+/**
+ * Reads a file's module record.
+ *
+ * `oxc-parser` normalises TypeScript and TSX down to its module declarations
+ * without touching a specifier, and `es-module-lexer` is then the authoritative
+ * inventory of what those declarations import and re-export. The two are
+ * cross-checked: every module request the parser found must appear in the lexed
+ * inventory and vice versa, so the normalisation cannot quietly lose or invent a
+ * declaration. Any parse failure, lex failure, or disagreement yields no imports
+ * and a failure reason, which `unlexable-module-source` turns into a hard failure.
+ *
+ * @param {string} source
+ * @param {string} filePath
+ * @returns {ModuleRecord}
+ */
+export function readModuleRecord(source, filePath) {
+  const syntax = readModuleSyntax(source, filePath)
+  if (syntax.parseFailure !== null) {
+    return { computedDynamicImport: false, failure: syntax.parseFailure, specifiers: [], syntax }
+  }
+
+  /** @type {readonly import('es-module-lexer').ImportSpecifier[]} */
+  let lexed
+  try {
+    lexed = parse(syntax.normalised, filePath)[0]
+  } catch (error) {
+    return {
+      computedDynamicImport: false,
+      failure: `normalised module text did not lex: ${/** @type {Error} */ (error).message}`,
+      specifiers: [],
+      syntax,
+    }
+  }
+
+  const specifiers = lexed.flatMap((entry) => typeof entry.n === 'string' ? [entry.n] : [])
+  const lexedLiterals = specifiers.filter((specifier) => specifier !== COMPUTED_SPECIFIER)
+  const computed = specifiers.length - lexedLiterals.length
+  const parsedLiterals = [...syntax.specifiers].sort()
+  if (
+    lexedLiterals.length !== specifiers.length - computed
+    || JSON.stringify([...lexedLiterals].sort()) !== JSON.stringify(parsedLiterals)
+  ) {
+    return {
+      computedDynamicImport: syntax.computedDynamicImport,
+      failure: 'parsed and lexed module inventories disagree',
+      specifiers: [],
+      syntax,
+    }
+  }
+
+  return {
+    computedDynamicImport: syntax.computedDynamicImport,
+    failure: null,
+    specifiers: lexedLiterals,
+    syntax,
+  }
+}
+
+/**
+ * @param {string} directory
+ * @returns {string[]}
+ */
+export function listCodeFiles(directory) {
+  if (!fs.existsSync(directory)) return []
+
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name)
+    if (entry.isDirectory()) return listCodeFiles(entryPath)
+    return entry.isFile() && codePathPattern.test(entry.name) ? [entryPath] : []
+  }).sort()
+}
+
+/**
+ * Every maintained code file under `src`. State ownership is checked across all of
+ * them — there is no test, fixture, helper, or harness exemption, because a
+ * filename convention is not proof that a file cannot ship.
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+export function listMaintainedCodeFiles(root) {
+  return listCodeFiles(path.join(root, 'src'))
+}
+
+/**
+ * @param {string} root
+ * @param {string} filePath
+ * @returns {string}
+ */
+export function toRepositoryPath(root, filePath) {
+  return path.relative(root, filePath).split(path.sep).join('/')
+}
+
+/**
+ * Resolves a relative or `@/`-aliased specifier to the repository path it names,
+ * mirroring the `@/* -> ./src/*` mapping in tsconfig.json.
+ *
+ * @param {string} root
+ * @param {string} filePath
+ * @param {string} specifier
+ * @returns {string | null}
+ */
+export function resolveSpecifier(root, filePath, specifier) {
+  const target = specifier.startsWith('.')
+    ? path.resolve(path.dirname(filePath), specifier)
+    : specifier.startsWith('@/')
+      ? path.join(root, 'src', specifier.slice(2))
+      : null
+  if (target === null) return null
+
+  const candidates = [
+    target,
+    ...resolutionExtensions.map((extension) => `${target.replace(/\.js$/, '')}${extension}`),
+    ...resolutionExtensions.map((extension) => path.join(target, `index${extension}`)),
+  ]
+  const resolved = candidates.find(
+    (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
+  )
+  return resolved ? toRepositoryPath(root, resolved) : toRepositoryPath(root, target)
+}
+
+/**
+ * @param {string} repositoryPath
+ * @returns {string | null}
+ */
+export function moduleOfPath(repositoryPath) {
+  return /^src\/modules\/([^/]+)\//.exec(repositoryPath)?.[1] ?? null
+}
+
+/**
+ * The zone a file belongs to: its capability module, or the top-level `src`
+ * directory that holds it. A zone that is not a capability module never owns
+ * state, so code there always needs an exact exception to reach a table.
+ *
+ * @param {string} repositoryPath
+ * @returns {string}
+ */
+export function zoneOfPath(repositoryPath) {
+  const moduleName = moduleOfPath(repositoryPath)
+  if (moduleName) return moduleName
+  const segments = repositoryPath.split('/')
+  return segments.length > 2 ? `${segments[0]}/${segments[1]}` : segments[0] ?? 'src'
+}
+
+/**
+ * @param {string} root
+ * @param {string} manifestPath
+ * @returns {unknown}
+ */
+export function readManifest(root, manifestPath) {
+  const absolutePath = path.join(root, manifestPath)
+  if (!fs.existsSync(absolutePath)) return null
+  return JSON.parse(fs.readFileSync(absolutePath, 'utf8'))
+}
