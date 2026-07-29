@@ -1,0 +1,31 @@
+# GitHub represents pnpm workspaces with the `npm` ecosystem token; a literal
+# `pnpm` token is rejected. `target-branch` is omitted so Dependabot follows the
+# repository default branch and these options keep applying to security updates.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      # Majors stay unmatched by this group, so each one arrives as its own pull
+      # request instead of riding along with compatible updates.
+      compatible-updates:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      compatible-updates:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
