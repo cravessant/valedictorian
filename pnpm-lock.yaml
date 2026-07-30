@@ -66,8 +66,8 @@ importers:
         specifier: 0.36.0
         version: 0.36.0
       '@sparxie/valedictorian-connectors-jobright':
-        specifier: 0.18.2
-        version: 0.18.2
+        specifier: 0.18.4
+        version: 0.18.4
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@6.4.3(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
@@ -1885,8 +1885,9 @@ packages:
   '@sparxie/valedictorian-connectors-core@0.18.2':
     resolution: {integrity: sha512-J1Zi6fMGhdK9WKf1robR9ywWeuIzVSvMBYHRARz4AZ6WsffiUR9SDfGMEz+wQdqUTRqj+KUia0joX71OVBCC6Q==}
 
-  '@sparxie/valedictorian-connectors-jobright@0.18.2':
-    resolution: {integrity: sha512-SQ4dp9ynqTOvr9HP9t5Qd5kJpMMlM9edbxt3JkqV2ppNUtSOjtlvM5KTyU5/cF41J4ZEOfiET4jEyLeCTzF+dg==}
+  '@sparxie/valedictorian-connectors-jobright@0.18.4':
+    resolution: {integrity: sha512-1GXanfhowYhwTzyNqnvrg7lcJoEdgEF7/wSH3p1D3CPRJbTghcOd+Pe3rX+y/1lUQJtWRiV7Y/9HGR41KeC2EA==}
+    engines: {node: '>=22.12.0'}
 
   '@sparxie/valedictorian-connectors-test-harness@0.18.2':
     resolution: {integrity: sha512-P+egJ2D5o/0pgSVpHRACHQogt3dkJA0aFNz0XLADZ1Oj/HZKhz9FmI59vCB5xnnygN94GEQ2rgQtPzNGzjvSGg==}
@@ -5380,7 +5381,7 @@ snapshots:
     dependencies:
       '@sparxie/sdk': 0.29.0
 
-  '@sparxie/valedictorian-connectors-jobright@0.18.2':
+  '@sparxie/valedictorian-connectors-jobright@0.18.4':
     dependencies:
       '@sparxie/valedictorian-connectors-core': 0.18.2
 

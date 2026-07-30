@@ -22,7 +22,7 @@ import {
 const BUILD_IDENTITY = process.env.VALEDICTORIAN_PACKAGE_MANUAL_WORKFLOW_BUILD_IDENTITY
   ?? 'unspecified-build'
 const FIXTURE_ADAPTER_ID = 'jobright.resolver'
-const FIXTURE_ADAPTER_VERSION = '0.18.2'
+const FIXTURE_ADAPTER_VERSION = '0.18.4'
 const FRESH_WORKSPACE_ID = 'package-proof-fresh-workspace'
 const SECOND_WORKSPACE_ID = 'package-proof-second-workspace'
 const FIXTURE_DESTINATION = 'https://jobs.lever.co/packageproof/fixture-engineer'

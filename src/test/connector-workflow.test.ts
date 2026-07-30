@@ -8,6 +8,12 @@ const CONNECTOR_PACKAGES = [
   '@sparxie/valedictorian-connectors-test-harness',
 ] as const
 
+const CONNECTOR_PACKAGE_VERSIONS = {
+  '@sparxie/valedictorian-connectors-jobright': '0.18.4',
+  '@sparxie/valedictorian-connectors-core': '0.18.2',
+  '@sparxie/valedictorian-connectors-test-harness': '0.18.2',
+} as const satisfies Record<(typeof CONNECTOR_PACKAGES)[number], string>
+
 function readPackageJson() {
   return JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as {
     dependencies: Record<string, string>
@@ -36,7 +42,7 @@ describe('connector workflow dependencies', () => {
   it('adopts the released progress and destination-projection contracts exactly', () => {
     const packageJson = readPackageJson()
 
-    expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.18.2')
+    expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.18.4')
     expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.18.2')
     expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.18.2')
   })
@@ -60,30 +66,32 @@ describe('connector workflow dependencies', () => {
 
     for (const name of CONNECTOR_PACKAGES) {
       const specifier = connectorSpecifier(packageJson, name)
-      expect(specifier).toBe('0.18.2')
+      const expectedVersion = CONNECTOR_PACKAGE_VERSIONS[name]
+      expect(specifier).toBe(expectedVersion)
       expect(specifier).not.toMatch(/^(workspace:|file:|link:|github:|git\+|https?:)/)
 
       const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const escapedVersion = expectedVersion.replaceAll('.', '\\.')
       expect(lockfile).toMatch(
         new RegExp(
-          `'${escapedName}':\\n\\s+specifier: 0\\.18\\.2\\n\\s+version: 0\\.18\\.2`,
+          `'${escapedName}':\\n\\s+specifier: ${escapedVersion}\\n\\s+version: ${escapedVersion}`,
         ),
       )
-      expect(lockfile).toContain(`'${name}@0.18.2':`)
+      expect(lockfile).toContain(`'${name}@${expectedVersion}':`)
       expect(lockfile).toMatch(
         new RegExp(
-          `'${escapedName}@0\\.18\\.2':\\n\\s+resolution: \\{integrity: sha512-[A-Za-z0-9+/=]+\\}`,
+          `'${escapedName}@${escapedVersion}':\\n\\s+resolution: \\{integrity: sha512-[A-Za-z0-9+/=]+\\}`,
         ),
       )
       expect(lockfile).not.toMatch(
         new RegExp(
-          `'${escapedName}@0\\.18\\.2':\\n(?: {2}.*\\n)*? {4}(tarball:|type: (directory|git)|repo:|path:)`,
+          `'${escapedName}@${escapedVersion}':\\n(?: {2}.*\\n)*? {4}(tarball:|type: (directory|git)|repo:|path:)`,
         ),
       )
     }
 
     expect(lockfile).toMatch(
-      /'@sparxie\/valedictorian-connectors-jobright@0\.18\.2':\n\s+dependencies:\n\s+'@sparxie\/valedictorian-connectors-core': 0\.18\.2/,
+      /'@sparxie\/valedictorian-connectors-jobright@0\.18\.4':\n\s+dependencies:\n\s+'@sparxie\/valedictorian-connectors-core': 0\.18\.2/,
     )
     expect(lockfile).toMatch(
       /'@sparxie\/valedictorian-connectors-test-harness@0\.18\.2':\n\s+dependencies:\n\s+'@sparxie\/sdk': 0\.29\.0\n\s+'@sparxie\/valedictorian-connectors-core': 0\.18\.2/,

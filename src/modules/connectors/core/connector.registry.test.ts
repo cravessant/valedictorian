@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createTestLocalValedictorianClient as createLocalValedictorianClient } from '../../../runtime/local-valedictorian-client.test-harness'
 import { createTempDatabasePath } from '../../../server/local-server.http-test-harness'
 import { createDefaultLocalConnectorRegistry } from '../adapters/provider/connector.default-registry'
+import { JOBRIGHT_CONNECTOR_VERSION } from '../public/jobright.constants'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -19,7 +20,7 @@ describe('connector registry', () => {
 
     expect(registered?.connector.definition).toMatchObject({
       id: 'jobright.resolver',
-      version: '0.18.2',
+      version: JOBRIGHT_CONNECTOR_VERSION,
       capabilities: { fetchesPublicPages: false },
     })
     expect(registry.get('jobright.public')).toBeNull()
@@ -60,14 +61,14 @@ describe('connector registry', () => {
     ) as { version: string }
 
     expect(appPackage.dependencies['@sparxie/sdk']).toBe('0.36.0')
-    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.18.2')
+    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.18.4')
     expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.18.2')
     expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.18.2')
     expect(appPackage.pnpm?.overrides).toBeUndefined()
     expect(appPackage.resolutions).toBeUndefined()
     expect(appPackage).not.toHaveProperty('overrides')
     expect(sdkPackage.version).toBe('0.36.0')
-    expect(jobrightPackage.version).toBe('0.18.2')
+    expect(jobrightPackage.version).toBe(JOBRIGHT_CONNECTOR_VERSION)
     expect(jobrightPackage.dependencies?.['@sparxie/valedictorian-connectors-core']).toBe('^0.18.2')
     expect(corePackage.version).toBe('0.18.2')
     expect(harnessPackage.version).toBe('0.18.2')
@@ -110,7 +111,9 @@ describe('connector registry', () => {
     vi.stubGlobal('fetch', providerFetch)
     const client = await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
     await client.connectors.create({
-      id: 'jobright-default', connectorId: 'jobright.resolver', connectorVersion: '0.18.2',
+      id: 'jobright-default',
+      connectorId: 'jobright.resolver',
+      connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
       displayName: 'Jobright internslist', enabled: true,
       auth: [{ id: 'jobright', label: 'Jobright credentials', mode: 'username_password' }],
       config: {}, filters: JOBRIGHT_TEST_FILTERS, earliestBackfillDate: '2026-07-01',

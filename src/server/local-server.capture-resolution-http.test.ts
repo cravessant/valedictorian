@@ -397,7 +397,7 @@ describe.sequential('Capture resolution HTTP surface', () => {
     const accepted = await captures.accept({
       workspaceId: WORKSPACE,
       provenance: {
-        adapterId: 'jobright.resolver', adapterKind: 'connector', adapterVersion: '0.18.2',
+        adapterId: 'jobright.resolver', adapterKind: 'connector', adapterVersion: '0.18.4',
         providerRecordId: 'provider-http-1', providerSchema: 'jobright.v1', observedAt: '2026-07-23T00:00:00.000Z',
       },
       connectorProvenance: {
