@@ -1,0 +1,962 @@
+{
+  "schemaVersion": 1,
+  "decision": "producer-owned-openapi-clients-and-acyclic-imports",
+  "status": "accepted",
+  "issue": "https://github.com/cravessant/valedictorian-app/issues/529",
+  "acceptedInSprint": "https://github.com/cravessant/valedictorian-app/issues/587",
+  "supersedes": [
+    "sparxie-owns-all-valedictorian-http-contracts",
+    "handwritten-cross-service-client-types"
+  ],
+  "invariants": {
+    "producerOwnsAuthoredSchemas": true,
+    "producerOwnsOpenApi": true,
+    "producerOwnsGeneratedClient": true,
+    "producerRuntimeImportsGeneratedClient": false,
+    "consumerImportsForeignServerSchemas": false,
+    "generatedClientsImportProducerRuntime": false,
+    "generatedClientsImportOtherGeneratedClients": false,
+    "sharedTypesRepository": false,
+    "universalSdk": false,
+    "manualGeneratedEdits": false,
+    "openApiForConnectorAbi": false,
+    "packageMovementAuthorized": false,
+    "implementationAuthorized": false
+  },
+  "httpBoundaries": [
+    {
+      "id": "workspace",
+      "ownerRepository": "cravessant/valedictorian",
+      "currentRepository": "cravessant/valedictorian-app",
+      "authoredSchemaBoundary": "packages/workspace/server",
+      "openApiArtifact": "packages/workspace/openapi/workspace.openapi.json",
+      "generatedClientBoundary": "packages/workspace/client",
+      "packageIdentity": null,
+      "visibility": "private-product-workspace-package",
+      "producerRuntimeMayImport": [
+        "workspace-authored-schemas",
+        "workspace-server-implementation"
+      ],
+      "producerRuntimeMustNotImport": [
+        "workspace-generated-client"
+      ],
+      "clientConsumers": [
+        "apps/desktop",
+        "packages/cli",
+        "future-workspace-conformance-created-by-p11",
+        "future-managed-workspace-adapter-after-real-vertical-slice"
+      ],
+      "contractScope": [
+        "all-released-workspace-http-paths-including-v2-capture-resolution",
+        "unscoped-health-capabilities-and-workspace-registry",
+        "local-only-secret-and-filesystem-operations",
+        "request-and-response-bodies",
+        "headers-and-statuses",
+        "safe-error-envelopes",
+        "capability-and-authority-contracts",
+        "operation-ids",
+        "authentication-and-authorization-requirements"
+      ],
+      "currentBaseline": {
+        "contract": "@sparxie/sdk@0.36.0-handwritten-compatibility-facade",
+        "operationEvidence": "architecture/workspace-authority.json",
+        "generatedPipelineExists": false,
+        "implementationRisk": "regex-route-dispatch-sdk-schema-casts-and-prefix-based-ipc-allowance-must-be-replaced-without-contract-drift"
+      },
+      "implementationIssue": "https://github.com/cravessant/valedictorian-app/issues/552"
+    },
+    {
+      "id": "source",
+      "ownerRepository": "cravessant/valedictorian-source",
+      "currentRepository": "cravessant/valedictorian-source",
+      "authoredSchemaBoundary": "source-server-schemas",
+      "openApiArtifact": "openapi/source.openapi.json",
+      "generatedClientBoundary": "packages/source-client",
+      "packageIdentity": "@valedictorian/source-client",
+      "visibility": "public-npm-when-required-by-public-product-consumer",
+      "producerRuntimeMayImport": [
+        "source-authored-schemas",
+        "source-server-implementation",
+        "browser-runtime-generated-client-as-a-consumer"
+      ],
+      "producerRuntimeMustNotImport": [
+        "source-generated-client"
+      ],
+      "clientConsumers": [
+        "valedictorian-product-source-adapter",
+        "source-operator-dashboard",
+        "future-approved-source-consumers"
+      ],
+      "contractScope": [
+        "every-real-source-http-path",
+        "request-and-response-bodies",
+        "headers-and-statuses",
+        "closed-safe-errors",
+        "operation-ids",
+        "consumer-versus-operator-authentication",
+        "quotas-and-retry-contracts"
+      ],
+      "currentBaseline": {
+        "contract": null,
+        "repositoryState": "tooling-scaffold-with-no-real-source-server-commands",
+        "generatedPipelineExists": false
+      },
+      "decisionIssue": "https://github.com/cravessant/valedictorian-app/issues/541",
+      "implementationIssue": "https://github.com/cravessant/valedictorian-app/issues/571",
+      "publicationIssue": "https://github.com/cravessant/valedictorian-app/issues/572"
+    },
+    {
+      "id": "browser_runtime",
+      "ownerRepository": "cravessant/valedictorian-browser-runtime",
+      "currentRepository": "cravessant/valedictorian-browser-runtime",
+      "authoredSchemaBoundary": "pydantic-fastapi-server-models",
+      "openApiArtifact": "openapi/browser-runtime.openapi.json",
+      "generatedClientBoundary": "packages/browser-runtime-client",
+      "packageIdentity": "@valedictorian/browser-runtime-client",
+      "visibility": "private-producer-release",
+      "producerRuntimeMayImport": [
+        "browser-runtime-authored-schemas",
+        "browser-runtime-server-implementation"
+      ],
+      "producerRuntimeMustNotImport": [
+        "browser-runtime-generated-client"
+      ],
+      "clientConsumers": [
+        "valedictorian-source-only-until-an-additional-caller-is-approved"
+      ],
+      "contractScope": [
+        "source-facing-v1-page-observation-submit-get-and-cancel",
+        "request-and-response-bodies",
+        "headers-and-statuses",
+        "closed-provider-neutral-errors",
+        "operation-ids",
+        "service-authentication",
+        "quota-and-evidence-bounds"
+      ],
+      "currentBaseline": {
+        "contract": "fastapi-pydantic-models",
+        "openApiGeneration": "private-app.openapi()-only",
+        "checkedInSpecExists": false,
+        "generatedPipelineExists": false,
+        "handwrittenInternalClients": [
+          "worker_api_client.py",
+          "coordinator_api_client.py",
+          "runner_dispatch_client.py",
+          "dispatch_acceptance_client.py"
+        ]
+      },
+      "internalHttpContracts": [
+        {
+          "id": "worker_coordinator",
+          "paths": [
+            "/internal/v1/jobs/claim",
+            "/internal/v1/jobs/claim-operation",
+            "/internal/v1/jobs/renew",
+            "/internal/v1/jobs/complete",
+            "/internal/v1/jobs/fail"
+          ],
+          "authPrincipals": [
+            "worker",
+            "coordinator"
+          ],
+          "openApiArtifact": "openapi/browser-runtime-worker-coordinator.openapi.json",
+          "generatedClientBoundary": "internal-clients/worker-coordinator",
+          "packageIdentity": null,
+          "visibility": "repository-private-peer-process-client",
+          "serverImportsGeneratedClient": false
+        },
+        {
+          "id": "runner_dispatch",
+          "pathPrefixes": [
+            "/internal/v1/dispatch/",
+            "/internal/v1/runner/"
+          ],
+          "authPrincipals": [
+            "dispatch-coordinator",
+            "runner"
+          ],
+          "openApiArtifact": "openapi/browser-runtime-runner-dispatch.openapi.json",
+          "generatedClientBoundary": "internal-clients/runner-dispatch",
+          "packageIdentity": null,
+          "visibility": "repository-private-peer-process-client",
+          "serverImportsGeneratedClient": false
+        }
+      ],
+      "operationalHttpSurfaces": [
+        {
+          "paths": [
+            "/internal/metrics",
+            "/metrics"
+          ],
+          "mediaType": "prometheus-text",
+          "generatedJsonClient": false,
+          "classification": "authenticated-or-network-private-operational-scrape"
+        }
+      ],
+      "healthHttpSurfaces": [
+        {
+          "servingProcess": "browser-runtime-api",
+          "paths": [
+            "/health/live",
+            "/health/ready"
+          ],
+          "consumers": [
+            "container-orchestrator",
+            "private-worker-gateway",
+            "slot-agent",
+            "authorized-operations"
+          ],
+          "generatedJsonClient": false,
+          "classification": "operational-liveness-and-readiness-probes"
+        },
+        {
+          "servingProcess": "runner-dispatch",
+          "paths": [
+            "/health/ready"
+          ],
+          "consumers": [
+            "container-orchestrator",
+            "authorized-operations"
+          ],
+          "generatedJsonClient": false,
+          "classification": "operational-readiness-probe"
+        }
+      ],
+      "decisionIssue": "https://github.com/cravessant/valedictorian-app/issues/542",
+      "implementationIssue": "https://github.com/cravessant/valedictorian-app/issues/568",
+      "publicationIssue": "https://github.com/cravessant/valedictorian-app/issues/569"
+    }
+  ],
+  "connectorAbiException": {
+    "id": "connector_abi",
+    "ownerRepository": "cravessant/valedictorian",
+    "currentRepository": "cravessant/valedictorian-connectors",
+    "transport": "in-process-versioned-typescript-runtime-abi",
+    "openApi": false,
+    "authoredContract": "zod-runtime-schemas-and-typescript-interfaces",
+    "packageIdentities": [
+      "@sparxie/valedictorian-connectors-core",
+      "@sparxie/valedictorian-connectors-test-harness"
+    ],
+    "allowedConsumers": [
+      "product-connector-host",
+      "released-static-connector-implementations",
+      "connector-testkit"
+    ],
+    "forbidden": [
+      "provider-private-types-in-host-contract",
+      "host-persistence-types-in-connector-contract",
+      "generated-openapi-client-for-in-process-calls",
+      "dynamic-loader-or-installer-contract",
+      "shared-service-types-through-connector-abi"
+    ],
+    "compatibility": "independent-semver-runtime-schema-and-declaration-conformance",
+    "staticJobrightIssue": "https://github.com/cravessant/valedictorian-app/issues/545",
+    "dynamicLoadingIssue": "https://github.com/cravessant/valedictorian-app/issues/522"
+  },
+  "nodes": [
+    {
+      "id": "workspace.schema",
+      "boundary": "workspace",
+      "role": "authored_schema"
+    },
+    {
+      "id": "workspace.openapi",
+      "boundary": "workspace",
+      "role": "openapi"
+    },
+    {
+      "id": "workspace.client",
+      "boundary": "workspace",
+      "role": "generated_client"
+    },
+    {
+      "id": "workspace.server",
+      "boundary": "workspace",
+      "role": "producer_runtime"
+    },
+    {
+      "id": "workspace.consumers",
+      "boundary": "workspace",
+      "role": "consumer"
+    },
+    {
+      "id": "source.schema",
+      "boundary": "source",
+      "role": "authored_schema"
+    },
+    {
+      "id": "source.openapi",
+      "boundary": "source",
+      "role": "openapi"
+    },
+    {
+      "id": "source.client",
+      "boundary": "source",
+      "role": "generated_client"
+    },
+    {
+      "id": "source.server",
+      "boundary": "source",
+      "role": "producer_runtime"
+    },
+    {
+      "id": "source.consumers",
+      "boundary": "source",
+      "role": "consumer"
+    },
+    {
+      "id": "browser_runtime.schema",
+      "boundary": "browser_runtime",
+      "role": "authored_schema"
+    },
+    {
+      "id": "browser_runtime.openapi",
+      "boundary": "browser_runtime",
+      "role": "openapi"
+    },
+    {
+      "id": "browser_runtime.client",
+      "boundary": "browser_runtime",
+      "role": "generated_client"
+    },
+    {
+      "id": "browser_runtime.server",
+      "boundary": "browser_runtime",
+      "role": "producer_runtime"
+    },
+    {
+      "id": "browser_runtime.worker.schema",
+      "boundary": "browser_runtime_worker_coordinator",
+      "role": "authored_schema"
+    },
+    {
+      "id": "browser_runtime.worker.openapi",
+      "boundary": "browser_runtime_worker_coordinator",
+      "role": "openapi"
+    },
+    {
+      "id": "browser_runtime.worker.client",
+      "boundary": "browser_runtime_worker_coordinator",
+      "role": "generated_client"
+    },
+    {
+      "id": "browser_runtime.worker.server",
+      "boundary": "browser_runtime_worker_coordinator",
+      "role": "producer_runtime"
+    },
+    {
+      "id": "browser_runtime.worker.peers",
+      "boundary": "browser_runtime_worker_coordinator",
+      "role": "consumer"
+    },
+    {
+      "id": "browser_runtime.dispatch.schema",
+      "boundary": "browser_runtime_runner_dispatch",
+      "role": "authored_schema"
+    },
+    {
+      "id": "browser_runtime.dispatch.openapi",
+      "boundary": "browser_runtime_runner_dispatch",
+      "role": "openapi"
+    },
+    {
+      "id": "browser_runtime.dispatch.client",
+      "boundary": "browser_runtime_runner_dispatch",
+      "role": "generated_client"
+    },
+    {
+      "id": "browser_runtime.dispatch.server",
+      "boundary": "browser_runtime_runner_dispatch",
+      "role": "producer_runtime"
+    },
+    {
+      "id": "browser_runtime.dispatch.peers",
+      "boundary": "browser_runtime_runner_dispatch",
+      "role": "consumer"
+    },
+    {
+      "id": "connector.api",
+      "boundary": "connector_abi",
+      "role": "authored_runtime_abi"
+    },
+    {
+      "id": "connector.host",
+      "boundary": "connector_abi",
+      "role": "abi_consumer"
+    },
+    {
+      "id": "connector.implementations",
+      "boundary": "connector_abi",
+      "role": "abi_consumer"
+    },
+    {
+      "id": "connector.testkit",
+      "boundary": "connector_abi",
+      "role": "abi_testkit"
+    }
+  ],
+  "allowedDependencyEdges": [
+    {
+      "from": "workspace.server",
+      "to": "workspace.schema",
+      "phase": "runtime"
+    },
+    {
+      "from": "workspace.openapi",
+      "to": "workspace.schema",
+      "phase": "generation"
+    },
+    {
+      "from": "workspace.client",
+      "to": "workspace.openapi",
+      "phase": "generation"
+    },
+    {
+      "from": "workspace.consumers",
+      "to": "workspace.client",
+      "phase": "runtime"
+    },
+    {
+      "from": "source.server",
+      "to": "source.schema",
+      "phase": "runtime"
+    },
+    {
+      "from": "source.openapi",
+      "to": "source.schema",
+      "phase": "generation"
+    },
+    {
+      "from": "source.client",
+      "to": "source.openapi",
+      "phase": "generation"
+    },
+    {
+      "from": "source.consumers",
+      "to": "source.client",
+      "phase": "runtime"
+    },
+    {
+      "from": "source.server",
+      "to": "browser_runtime.client",
+      "phase": "runtime",
+      "reason": "source-is-the-only-initial-browser-runtime-caller"
+    },
+    {
+      "from": "browser_runtime.server",
+      "to": "browser_runtime.schema",
+      "phase": "runtime"
+    },
+    {
+      "from": "browser_runtime.openapi",
+      "to": "browser_runtime.schema",
+      "phase": "generation"
+    },
+    {
+      "from": "browser_runtime.client",
+      "to": "browser_runtime.openapi",
+      "phase": "generation"
+    },
+    {
+      "from": "browser_runtime.worker.server",
+      "to": "browser_runtime.worker.schema",
+      "phase": "runtime"
+    },
+    {
+      "from": "browser_runtime.worker.openapi",
+      "to": "browser_runtime.worker.schema",
+      "phase": "generation"
+    },
+    {
+      "from": "browser_runtime.worker.client",
+      "to": "browser_runtime.worker.openapi",
+      "phase": "generation"
+    },
+    {
+      "from": "browser_runtime.worker.peers",
+      "to": "browser_runtime.worker.client",
+      "phase": "runtime"
+    },
+    {
+      "from": "browser_runtime.dispatch.server",
+      "to": "browser_runtime.dispatch.schema",
+      "phase": "runtime"
+    },
+    {
+      "from": "browser_runtime.dispatch.openapi",
+      "to": "browser_runtime.dispatch.schema",
+      "phase": "generation"
+    },
+    {
+      "from": "browser_runtime.dispatch.client",
+      "to": "browser_runtime.dispatch.openapi",
+      "phase": "generation"
+    },
+    {
+      "from": "browser_runtime.dispatch.peers",
+      "to": "browser_runtime.dispatch.client",
+      "phase": "runtime"
+    },
+    {
+      "from": "connector.host",
+      "to": "connector.api",
+      "phase": "runtime"
+    },
+    {
+      "from": "connector.implementations",
+      "to": "connector.api",
+      "phase": "runtime"
+    },
+    {
+      "from": "connector.testkit",
+      "to": "connector.api",
+      "phase": "runtime"
+    }
+  ],
+  "forbiddenDependencyRules": [
+    {
+      "code": "producer-imports-own-generated-client",
+      "fromRole": "producer_runtime",
+      "toRole": "generated_client",
+      "sameBoundary": true
+    },
+    {
+      "code": "generated-client-imports-producer-runtime",
+      "fromRole": "generated_client",
+      "toRole": "producer_runtime",
+      "sameBoundary": true
+    },
+    {
+      "code": "generated-client-imports-authored-schema-runtime",
+      "fromRole": "generated_client",
+      "toRole": "authored_schema",
+      "sameBoundary": true
+    },
+    {
+      "code": "consumer-imports-consumed-service-server-schema",
+      "fromRole": "consumer",
+      "toRole": "authored_schema",
+      "sameBoundary": true
+    },
+    {
+      "code": "consumer-imports-foreign-server-schema",
+      "fromRole": "consumer",
+      "toRole": "authored_schema",
+      "sameBoundary": false
+    },
+    {
+      "code": "cross-service-schema-import",
+      "fromRole": "authored_schema",
+      "toRole": "authored_schema",
+      "sameBoundary": false
+    },
+    {
+      "code": "generated-client-dependency",
+      "fromRole": "generated_client",
+      "toRole": "generated_client",
+      "sameBoundary": false
+    },
+    {
+      "code": "openapi-imports-generated-client",
+      "fromRole": "openapi",
+      "toRole": "generated_client",
+      "sameBoundary": true
+    },
+    {
+      "code": "connector-abi-imports-http-client",
+      "fromRole": "authored_runtime_abi",
+      "toRole": "generated_client",
+      "sameBoundary": false
+    }
+  ],
+  "globallyForbiddenPackages": [
+    "@valedictorian/sdk",
+    "@valedictorian/core",
+    "@valedictorian/types"
+  ],
+  "wireTypeRules": {
+    "owner": "the-service-that-accepts-or-emits-the-wire-value",
+    "authoredSchemaIsAuthority": true,
+    "openApiIsGeneratedArtifact": true,
+    "clientTypesAreGeneratedArtifact": true,
+    "databaseTypesCrossWire": false,
+    "ormTypesCrossWire": false,
+    "internalDomainEntitiesCrossWire": false,
+    "providerPrivateTypesCrossWire": false,
+    "foreignServiceSchemasCrossWire": false,
+    "consumerDefinedCopiesAreAuthority": false,
+    "sharedPrimitivePackage": null,
+    "standardPrimitives": [
+      "rfc3339-string",
+      "uuid-string",
+      "uri-string",
+      "opaque-cursor-string"
+    ],
+    "standardPrimitivePolicy": "spell-in-each-owner-schema-until-a-concrete-cross-owner-runtime-package-is-proven-necessary"
+  },
+  "operationAndSchemaRules": {
+    "operationIdsUniqueWithinSpec": true,
+    "operationIdsStableAcrossCompatibleReleases": true,
+    "operationIdsRequiredForEveryClientOperation": true,
+    "requestSchemasClosedByDefault": true,
+    "safeErrorsExplicitPerOperation": true,
+    "authenticationExplicitPerOperation": true,
+    "statusAndHeadersExplicitPerOperation": true,
+    "unknownResponseShapeFailsClosed": true,
+    "generatedOutputMayNotBeHandEdited": true
+  },
+  "compatibilityPolicy": {
+    "baseline": "last-released-openapi-and-client",
+    "compatibleChanges": [
+      "new-operation-with-unique-operation-id",
+      "new-optional-request-property-when-server-default-is-stable",
+      "new-optional-response-property-when-client-parser-permits-it",
+      "new-safe-error-only-when-existing-clients-retain-defined-fallback"
+    ],
+    "breakingChanges": [
+      "remove-or-rename-operation",
+      "change-method-or-path",
+      "remove-or-rename-field",
+      "make-optional-input-required",
+      "narrow-accepted-input",
+      "change-success-status-or-required-header",
+      "change-error-code-status-or-kind",
+      "add-enum-member-to-a-client-exhaustive-closed-enum",
+      "change-authentication-or-authorization-semantics",
+      "change-idempotency-or-retry-semantics"
+    ],
+    "breakingChangePath": [
+      "publish-new-major-or-versioned-http-path",
+      "run-old-and-new-contracts-through-an-explicit-migration-window",
+      "migrate-every-maintained-consumer",
+      "remove-old-contract-only-in-a-later-approved-contraction"
+    ],
+    "specAndClientRelease": "one-producer-release-with-spec-digest-bound-to-client-artifact",
+    "publishedVersionsMutable": false,
+    "compatibilityFacade": "@sparxie/sdk-is-transitional-only"
+  },
+  "deterministicGenerationContract": {
+    "authoritativeInputs": [
+      "authored-server-schemas",
+      "route-and-operation-metadata",
+      "safe-error-registry",
+      "generator-version-and-config",
+      "formatter-version-and-config"
+    ],
+    "forbiddenInputs": [
+      "wall-clock-time",
+      "randomness",
+      "absolute-checkout-path",
+      "network-state",
+      "git-dirty-state",
+      "environment-dependent-map-order",
+      "secret-or-deployment-configuration"
+    ],
+    "canonicalization": [
+      "stable-path-and-operation-order",
+      "stable-component-order",
+      "stable-object-key-order",
+      "normalized-line-endings",
+      "no-generated-timestamp-or-host-path"
+    ],
+    "requiredProofs": [
+      "generate-twice-byte-identical-spec",
+      "generate-twice-byte-identical-client",
+      "clean-checkout-regeneration-has-empty-diff",
+      "compatibility-diff-against-last-release",
+      "unique-stable-operation-id-check",
+      "route-registry-spec-client-bijection-with-explicit-local-or-private-classification",
+      "producer-import-prohibition-scan",
+      "directed-cycle-scan",
+      "generated-file-manual-edit-sentinel",
+      "package-tarball-contains-only-declared-runtime-files",
+      "disposable-consumer-pack-install-typecheck-and-call-fixture"
+    ]
+  },
+  "cycleFixtures": [
+    {
+      "name": "workspace-authority-flow",
+      "edges": [
+        [
+          "workspace.server",
+          "workspace.schema"
+        ],
+        [
+          "workspace.openapi",
+          "workspace.schema"
+        ],
+        [
+          "workspace.client",
+          "workspace.openapi"
+        ],
+        [
+          "workspace.consumers",
+          "workspace.client"
+        ]
+      ],
+      "expected": "accepted"
+    },
+    {
+      "name": "source-consumes-browser-client",
+      "edges": [
+        [
+          "source.server",
+          "source.schema"
+        ],
+        [
+          "source.server",
+          "browser_runtime.client"
+        ],
+        [
+          "browser_runtime.client",
+          "browser_runtime.openapi"
+        ],
+        [
+          "browser_runtime.openapi",
+          "browser_runtime.schema"
+        ]
+      ],
+      "expected": "accepted"
+    },
+    {
+      "name": "browser-worker-peer-client-flow",
+      "edges": [
+        [
+          "browser_runtime.worker.server",
+          "browser_runtime.worker.schema"
+        ],
+        [
+          "browser_runtime.worker.openapi",
+          "browser_runtime.worker.schema"
+        ],
+        [
+          "browser_runtime.worker.client",
+          "browser_runtime.worker.openapi"
+        ],
+        [
+          "browser_runtime.worker.peers",
+          "browser_runtime.worker.client"
+        ]
+      ],
+      "expected": "accepted"
+    },
+    {
+      "name": "browser-dispatch-peer-client-flow",
+      "edges": [
+        [
+          "browser_runtime.dispatch.server",
+          "browser_runtime.dispatch.schema"
+        ],
+        [
+          "browser_runtime.dispatch.openapi",
+          "browser_runtime.dispatch.schema"
+        ],
+        [
+          "browser_runtime.dispatch.client",
+          "browser_runtime.dispatch.openapi"
+        ],
+        [
+          "browser_runtime.dispatch.peers",
+          "browser_runtime.dispatch.client"
+        ]
+      ],
+      "expected": "accepted"
+    },
+    {
+      "name": "browser-worker-serving-process-imports-client",
+      "edges": [
+        [
+          "browser_runtime.worker.server",
+          "browser_runtime.worker.client"
+        ]
+      ],
+      "expected": "producer-imports-own-generated-client"
+    },
+    {
+      "name": "browser-dispatch-serving-process-imports-client",
+      "edges": [
+        [
+          "browser_runtime.dispatch.server",
+          "browser_runtime.dispatch.client"
+        ]
+      ],
+      "expected": "producer-imports-own-generated-client"
+    },
+    {
+      "name": "producer-imports-own-client",
+      "edges": [
+        [
+          "source.server",
+          "source.client"
+        ]
+      ],
+      "expected": "producer-imports-own-generated-client"
+    },
+    {
+      "name": "client-imports-producer",
+      "edges": [
+        [
+          "workspace.client",
+          "workspace.server"
+        ]
+      ],
+      "expected": "generated-client-imports-producer-runtime"
+    },
+    {
+      "name": "client-imports-authored-runtime-schema",
+      "edges": [
+        [
+          "browser_runtime.client",
+          "browser_runtime.schema"
+        ]
+      ],
+      "expected": "generated-client-imports-authored-schema-runtime"
+    },
+    {
+      "name": "cross-service-schema-reuse",
+      "edges": [
+        [
+          "source.schema",
+          "browser_runtime.schema"
+        ]
+      ],
+      "expected": "cross-service-schema-import"
+    },
+    {
+      "name": "consumer-imports-consumed-service-schema",
+      "edges": [
+        [
+          "source.consumers",
+          "source.schema"
+        ]
+      ],
+      "expected": "consumer-imports-consumed-service-server-schema"
+    },
+    {
+      "name": "consumer-imports-foreign-schema",
+      "edges": [
+        [
+          "source.consumers",
+          "browser_runtime.schema"
+        ]
+      ],
+      "expected": "consumer-imports-foreign-server-schema"
+    },
+    {
+      "name": "generated-client-chain",
+      "edges": [
+        [
+          "source.client",
+          "browser_runtime.client"
+        ]
+      ],
+      "expected": "generated-client-dependency"
+    },
+    {
+      "name": "schema-client-cycle",
+      "edges": [
+        [
+          "workspace.openapi",
+          "workspace.client"
+        ],
+        [
+          "workspace.client",
+          "workspace.openapi"
+        ]
+      ],
+      "expected": "openapi-imports-generated-client"
+    },
+    {
+      "name": "otherwise-unclassified-cycle",
+      "edges": [
+        [
+          "workspace.consumers",
+          "workspace.client"
+        ],
+        [
+          "workspace.client",
+          "workspace.consumers"
+        ]
+      ],
+      "expected": "dependency-cycle"
+    },
+    {
+      "name": "connector-abi-stays-direct",
+      "edges": [
+        [
+          "connector.host",
+          "connector.api"
+        ],
+        [
+          "connector.implementations",
+          "connector.api"
+        ],
+        [
+          "connector.testkit",
+          "connector.api"
+        ]
+      ],
+      "expected": "accepted"
+    },
+    {
+      "name": "connector-abi-imports-service-client",
+      "edges": [
+        [
+          "connector.api",
+          "source.client"
+        ]
+      ],
+      "expected": "connector-abi-imports-http-client"
+    }
+  ],
+  "p04ProofScope": {
+    "provesNow": [
+      "closed-service-and-connector-boundary-inventory",
+      "exact-client-owner-identity-and-visibility-decisions",
+      "acyclic-allowed-dependency-model",
+      "forbidden-edge-classification",
+      "negative-cycle-fixture-outcomes",
+      "closed-generator-and-compatibility-proof-obligations"
+    ],
+    "deferredToImplementationLeaves": [
+      "real-generated-openapi-bytes",
+      "real-generated-client-bytes",
+      "real-source-import-scan",
+      "real-stale-generation-diff",
+      "real-package-tarball-and-disposable-consumer"
+    ],
+    "reason": "no-p04-boundary-has-an-implemented-generated-pipeline-at-the-accepted-baseline"
+  },
+  "implementationGates": {
+    "workspaceP11": [
+      "author-server-schemas-without-moving-persistence",
+      "generate-deterministic-openapi-and-client",
+      "adapt-current-server-to-authored-contract",
+      "replace-prefix-ipc-allowance-with-declared-operation-coverage",
+      "package-conformance-without-root-catch-all",
+      "preserve-p03-authority-capability-and-failure-contract"
+    ],
+    "sourceR02R04": [
+      "record-real-project-commands-before-inventing-generator-commands",
+      "name-real-routes-auth-and-operation-ids",
+      "generate-source-client-with-producer-import-prohibition",
+      "prove-public-disposable-consumer-before-public-product-adoption"
+    ],
+    "browserB01B02": [
+      "approve-source-as-only-initial-caller",
+      "name-real-caller-visible-routes-auth-quota-and-evidence",
+      "separate-source-facing-worker-coordinator-runner-dispatch-and-metrics-contracts",
+      "export-deterministic-spec-from-current-fastapi-models",
+      "replace-handwritten-private-http-clients-with-generated-peer-process-clients",
+      "generate-private-client-with-producer-import-prohibition",
+      "prove-disposable-source-consumer"
+    ],
+    "all": [
+      "do-not-create-shared-types-or-universal-sdk",
+      "do-not-move-packages-or-persistence-under-p04",
+      "do-not-publish-before-dedicated-publication-gate",
+      "fail-ci-on-stale-generation-forbidden-edge-or-cycle"
+    ]
+  }
+}
