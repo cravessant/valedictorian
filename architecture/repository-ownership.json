@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "decision": {
+    "issue": "https://github.com/cravessant/valedictorian-app/issues/527",
+    "program": "https://github.com/cravessant/valedictorian-app/issues/523",
+    "status": "accepted",
+    "supersedes": "universal-sparxie-ownership"
+  },
+  "s02Evidence": {
+    "issue": "https://github.com/cravessant/valedictorian-app/issues/525",
+    "pullRequest": "https://github.com/KennyKeni/sparxie/pull/128",
+    "sourceSha256": "19ec526110f655244f0eb4947befad5273f2f6172cc011db69b20ef0d2a0bf97",
+    "publicProjectionSha256": "580046c02fdf3d950bd60e38771354a3f853c508ac5f740d7d3ad411e806b1a1",
+    "exports": 1091,
+    "consumerRows": 1514,
+    "keys": 2605
+  },
+  "targetRepositories": [
+    {
+      "repository": "cravessant/valedictorian",
+      "origin": "cravessant/valedictorian-app",
+      "visibility": "public-after-P20-P21",
+      "lifecycle": "rename-after-signed-history-and-disclosure-gates",
+      "owns": [
+        "desktop-product",
+        "portable-workspace-api",
+        "local-runtime",
+        "local-cli",
+        "connector-api",
+        "connector-testkit",
+        "local-connector-host",
+        "product-release-proofs"
+      ],
+      "s02Destinations": [
+        "apps/desktop",
+        "packages/workspace/server",
+        "packages/workspace/client",
+        "packages/cli",
+        "packages/connector-api",
+        "packages/connector-testkit"
+      ]
+    },
+    {
+      "repository": "cravessant/valedictorian-cloud",
+      "origin": null,
+      "visibility": "private",
+      "lifecycle": "deferred-until-first-real-cloud-vertical-slice",
+      "owns": [
+        "managed-workspace-implementation",
+        "managed-byok-secrets",
+        "cloud-agent-workers",
+        "customer-dashboard",
+        "managed-service-controls"
+      ],
+      "s02Destinations": []
+    },
+    {
+      "repository": "cravessant/valedictorian-source",
+      "origin": "cravessant/valedictorian-source",
+      "visibility": "private-implementation-public-client",
+      "lifecycle": "active",
+      "owns": [
+        "source-service",
+        "global-job-catalog",
+        "source-operator-dashboard",
+        "source-client"
+      ],
+      "s02Destinations": [
+        "source-client"
+      ]
+    },
+    {
+      "repository": "cravessant/valedictorian-browser-runtime",
+      "origin": "cravessant/valedictorian-browser-runtime",
+      "visibility": "private",
+      "lifecycle": "active",
+      "owns": [
+        "browser-acquisition-service",
+        "browser-runtime-protocol",
+        "browser-runtime-client"
+      ],
+      "s02Destinations": []
+    },
+    {
+      "repository": "cravessant/valedictorian-connector-jobright",
+      "origin": "cravessant/valedictorian-connector-jobright",
+      "visibility": "public",
+      "lifecycle": "active-independent-release",
+      "owns": [
+        "static-jobright-provider-implementation",
+        "jobright-fixtures",
+        "jobright-conformance",
+        "jobright-releases"
+      ],
+      "s02Destinations": []
+    }
+  ],
+  "s02DestinationReconciliation": {
+    "exports": [
+      {
+        "destination": "packages/workspace/server",
+        "count": 910,
+        "repository": "cravessant/valedictorian",
+        "packageBoundary": "packages/workspace/server"
+      },
+      {
+        "destination": "packages/workspace/client",
+        "count": 50,
+        "repository": "cravessant/valedictorian",
+        "packageBoundary": "packages/workspace/client"
+      },
+      {
+        "destination": "source-client",
+        "count": 126,
+        "repository": "cravessant/valedictorian-source",
+        "packageBoundary": "producer-owned-source-client"
+      },
+      {
+        "destination": "packages/connector-api",
+        "count": 5,
+        "repository": "cravessant/valedictorian",
+        "packageBoundary": "@sparxie/valedictorian-connectors-core"
+      }
+    ],
+    "maintainedConsumerDestinations": [
+      {
+        "destination": "apps/desktop",
+        "repository": "cravessant/valedictorian",
+        "packageBoundary": "apps/desktop"
+      },
+      {
+        "destination": "packages/workspace/server",
+        "repository": "cravessant/valedictorian",
+        "packageBoundary": "packages/workspace/server"
+      },
+      {
+        "destination": "packages/workspace/client",
+        "repository": "cravessant/valedictorian",
+        "packageBoundary": "packages/workspace/client"
+      },
+      {
+        "destination": "packages/cli",
+        "repository": "cravessant/valedictorian",
+        "packageBoundary": "@sparxie/valedictorian-cli"
+      },
+      {
+        "destination": "packages/connector-api",
+        "repository": "cravessant/valedictorian",
+        "packageBoundary": "@sparxie/valedictorian-connectors-core"
+      },
+      {
+        "destination": "packages/connector-testkit",
+        "repository": "cravessant/valedictorian",
+        "packageBoundary": "@sparxie/valedictorian-connectors-test-harness"
+      }
+    ]
+  },
+  "packageRules": {
+    "repositoryBoundary": "product-or-independently-deployed-released-secured-service-or-provider",
+    "packageBoundary": "public-compatibility-or-release-edge-within-an-owning-repository",
+    "producerOwnedClients": true,
+    "sharedTypesRepository": false,
+    "universalSdkReplacement": null,
+    "forbiddenPackages": [
+      "@valedictorian/sdk",
+      "@valedictorian/core",
+      "@valedictorian/types"
+    ],
+    "deferredUntilConcreteConsumer": [
+      "workspace-domain",
+      "connector-host-conformance",
+      "managed-service-client"
+    ],
+    "independentlyVersionedInsideProduct": [
+      "@sparxie/valedictorian-connectors-core",
+      "@sparxie/valedictorian-connectors-test-harness"
+    ],
+    "packageIdentityPolicy": "retain-current-identities-until-dedicated-approved-cutover",
+    "compatibilityFacade": {
+      "package": "@sparxie/sdk",
+      "exit": "all-maintained-consumers-migrated-and-two-product-releases-and-30-days",
+      "terminalIssues": [
+        "https://github.com/cravessant/valedictorian-app/issues/583",
+        "https://github.com/cravessant/valedictorian-app/issues/584"
+      ],
+      "unpublish": false
+    },
+    "jobright": {
+      "repository": "cravessant/valedictorian-connector-jobright",
+      "package": "@sparxie/valedictorian-connectors-jobright",
+      "distribution": "static-exact-version",
+      "dynamicLoadingIssue": "https://github.com/cravessant/valedictorian-app/issues/522"
+    }
+  },
+  "repositoryTransitions": [
+    {
+      "repository": "cravessant/valedictorian-app",
+      "disposition": "rename",
+      "successor": "cravessant/valedictorian",
+      "terminalIssue": "https://github.com/cravessant/valedictorian-app/issues/561",
+      "delete": false
+    },
+    {
+      "repository": "KennyKeni/sparxie",
+      "disposition": "deprecate-then-archive",
+      "successor": null,
+      "terminalIssue": "https://github.com/cravessant/valedictorian-app/issues/584",
+      "delete": false
+    },
+    {
+      "repository": "cravessant/valedictorian",
+      "disposition": "import-publisher-cutover-then-archive",
+      "successor": "cravessant/valedictorian",
+      "terminalIssue": "https://github.com/cravessant/valedictorian-app/issues/567",
+      "delete": false
+    },
+    {
+      "repository": "cravessant/valedictorian-connectors",
+      "disposition": "transition-import-publisher-transfer-then-archive",
+      "successor": "cravessant/valedictorian",
+      "terminalIssue": "https://github.com/cravessant/valedictorian-app/issues/566",
+      "delete": false
+    },
+    {
+      "repository": "cravessant/valedictorian-dash",
+      "disposition": "import-into-source-cutover-then-archive",
+      "successor": "cravessant/valedictorian-source",
+      "terminalIssue": "https://github.com/cravessant/valedictorian-app/issues/580",
+      "delete": false
+    },
+    {
+      "repository": "cravessant/valedictorian-workspace",
+      "disposition": "replace-proofs-then-archive",
+      "successor": null,
+      "terminalIssue": "https://github.com/cravessant/valedictorian-app/issues/585",
+      "delete": false
+    },
+    {
+      "repository": "cravessant/valedictorian-source-legacy",
+      "disposition": "retire-authority-and-data-then-archive",
+      "successor": "cravessant/valedictorian-source",
+      "terminalIssue": "https://github.com/cravessant/valedictorian-app/issues/582",
+      "delete": false
+    }
+  ]
+}
