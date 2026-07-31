@@ -1,0 +1,1392 @@
+{
+  "schemaVersion": 1,
+  "decision": {
+    "issue": "https://github.com/cravessant/valedictorian-app/issues/528",
+    "program": "https://github.com/cravessant/valedictorian-app/issues/523",
+    "status": "accepted",
+    "supersedes": null
+  },
+  "identity": {
+    "workspaceId": "stable-across-authorities-and-restores",
+    "authorityId": "unique-runtime-or-service-identity",
+    "authorityEpoch": "monotonic-unsigned-integer-incremented-on-every-activation",
+    "revisionToken": "opaque-authority-issued-causal-position",
+    "snapshotId": "immutable-content-addressed-export-identity",
+    "transferId": "unique-idempotent-transfer-attempt",
+    "fenceToken": "single-transfer-single-authority-non-reusable-token"
+  },
+  "invariants": {
+    "maximumWritableAuthorities": 1,
+    "zeroWritableAuthoritiesDuringFence": true,
+    "dualWrite": false,
+    "offlineMutationQueue": false,
+    "offlineMerge": false,
+    "lastWriterWins": false,
+    "blindOldAuthorityReactivation": false,
+    "publishedHistoryRewritten": false,
+    "callerAbortProvesCommandRollback": false
+  },
+  "capabilityStates": [
+    "supported",
+    "unsupported",
+    "temporarily_unavailable"
+  ],
+  "operationClasses": [
+    {
+      "id": "discovery",
+      "requiresCurrentAuthority": false,
+      "requiresRevision": false,
+      "requiresIdempotencyKey": false,
+      "callerAbort": "safe-to-cancel-observation"
+    },
+    {
+      "id": "authoritative_read",
+      "requiresCurrentAuthority": true,
+      "requiresRevision": false,
+      "requiresIdempotencyKey": false,
+      "callerAbort": "safe-to-cancel-observation"
+    },
+    {
+      "id": "authoritative_mutation",
+      "requiresCurrentAuthority": true,
+      "requiresRevision": "when-changing-an-existing-resource",
+      "requiresIdempotencyKey": true,
+      "callerAbort": "outcome-unknown-query-receipt-before-retry"
+    },
+    {
+      "id": "secret_administration",
+      "requiresCurrentAuthority": true,
+      "requiresRevision": "when-changing-an-existing-secret-record",
+      "requiresIdempotencyKey": true,
+      "callerAbort": "outcome-unknown-query-receipt-before-retry"
+    },
+    {
+      "id": "local_secret_resolution",
+      "requiresCurrentAuthority": "current-local-runtime-authority-only",
+      "requiresRevision": false,
+      "requiresIdempotencyKey": false,
+      "callerAbort": "safe-to-cancel-observation"
+    },
+    {
+      "id": "authoritative_execution",
+      "requiresCurrentAuthority": true,
+      "requiresRevision": "expected-resource-and-authority-epoch",
+      "requiresIdempotencyKey": true,
+      "callerAbort": "does-not-cancel-admitted-work-use-explicit-cancel-if-supported"
+    },
+    {
+      "id": "external_query",
+      "requiresCurrentAuthority": true,
+      "requiresRevision": "expected-provider-contract-identity",
+      "requiresIdempotencyKey": false,
+      "callerAbort": "safe-to-cancel-observation"
+    },
+    {
+      "id": "migration_control",
+      "requiresCurrentAuthority": "source-until-activation-target-after-activation",
+      "requiresRevision": "authority-epoch-transfer-phase-and-fence-token",
+      "requiresIdempotencyKey": true,
+      "callerAbort": "does-not-change-transfer-state-query-receipt-before-retry"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "workspace.discovery",
+      "stateRequirement": "supported",
+      "portability": "portable",
+      "operationClasses": [
+        "discovery"
+      ],
+      "operations": [
+        "health.get",
+        "capabilities.get",
+        "workspaces.list",
+        "authority.describe"
+      ]
+    },
+    {
+      "id": "workspace.lifecycle",
+      "stateRequirement": "supported",
+      "portability": "portable",
+      "operationClasses": [
+        "authoritative_read",
+        "authoritative_mutation"
+      ],
+      "operations": [
+        "captures",
+        "jobs",
+        "opportunities",
+        "applications",
+        "companies",
+        "companyAssignments",
+        "captureResolution",
+        "captureResolutionV2"
+      ]
+    },
+    {
+      "id": "workspace.operations",
+      "stateRequirement": "declared-per-operation",
+      "portability": "portable",
+      "operationClasses": [
+        "authoritative_read",
+        "authoritative_mutation",
+        "authoritative_execution"
+      ],
+      "operations": [
+        "scores",
+        "actionQueue",
+        "connectors",
+        "policy",
+        "runs"
+      ]
+    },
+    {
+      "id": "workspace.profile",
+      "stateRequirement": "supported",
+      "portability": "portable",
+      "operationClasses": [
+        "authoritative_read",
+        "authoritative_mutation"
+      ],
+      "operations": [
+        "profile"
+      ]
+    },
+    {
+      "id": "workspace.secrets.admin",
+      "stateRequirement": "declared",
+      "portability": "portable-metadata-and-encrypted-envelope-only",
+      "operationClasses": [
+        "secret_administration"
+      ],
+      "operations": [
+        "secrets.list",
+        "secrets.upsert",
+        "secrets.delete"
+      ]
+    },
+    {
+      "id": "workspace.secrets.localResolve",
+      "stateRequirement": "declared",
+      "portability": "local-only-never-proxied",
+      "operationClasses": [
+        "local_secret_resolution"
+      ],
+      "operations": [
+        "secrets.local.resolve"
+      ]
+    },
+    {
+      "id": "workspace.secrets.byokTransfer",
+      "stateRequirement": "required-before-fence-when-secret-envelopes-exist",
+      "portability": "portable-proof-not-key-material",
+      "operationClasses": [
+        "migration_control"
+      ],
+      "operations": [
+        "byok.describe",
+        "byok.verifyDestinationAccess",
+        "byok.rewrapEnvelope"
+      ]
+    },
+    {
+      "id": "workspace.snapshot.export",
+      "stateRequirement": "required-for-transfer",
+      "portability": "portable",
+      "operationClasses": [
+        "migration_control"
+      ],
+      "operations": [
+        "snapshots.create",
+        "snapshots.readManifest"
+      ]
+    },
+    {
+      "id": "workspace.snapshot.import",
+      "stateRequirement": "required-for-transfer-target",
+      "portability": "portable",
+      "operationClasses": [
+        "migration_control"
+      ],
+      "operations": [
+        "snapshots.stage",
+        "snapshots.verify",
+        "snapshots.discard"
+      ]
+    },
+    {
+      "id": "workspace.authority.transfer",
+      "stateRequirement": "required-for-authority-move",
+      "portability": "portable-control-plane",
+      "operationClasses": [
+        "migration_control"
+      ],
+      "operations": [
+        "transfers.prepare",
+        "transfers.fenceSource",
+        "transfers.activateTarget",
+        "transfers.abort",
+        "transfers.retireSource",
+        "transfers.getReceipt"
+      ]
+    },
+    {
+      "id": "workspace.receipts",
+      "stateRequirement": "required-for-portable-mutations",
+      "portability": "portable",
+      "operationClasses": [
+        "authoritative_read"
+      ],
+      "operations": [
+        "receipts.getByIdempotencyKey"
+      ]
+    },
+    {
+      "id": "workspace.filesystem",
+      "stateRequirement": "local-runtime-only",
+      "portability": "local-only",
+      "operationClasses": [
+        "discovery"
+      ],
+      "operations": [
+        "workspaces.createByPath",
+        "workspaces.openByPath",
+        "workspaces.rekeyPath"
+      ]
+    }
+  ],
+  "currentSurfaceReconciliation": {
+    "root": [
+      {
+        "surface": "health",
+        "operationClasses": [
+          "discovery"
+        ],
+        "capabilities": [
+          "workspace.discovery"
+        ]
+      },
+      {
+        "surface": "capabilities",
+        "operationClasses": [
+          "discovery"
+        ],
+        "capabilities": [
+          "workspace.discovery"
+        ]
+      },
+      {
+        "surface": "workspaces",
+        "operationClasses": [
+          "discovery"
+        ],
+        "capabilities": [
+          "workspace.discovery",
+          "workspace.filesystem"
+        ]
+      }
+    ],
+    "workspace": [
+      {
+        "surface": "captures",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.lifecycle"
+        ]
+      },
+      {
+        "surface": "jobs",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.lifecycle"
+        ]
+      },
+      {
+        "surface": "opportunities",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.lifecycle"
+        ]
+      },
+      {
+        "surface": "applications",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.lifecycle"
+        ]
+      },
+      {
+        "surface": "captureResolution",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.lifecycle"
+        ]
+      },
+      {
+        "surface": "captureResolutionV2",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.lifecycle"
+        ]
+      },
+      {
+        "surface": "companies",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.lifecycle"
+        ]
+      },
+      {
+        "surface": "companyAssignments",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.lifecycle"
+        ]
+      },
+      {
+        "surface": "scores",
+        "operationClasses": [
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.operations"
+        ]
+      },
+      {
+        "surface": "actionQueue",
+        "operationClasses": [
+          "authoritative_read"
+        ],
+        "capabilities": [
+          "workspace.operations"
+        ]
+      },
+      {
+        "surface": "connectors",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation",
+          "authoritative_execution"
+        ],
+        "capabilities": [
+          "workspace.operations"
+        ]
+      },
+      {
+        "surface": "policy",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.operations"
+        ]
+      },
+      {
+        "surface": "profile",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_mutation"
+        ],
+        "capabilities": [
+          "workspace.profile"
+        ]
+      },
+      {
+        "surface": "secrets",
+        "operationClasses": [
+          "secret_administration",
+          "local_secret_resolution"
+        ],
+        "capabilities": [
+          "workspace.secrets.admin",
+          "workspace.secrets.localResolve"
+        ]
+      },
+      {
+        "surface": "runs",
+        "operationClasses": [
+          "authoritative_read",
+          "authoritative_execution"
+        ],
+        "capabilities": [
+          "workspace.operations"
+        ]
+      }
+    ]
+  },
+  "releasedOperationEvidence": {
+    "package": "@sparxie/sdk",
+    "version": "0.36.0",
+    "typeSources": [
+      "dist/client.d.ts",
+      "dist/lifecycle-client.d.ts",
+      "dist/capture-resolution-client.d.ts",
+      "dist/company-client.d.ts"
+    ],
+    "availabilityStatePath": "operations.<exact-operation-name>",
+    "everyOperationIndependentlyAdvertised": true,
+    "requiredStateForInvocation": "supported"
+  },
+  "releasedOperationGroups": [
+    {
+      "operationClass": "discovery",
+      "capability": "workspace.discovery",
+      "portability": "portable",
+      "operations": [
+        "capabilities.get",
+        "forWorkspace",
+        "health.get",
+        "workspaces.list"
+      ]
+    },
+    {
+      "operationClass": "discovery",
+      "capability": "workspace.filesystem",
+      "portability": "local-only",
+      "operations": [
+        "workspaces.create",
+        "workspaces.open"
+      ]
+    },
+    {
+      "operationClass": "authoritative_read",
+      "capability": "workspace.lifecycle",
+      "portability": "portable",
+      "operations": [
+        "captures.list",
+        "captures.get",
+        "captures.history",
+        "jobs.list",
+        "jobs.get",
+        "jobs.history",
+        "opportunities.list",
+        "opportunities.get",
+        "opportunities.history",
+        "applications.list",
+        "applications.get",
+        "applications.history",
+        "applications.attempts.list",
+        "applications.events.list",
+        "captureResolution.list",
+        "captureResolution.get",
+        "captureResolutionV2.list",
+        "captureResolutionV2.get",
+        "companies.get",
+        "companies.lookup",
+        "companies.search",
+        "companies.previewMatches",
+        "companies.directory.list",
+        "companies.duplicates.list",
+        "companies.duplicates.get",
+        "companies.assignedJobs.list",
+        "companies.history.list",
+        "companyAssignments.get"
+      ]
+    },
+    {
+      "operationClass": "authoritative_mutation",
+      "capability": "workspace.lifecycle",
+      "portability": "portable",
+      "operations": [
+        "captures.create",
+        "captures.correct",
+        "captures.remove",
+        "captures.restore",
+        "captures.promoteToJob",
+        "jobs.create",
+        "jobs.correctFacts",
+        "jobs.updateAvailability",
+        "jobs.externalIdentities.add",
+        "jobs.externalIdentities.remove",
+        "jobs.remove",
+        "jobs.restore",
+        "jobs.promoteToOpportunity",
+        "opportunities.create",
+        "opportunities.updateEvaluation",
+        "opportunities.updateDisposition",
+        "opportunities.remove",
+        "opportunities.restore",
+        "opportunities.promoteToApplication",
+        "applications.create",
+        "applications.updateStatus",
+        "applications.updateCompany",
+        "applications.updateSource",
+        "applications.links.create",
+        "applications.links.update",
+        "applications.links.remove",
+        "applications.refreshSnapshot",
+        "applications.remove",
+        "applications.restore",
+        "captureResolution.retry",
+        "captureResolution.replay",
+        "captureResolution.correct",
+        "captureResolution.complete",
+        "captureResolutionV2.complete",
+        "companies.create",
+        "companies.update",
+        "companies.notes.update",
+        "companies.aliases.add",
+        "companies.aliases.update",
+        "companies.aliases.remove",
+        "companies.archive",
+        "companies.restore",
+        "companies.duplicates.markDistinct",
+        "companies.duplicates.merge",
+        "companyAssignments.reassign"
+      ]
+    },
+    {
+      "operationClass": "authoritative_read",
+      "capability": "workspace.operations",
+      "portability": "portable",
+      "operations": [
+        "actionQueue.list",
+        "connectors.list",
+        "connectors.inspect",
+        "connectors.overview.list",
+        "connectors.runs.list",
+        "connectors.checkpoints.list",
+        "connectors.observations.list",
+        "connectors.descriptors.list",
+        "connectors.descriptors.get",
+        "connectors.schedules.get",
+        "connectors.schedules.listAudit",
+        "connectors.schedules.listOccurrences",
+        "policy.config.get",
+        "policy.evidence.list",
+        "policy.evaluate.application",
+        "policy.evaluate.opportunity",
+        "policy.evaluate.runWindow",
+        "runs.list"
+      ]
+    },
+    {
+      "operationClass": "authoritative_mutation",
+      "capability": "workspace.operations",
+      "portability": "portable",
+      "operations": [
+        "scores.record",
+        "connectors.create",
+        "connectors.update",
+        "connectors.remove",
+        "connectors.schedules.upsert",
+        "connectors.schedules.pause",
+        "connectors.schedules.resume",
+        "connectors.schedules.delete",
+        "policy.config.reset",
+        "policy.config.update",
+        "policy.evidence.record"
+      ]
+    },
+    {
+      "operationClass": "external_query",
+      "capability": "workspace.operations",
+      "portability": "portable-when-declared",
+      "operations": [
+        "connectors.options.query"
+      ]
+    },
+    {
+      "operationClass": "authoritative_execution",
+      "capability": "workspace.operations",
+      "portability": "portable-when-declared",
+      "operations": [
+        "connectors.runs.trigger",
+        "connectors.schedules.dispatchDue",
+        "runs.start",
+        "runs.step",
+        "runs.complete"
+      ]
+    },
+    {
+      "operationClass": "authoritative_read",
+      "capability": "workspace.profile",
+      "portability": "portable",
+      "operations": [
+        "profile.get",
+        "profile.agentContext.get",
+        "profile.document.get",
+        "profile.document.validate"
+      ]
+    },
+    {
+      "operationClass": "authoritative_mutation",
+      "capability": "workspace.profile",
+      "portability": "portable",
+      "operations": [
+        "profile.update",
+        "profile.document.update",
+        "profile.document.format",
+        "profile.document.restore"
+      ]
+    },
+    {
+      "operationClass": "authoritative_read",
+      "capability": "workspace.secrets.admin",
+      "portability": "portable-metadata-only",
+      "operations": [
+        "secrets.list"
+      ]
+    },
+    {
+      "operationClass": "secret_administration",
+      "capability": "workspace.secrets.admin",
+      "portability": "portable-encrypted-envelope-only",
+      "operations": [
+        "secrets.upsert",
+        "secrets.delete"
+      ]
+    },
+    {
+      "operationClass": "local_secret_resolution",
+      "capability": "workspace.secrets.localResolve",
+      "portability": "local-only",
+      "operations": [
+        "secrets.local.resolve"
+      ]
+    }
+  ],
+  "discoveryContract": {
+    "portableFields": [
+      "workspaceId",
+      "name",
+      "source",
+      "authorityId",
+      "authorityEpoch",
+      "capability-document-version",
+      "capability-states"
+    ],
+    "localOnlyFields": [
+      "local-workspace-path"
+    ],
+    "managedServerFilesystemPathExposed": false,
+    "discoveryGrantsWriteAuthority": false,
+    "staleDiscoveryMutationBehavior": "authority_epoch_conflict"
+  },
+  "transferProtocol": {
+    "states": [
+      "idle",
+      "prepared",
+      "snapshot_staged",
+      "source_fenced",
+      "final_snapshot_verified",
+      "activated",
+      "source_retired",
+      "aborted"
+    ],
+    "terminalStates": [
+      "source_retired",
+      "aborted"
+    ],
+    "failureBehavior": {
+      "commandFailureAdvancesPhase": false,
+      "ambiguousOutcome": "read-authenticated-receipt-before-retry",
+      "failedBeforeFence": "source-remains-active-target-remains-candidate",
+      "failedAfterFence": "both-remain-read-only-until-retry-or-explicit-abort",
+      "failedAfterActivation": "target-remains-current-authority"
+    },
+    "transitions": [
+      {
+        "operation": "prepare",
+        "from": [
+          "idle"
+        ],
+        "to": "prepared",
+        "receipt": "prepare-receipt"
+      },
+      {
+        "operation": "stageSnapshot",
+        "from": [
+          "prepared"
+        ],
+        "to": "snapshot_staged",
+        "receipt": "snapshot-import-receipt"
+      },
+      {
+        "operation": "fenceSource",
+        "from": [
+          "snapshot_staged"
+        ],
+        "to": "source_fenced",
+        "receipt": "fence-receipt"
+      },
+      {
+        "operation": "verifyFinalSnapshot",
+        "from": [
+          "source_fenced"
+        ],
+        "to": "final_snapshot_verified",
+        "receipt": "final-verification-receipt"
+      },
+      {
+        "operation": "activateTarget",
+        "from": [
+          "final_snapshot_verified"
+        ],
+        "to": "activated",
+        "receipt": "activation-receipt"
+      },
+      {
+        "operation": "retireSource",
+        "from": [
+          "activated"
+        ],
+        "to": "source_retired",
+        "receipt": "retirement-receipt"
+      },
+      {
+        "operation": "abortBeforeFence",
+        "from": [
+          "prepared",
+          "snapshot_staged"
+        ],
+        "to": "aborted",
+        "receipt": "abort-receipt"
+      },
+      {
+        "operation": "abortAfterFence",
+        "from": [
+          "source_fenced",
+          "final_snapshot_verified"
+        ],
+        "to": "aborted",
+        "receipt": "abort-and-source-unfence-receipt"
+      }
+    ],
+    "authorityReplicaStates": [
+      "active",
+      "candidate",
+      "fenced",
+      "retired"
+    ],
+    "phases": [
+      {
+        "phase": "prepared",
+        "sourceState": "active",
+        "targetState": "candidate",
+        "sourceWritable": true,
+        "targetWritable": false,
+        "requiredEvidence": [
+          "source-and-target-capabilities",
+          "stable-workspace-identity",
+          "current-authority-epoch",
+          "destination-byok-proof-if-required"
+        ]
+      },
+      {
+        "phase": "snapshot_staged",
+        "sourceState": "active",
+        "targetState": "candidate",
+        "sourceWritable": true,
+        "targetWritable": false,
+        "requiredEvidence": [
+          "base-snapshot-manifest",
+          "content-digests",
+          "schema-and-capability-compatibility",
+          "target-import-receipt"
+        ]
+      },
+      {
+        "phase": "source_fenced",
+        "sourceState": "fenced",
+        "targetState": "candidate",
+        "sourceWritable": false,
+        "targetWritable": false,
+        "requiredEvidence": [
+          "fence-receipt",
+          "drained-inflight-mutations",
+          "final-snapshot-at-fence-token"
+        ]
+      },
+      {
+        "phase": "final_snapshot_verified",
+        "sourceState": "fenced",
+        "targetState": "candidate",
+        "sourceWritable": false,
+        "targetWritable": false,
+        "requiredEvidence": [
+          "final-snapshot-digest",
+          "identity-count-file-integrity-reconciliation",
+          "secret-envelope-and-byok-proof",
+          "target-restore-readback"
+        ]
+      },
+      {
+        "phase": "activated",
+        "sourceState": "fenced",
+        "targetState": "active",
+        "sourceWritable": false,
+        "targetWritable": true,
+        "requiredEvidence": [
+          "activation-receipt",
+          "authority-epoch-increment",
+          "target-health-and-discovery-readback",
+          "source-write-rejection-readback"
+        ]
+      },
+      {
+        "phase": "source_retired",
+        "sourceState": "retired",
+        "targetState": "active",
+        "sourceWritable": false,
+        "targetWritable": true,
+        "requiredEvidence": [
+          "rollback-window-complete",
+          "retention-and-backup-approval",
+          "retirement-receipt",
+          "no-routing-or-authority-readback"
+        ]
+      }
+    ],
+    "stateMatrix": [
+      {
+        "state": "idle",
+        "sourceState": "active",
+        "targetState": "absent",
+        "sourceWritable": true,
+        "targetWritable": false
+      },
+      {
+        "state": "prepared",
+        "sourceState": "active",
+        "targetState": "candidate",
+        "sourceWritable": true,
+        "targetWritable": false
+      },
+      {
+        "state": "snapshot_staged",
+        "sourceState": "active",
+        "targetState": "candidate",
+        "sourceWritable": true,
+        "targetWritable": false
+      },
+      {
+        "state": "source_fenced",
+        "sourceState": "fenced",
+        "targetState": "candidate",
+        "sourceWritable": false,
+        "targetWritable": false
+      },
+      {
+        "state": "final_snapshot_verified",
+        "sourceState": "fenced",
+        "targetState": "candidate",
+        "sourceWritable": false,
+        "targetWritable": false
+      },
+      {
+        "state": "activated",
+        "sourceState": "fenced",
+        "targetState": "active",
+        "sourceWritable": false,
+        "targetWritable": true
+      },
+      {
+        "state": "source_retired",
+        "sourceState": "retired",
+        "targetState": "active",
+        "sourceWritable": false,
+        "targetWritable": true
+      },
+      {
+        "state": "aborted",
+        "sourceState": "active",
+        "targetState": "retired",
+        "sourceWritable": true,
+        "targetWritable": false
+      }
+    ],
+    "activationPreconditions": [
+      "source-state-is-fenced",
+      "target-state-is-candidate",
+      "final-snapshot-verified-against-fence-token",
+      "destination-byok-proof-current",
+      "expected-authority-epoch-matches",
+      "activation-idempotency-fingerprint-matches"
+    ],
+    "fenceContract": {
+      "rejectNewMutations": true,
+      "rejectNewSchedulerClaims": true,
+      "drainOrExplicitlySettleAdmittedMutations": true,
+      "preserveExecutionAndConnectorLineage": true,
+      "activeWorkBlocksFinalSnapshot": true,
+      "timeoutLeavesSourceFenced": true,
+      "routingChangeAloneChangesAuthority": false
+    },
+    "abort": {
+      "allowedBeforeActivation": true,
+      "allowedAfterActivation": false,
+      "beforeFence": "discard-candidate-and-keep-source-active",
+      "afterFence": "verify-target-never-activated-then-unfence-source-with-abort-receipt",
+      "afterActivation": "start-a-new-reverse-transfer-from-current-authority",
+      "callerCancellation": "does-not-abort-transfer"
+    },
+    "reverseTransfer": {
+      "reuseOldActivationReceipt": false,
+      "newTransferId": true,
+      "newAuthorityEpoch": true,
+      "formerSourceIsCandidateOnly": true,
+      "sameProtocolRequired": true
+    }
+  },
+  "snapshotContract": {
+    "manifestFields": [
+      "workspaceId",
+      "authorityId",
+      "authorityEpoch",
+      "snapshotId",
+      "schemaVersion",
+      "createdAt",
+      "revisionToken",
+      "fenceToken-or-null",
+      "files-with-size-and-sha256",
+      "logical-record-counts",
+      "secret-envelope-count",
+      "required-capabilities"
+    ],
+    "immutable": true,
+    "contentAddressed": true,
+    "finalSnapshotMustReferenceFence": true,
+    "plaintextSecrets": false,
+    "localFilesystemPaths": false,
+    "logsOrErrorBodiesContainSensitiveValues": false
+  },
+  "secretContract": {
+    "portable": [
+      "secret-record-identifiers",
+      "non-sensitive-labels-and-kinds",
+      "encrypted-secret-envelopes",
+      "key-identifiers",
+      "rewrap-and-access-proof"
+    ],
+    "neverPortable": [
+      "plaintext-secret-values",
+      "local-protected-storage-handles",
+      "local-secret-resolution-results",
+      "user-key-material",
+      "credential-bearing-error-text"
+    ],
+    "byok": {
+      "keyMaterialPath": "user-to-authority-out-of-band",
+      "controlPlaneReceivesKeyMaterial": false,
+      "destinationProofRequiredBeforeFence": true,
+      "proofRequiredAgainBeforeActivation": true,
+      "missingKeyBehavior": "fail-closed-and-keep-current-authority"
+    }
+  },
+  "receiptContract": {
+    "immutable": true,
+    "authenticatedByIssuingAuthority": true,
+    "secretFree": true,
+    "requiredFields": [
+      "operation",
+      "outcome",
+      "workspaceId",
+      "authorityId",
+      "authorityEpoch",
+      "transferId-or-null",
+      "idempotencyKey",
+      "requestFingerprint",
+      "issuedAt",
+      "actor",
+      "revision-or-phase",
+      "evidence-digests"
+    ],
+    "replay": "same-key-and-fingerprint-returns-original-result",
+    "mismatch": "same-key-different-fingerprint-is-idempotency_conflict",
+    "lookupOperation": "receipts.getByIdempotencyKey",
+    "lookupKey": "workspaceId-authorityEpoch-operation-idempotencyKey",
+    "notFoundOutcome": "receipt_not_found",
+    "lookupReturnsOriginalOutcomeOnly": true
+  },
+  "failureMatrix": [
+    {
+      "code": "capability_unsupported",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "only-after-capability-change"
+    },
+    {
+      "code": "capability_temporarily_unavailable",
+      "httpStatus": 503,
+      "kind": "unavailable",
+      "retry": "bounded-backoff-and-rediscovery"
+    },
+    {
+      "code": "workspace_not_found",
+      "httpStatus": 404,
+      "kind": "not_found",
+      "retry": "rediscover-workspace"
+    },
+    {
+      "code": "workspace_identity_conflict",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "reconcile-stable-workspace-and-authority-identities"
+    },
+    {
+      "code": "protocol_version_unsupported",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "upgrade-source-or-target-before-transfer"
+    },
+    {
+      "code": "authority_unavailable",
+      "httpStatus": 503,
+      "kind": "unavailable",
+      "retry": "rediscover-current-authority-never-queue-offline-mutation"
+    },
+    {
+      "code": "authority_epoch_conflict",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "rediscover-and-reconcile-before-new-command"
+    },
+    {
+      "code": "workspace_fenced",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "discover-activation-or-abort-receipt"
+    },
+    {
+      "code": "workspace_retired",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "route-to-current-authority"
+    },
+    {
+      "code": "active_work_conflict",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "settle-admitted-work-before-final-snapshot"
+    },
+    {
+      "code": "quiesce_timeout",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "keep-source-fenced-and-retry-or-explicitly-abort"
+    },
+    {
+      "code": "revision_conflict",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "read-current-revision-and-reconcile"
+    },
+    {
+      "code": "idempotency_conflict",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "use-original-fingerprint-or-new-key"
+    },
+    {
+      "code": "snapshot_invalid",
+      "httpStatus": 422,
+      "kind": "validation",
+      "retry": "create-new-snapshot"
+    },
+    {
+      "code": "snapshot_incompatible",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "upgrade-target-or-use-supported-snapshot"
+    },
+    {
+      "code": "snapshot_integrity_failed",
+      "httpStatus": 409,
+      "kind": "integrity",
+      "retry": "discard-stage-and-create-new-snapshot"
+    },
+    {
+      "code": "transfer_phase_conflict",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "read-transfer-receipt"
+    },
+    {
+      "code": "transfer_not_found",
+      "httpStatus": 404,
+      "kind": "not_found",
+      "retry": "rediscover-transfer-or-start-a-new-transfer"
+    },
+    {
+      "code": "receipt_not_found",
+      "httpStatus": 404,
+      "kind": "not_found",
+      "retry": "confirm-authority-epoch-and-operation-before-new-command"
+    },
+    {
+      "code": "abort_not_allowed",
+      "httpStatus": 409,
+      "kind": "conflict",
+      "retry": "start-reverse-transfer-after-activation"
+    },
+    {
+      "code": "byok_key_unavailable",
+      "httpStatus": 503,
+      "kind": "unavailable",
+      "retry": "restore-key-access-before-fence-or-activation"
+    },
+    {
+      "code": "secure_storage_unavailable",
+      "httpStatus": 503,
+      "kind": "unavailable",
+      "retry": "restore-protected-storage-before-secret-operation"
+    },
+    {
+      "code": "ciphertext_incompatible",
+      "httpStatus": 409,
+      "kind": "integrity",
+      "retry": "rewrap-with-a-supported-envelope-before-fence"
+    },
+    {
+      "code": "secret_material_forbidden",
+      "httpStatus": 422,
+      "kind": "validation",
+      "retry": "remove-plaintext-or-local-handle"
+    },
+    {
+      "code": "authentication_required",
+      "httpStatus": 401,
+      "kind": "authentication",
+      "retry": "authenticate"
+    },
+    {
+      "code": "authority_forbidden",
+      "httpStatus": 403,
+      "kind": "authorization",
+      "retry": "obtain-explicit-authority"
+    },
+    {
+      "code": "rate_limited",
+      "httpStatus": 429,
+      "kind": "rate_limit",
+      "retry": "honor-retry-after"
+    },
+    {
+      "code": "internal_error",
+      "httpStatus": 500,
+      "kind": "internal",
+      "retry": "query-receipt-before-retrying-mutation"
+    }
+  ],
+  "releasedFailureCompatibility": {
+    "policy": "preserve-exact-code-status-and-kind-add-cross-cutting-authority-failures-without-aliasing",
+    "endpointSpecificFailurePrecedesCrossCuttingFallback": true,
+    "failures": [
+      {
+        "surface": "secrets.local.resolve",
+        "code": "secret_not_found",
+        "httpStatus": 404,
+        "kind": "not_found"
+      },
+      {
+        "surface": "secrets.local.resolve",
+        "code": "local_secret_resolution_unsupported",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "secrets.local.resolve",
+        "code": "local_secret_resolution_unauthorized",
+        "httpStatus": 403,
+        "kind": "authorization"
+      },
+      {
+        "surface": "secrets.local.resolve",
+        "code": "secure_storage_unavailable",
+        "httpStatus": 503,
+        "kind": "unavailable"
+      },
+      {
+        "surface": "profile.document",
+        "code": "invalid_profile_document",
+        "httpStatus": 422,
+        "kind": "validation"
+      },
+      {
+        "surface": "profile.document",
+        "code": "unsupported_profile_schema_version",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "profile.document",
+        "code": "profile_revision_conflict",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "profile.document",
+        "code": "profile_document_unavailable",
+        "httpStatus": 404,
+        "kind": "not_found"
+      },
+      {
+        "surface": "profile.document",
+        "code": "profile_backup_unavailable",
+        "httpStatus": 404,
+        "kind": "not_found"
+      },
+      {
+        "surface": "connectors.schedules",
+        "code": "connector_scheduling_unavailable",
+        "httpStatus": 503,
+        "kind": "unavailable"
+      },
+      {
+        "surface": "connectors.schedules",
+        "code": "invalid_timezone",
+        "httpStatus": 422,
+        "kind": "validation"
+      },
+      {
+        "surface": "connectors.schedules",
+        "code": "invalid_cadence",
+        "httpStatus": 422,
+        "kind": "validation"
+      },
+      {
+        "surface": "connectors.schedules",
+        "code": "schedule_too_frequent",
+        "httpStatus": 422,
+        "kind": "validation"
+      },
+      {
+        "surface": "connectors.schedules",
+        "code": "stale_schedule_revision",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.schedules",
+        "code": "schedule_dispatch_conflict",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.remove",
+        "code": "connector_retirement_active_work_conflict",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.create",
+        "code": "already_configured",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "unsupported_descriptor",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "connector_version_mismatch",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "filter_schema_version_mismatch",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "option_catalog_version_mismatch",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "option_source_version_mismatch",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "option_source_undeclared",
+        "httpStatus": 422,
+        "kind": "validation"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "option_dependency_undeclared",
+        "httpStatus": 422,
+        "kind": "validation"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "option_dependency_invalid",
+        "httpStatus": 422,
+        "kind": "validation"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "option_value_invalid",
+        "httpStatus": 422,
+        "kind": "validation"
+      },
+      {
+        "surface": "connectors.options.query",
+        "code": "option_query_unavailable",
+        "httpStatus": 409,
+        "kind": "conflict"
+      },
+      {
+        "surface": "connectors.overview.list",
+        "code": "invalid_connector_overview_cursor",
+        "httpStatus": 400,
+        "kind": "validation"
+      }
+    ]
+  },
+  "implementationGates": {
+    "P11": [
+      "publish-capability-and-failure-schemas",
+      "extend-workspace-identity-with-authority-epoch-without-breaking-v1",
+      "preserve-released-endpoint-failure-codes-statuses-and-kinds",
+      "require-authority-epoch-and-idempotency-on-portable-mutations",
+      "add-generic-receipt-lookup-before-retry",
+      "fence-schedulers-and-all-mutation-admission-not-only-http-routing",
+      "provide-conformance-fixtures-for-fence-activation-abort-and-reverse-transfer"
+    ],
+    "P13": [
+      "prove-immutable-backup-and-final-snapshot",
+      "inject-interruption-at-every-transfer-phase",
+      "prove-old-runtime-on-backup-downgrade-window",
+      "reconcile-identities-counts-files-integrity-and-secret-envelopes"
+    ],
+    "futureCloud": [
+      "implement-real-vertical-slice-before-repository-or-package-creation",
+      "pass-the-same-conformance-with-no-local-filesystem-or-secret-resolution-claims"
+    ]
+  }
+}
