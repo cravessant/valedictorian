@@ -9,9 +9,9 @@ const CONNECTOR_PACKAGES = [
 ] as const
 
 const CONNECTOR_PACKAGE_VERSIONS = {
-  '@sparxie/valedictorian-connectors-jobright': '0.18.4',
-  '@sparxie/valedictorian-connectors-core': '0.18.2',
-  '@sparxie/valedictorian-connectors-test-harness': '0.18.2',
+  '@sparxie/valedictorian-connectors-jobright': '0.19.0',
+  '@sparxie/valedictorian-connectors-core': '0.19.0',
+  '@sparxie/valedictorian-connectors-test-harness': '0.19.0',
 } as const satisfies Record<(typeof CONNECTOR_PACKAGES)[number], string>
 
 function readPackageJson() {
@@ -42,9 +42,9 @@ describe('connector workflow dependencies', () => {
   it('adopts the released progress and destination-projection contracts exactly', () => {
     const packageJson = readPackageJson()
 
-    expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.18.4')
-    expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.18.2')
-    expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.18.2')
+    expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.19.0')
+    expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.19.0')
+    expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.19.0')
   })
 
   it('resolves connector packages from the public npm registry without alternate sources', () => {
@@ -91,11 +91,12 @@ describe('connector workflow dependencies', () => {
     }
 
     expect(lockfile).toMatch(
-      /'@sparxie\/valedictorian-connectors-jobright@0\.18\.4':\n\s+dependencies:\n\s+'@sparxie\/valedictorian-connectors-core': 0\.18\.2/,
+      /'@sparxie\/valedictorian-connectors-jobright@0\.19\.0':\n\s+dependencies:\n\s+'@sparxie\/valedictorian-connectors-core': 0\.19\.0/,
     )
     expect(lockfile).toMatch(
-      /'@sparxie\/valedictorian-connectors-test-harness@0\.18\.2':\n\s+dependencies:\n\s+'@sparxie\/sdk': 0\.29\.0\n\s+'@sparxie\/valedictorian-connectors-core': 0\.18\.2/,
+      /'@sparxie\/valedictorian-connectors-test-harness@0\.19\.0':\n\s+dependencies:\n\s+'@sparxie\/valedictorian-connectors-core': 0\.19\.0/,
     )
+    expect(lockfile).not.toContain("'@sparxie/sdk@0.29.0'")
   })
 
   it.each(['ci.yml', 'release-mac.yml'])(

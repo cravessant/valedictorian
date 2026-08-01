@@ -181,7 +181,7 @@ describe('released connector capability boundary', () => {
     await http.connectors.create({
       id: 'jobright-filter-roundtrip',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.18.4',
+      connectorVersion: '0.19.0',
       displayName: 'Jobright filter round-trip',
       enabled: true,
       auth: [],

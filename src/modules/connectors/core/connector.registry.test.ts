@@ -26,7 +26,7 @@ describe('connector registry', () => {
     expect(registry.get('jobright.public')).toBeNull()
   })
 
-  it('matches published SDK and connector package versions for Jobright API auth', () => {
+  it('matches the released connector packages and transitional app SDK', () => {
     const appPackage = JSON.parse(
       fs.readFileSync(path.resolve('package.json'), 'utf8'),
     ) as {
@@ -52,26 +52,31 @@ describe('connector registry', () => {
         path.resolve('node_modules/@sparxie/valedictorian-connectors-core/package.json'),
         'utf8',
       ),
-    ) as { version: string }
+    ) as { version: string; dependencies?: Record<string, string> }
     const harnessPackage = JSON.parse(
       fs.readFileSync(
         path.resolve('node_modules/@sparxie/valedictorian-connectors-test-harness/package.json'),
         'utf8',
       ),
-    ) as { version: string }
+    ) as { version: string; dependencies?: Record<string, string> }
 
     expect(appPackage.dependencies['@sparxie/sdk']).toBe('0.36.0')
-    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.18.4')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.18.2')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.18.2')
+    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.19.0')
+    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.19.0')
+    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.19.0')
     expect(appPackage.pnpm?.overrides).toBeUndefined()
     expect(appPackage.resolutions).toBeUndefined()
     expect(appPackage).not.toHaveProperty('overrides')
     expect(sdkPackage.version).toBe('0.36.0')
     expect(jobrightPackage.version).toBe(JOBRIGHT_CONNECTOR_VERSION)
-    expect(jobrightPackage.dependencies?.['@sparxie/valedictorian-connectors-core']).toBe('^0.18.2')
-    expect(corePackage.version).toBe('0.18.2')
-    expect(harnessPackage.version).toBe('0.18.2')
+    expect(jobrightPackage.dependencies?.['@sparxie/valedictorian-connectors-core']).toBe('^0.19.0')
+    expect(corePackage.version).toBe('0.19.0')
+    expect(corePackage.dependencies).not.toHaveProperty('@sparxie/sdk')
+    expect(harnessPackage.version).toBe('0.19.0')
+    expect(harnessPackage.dependencies?.['@sparxie/valedictorian-connectors-core']).toBe(
+      '^0.19.0',
+    )
+    expect(harnessPackage.dependencies).not.toHaveProperty('@sparxie/sdk')
   })
 
   it('reaches the API-only connector and reports missing auth without provider or browser work', async () => {
@@ -126,6 +131,22 @@ describe('connector registry', () => {
     })
 
     expect(run).toMatchObject({ status: 'completed', outcome: { kind: 'action_required' } })
+    expect(await client.connectors.list()).toMatchObject({
+      items: [{
+        connectorId: 'jobright.resolver',
+        connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
+        id: 'jobright-default',
+      }],
+    })
+    expect(await client.connectors.checkpoints.list({
+      connectorInstanceId: 'jobright-default',
+    })).toMatchObject({
+      items: [{
+        checkpoint: { schemaVersion: 'jobright-capture-checkpoint@1', stopReason: 'auth_required' },
+        connectorInstanceId: 'jobright-default',
+        schemaVersion: 'jobright-capture-checkpoint@1',
+      }],
+    })
     expect(await client.connectors.overview.list()).toMatchObject({
       items: [{ health: { status: 'authentication_required' } }],
     })

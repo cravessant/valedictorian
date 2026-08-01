@@ -16,13 +16,14 @@ import { createLocalValedictorianClient } from '../src/runtime/local-valedictori
 import {
   type AppConnectorRuntime,
   type AppJobConnector,
+  JOBRIGHT_CONNECTOR_VERSION,
   createStaticConnectorRegistry,
 } from '../src/modules/connectors/public'
 
 const BUILD_IDENTITY = process.env.VALEDICTORIAN_PACKAGE_MANUAL_WORKFLOW_BUILD_IDENTITY
   ?? 'unspecified-build'
 const FIXTURE_ADAPTER_ID = 'jobright.resolver'
-const FIXTURE_ADAPTER_VERSION = '0.18.4'
+const FIXTURE_ADAPTER_VERSION = JOBRIGHT_CONNECTOR_VERSION
 const FRESH_WORKSPACE_ID = 'package-proof-fresh-workspace'
 const SECOND_WORKSPACE_ID = 'package-proof-second-workspace'
 const FIXTURE_DESTINATION = 'https://jobs.lever.co/packageproof/fixture-engineer'
