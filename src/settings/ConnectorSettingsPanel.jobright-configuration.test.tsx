@@ -20,7 +20,10 @@ beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 function instanceFixture(overrides: { enabled?: boolean } = {}) {
   return jobrightInstance({
@@ -100,6 +103,9 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
   })
 
   it('shows the persisted date, saves calendar changes, discards drafts, and gates Run', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-07-15T12:00:00.000Z'))
+
     const connectorsApi = createConnectorsApi()
     await connectorsApi.create({
       id: 'jobright-a',
