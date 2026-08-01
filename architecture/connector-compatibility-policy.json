@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "decision": {
+    "id": "connector-api-compatibility-and-support",
+    "issue": "https://github.com/cravessant/valedictorian-app/issues/521",
+    "status": "accepted",
+    "authority": "https://github.com/cravessant/valedictorian-app/issues/521#issuecomment-5151558549",
+    "implementationAuthorized": false,
+    "publicationAuthorized": false
+  },
+  "packageIdentities": {
+    "api": {
+      "package": "@sparxie/valedictorian-connectors-core",
+      "role": "connector-developer-sdk-and-runtime-abi",
+      "rootExport": ".",
+      "versionLineage": "independent",
+      "identityPolicy": "retain-released-name-and-lineage"
+    },
+    "testkit": {
+      "package": "@sparxie/valedictorian-connectors-test-harness",
+      "role": "connector-conformance-testkit",
+      "rootExport": ".",
+      "versionLineage": "independent",
+      "identityPolicy": "retain-released-name-and-lineage"
+    },
+    "transitionalFacade": {
+      "package": "@sparxie/sdk",
+      "role": "transitional-compatibility-facade",
+      "permanentConnectorSdk": false
+    },
+    "universalSdk": null,
+    "sharedTypesPackage": null
+  },
+  "semver": {
+    "model": "independent-semver",
+    "beforeOnePointZero": {
+      "breakingAbi": "minor",
+      "compatibleAdditionOrFix": "patch"
+    },
+    "atOrAfterOnePointZero": "standard-major-minor-patch",
+    "testkit": {
+      "declaresCompatibleApiRange": true,
+      "publishesAfterApi": true
+    },
+    "connector": {
+      "declaresSupportedApiRangeThrough": "ordinary-package-metadata",
+      "hostLocks": "exact-released-connector-versions"
+    }
+  },
+  "support": {
+    "supportedLines": "newest-and-immediately-previous-api-compatibility-line",
+    "minimumSupportedApiVersion": "immediately-previous-api-compatibility-line",
+    "minimumWindow": {
+      "productReleases": 2,
+      "days": 30
+    },
+    "deprecation": {
+      "functionalDuringWindow": true,
+      "removal": "later-breaking-line"
+    },
+    "releasedArtifactsMutable": false,
+    "rollback": [
+      "continue-using-older-release",
+      "publish-corrective-release"
+    ],
+    "tiers": {
+      "sharedApi": true,
+      "sharedConformanceTestkit": true,
+      "maintained": {
+        "releaseOwner": "valedictorian",
+        "ciOwner": "valedictorian",
+        "supportResponseOwner": "valedictorian",
+        "testsSupportedMatrix": true
+      },
+      "community": {
+        "releaseOwner": "publisher",
+        "conformanceEvidenceOwner": "publisher",
+        "privateSourceAccess": false,
+        "credentialAccess": false,
+        "alternateAbi": false
+      }
+    }
+  },
+  "conformance": {
+    "evidenceSource": "released-api-and-testkit-artifacts",
+    "connectorOwnedCi": [
+      "isolated-package-install",
+      "allowed-dependency-and-import-closure",
+      "public-schema-and-type-conformance",
+      "configuration-behavior",
+      "filter-behavior",
+      "authentication-behavior",
+      "capture-behavior",
+      "refresh-behavior",
+      "checkpoint-behavior",
+      "dynamic-option-behavior",
+      "output-sanitization",
+      "stable-conformance-receipts"
+    ],
+    "applicationOwned": [
+      "exact-static-registration",
+      "secret-storage-and-resolution",
+      "scheduling-and-backoff",
+      "persistence-and-transactions",
+      "workspace-mapping",
+      "host-lifecycle-integration"
+    ],
+    "dynamicLoadingIssue": "https://github.com/cravessant/valedictorian-app/issues/522"
+  },
+  "compatibilityReceipts": {
+    "inputs": [
+      "released-package-metadata",
+      "released-package-tarballs"
+    ],
+    "privateApplicationHead": false,
+    "privateWorkspaceHead": false,
+    "packageRangeAndInstallFailuresReport": [
+      "expected-api-version",
+      "observed-api-version",
+      "expected-testkit-version",
+      "observed-testkit-version"
+    ],
+    "stableConformanceIdentifiersReport": [
+      "expected-api-version",
+      "observed-api-version",
+      "expected-testkit-version",
+      "observed-testkit-version"
+    ],
+    "runtimeManifestNegotiation": "deferred-to-520-and-522",
+    "loaderFailureCodes": "deferred-to-520-and-522"
+  },
+  "isolation": {
+    "privateApplicationOrWorkspaceSourceRequired": false,
+    "fleetLinkRequired": false,
+    "crossRepositoryCredentialRequired": false,
+    "providerPrivateTypesInAbi": false,
+    "hostPersistenceTypesInAbi": false
+  },
+  "jobright": {
+    "package": "@sparxie/valedictorian-connectors-jobright",
+    "independentlyReleased": true,
+    "maintenance": "valedictorian-maintained",
+    "distribution": "static-exact-version",
+    "staticIssue": "https://github.com/cravessant/valedictorian-app/issues/545",
+    "dynamicLoadingIssue": "https://github.com/cravessant/valedictorian-app/issues/522"
+  },
+  "deferred": {
+    "issue520": [
+      "marketplace-manifest",
+      "registry",
+      "publisher-metadata",
+      "platform-metadata",
+      "permission-metadata",
+      "dynamic-compatibility-fields",
+      "runtime-manifest-and-version-negotiation"
+    ],
+    "issue522": [
+      "dynamic-loading",
+      "installation",
+      "sandbox",
+      "loader-failure-codes"
+    ],
+    "noImplementationOrPackageChange": true
+  }
+}
