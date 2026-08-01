@@ -1,0 +1,48 @@
+{
+  "name": "@sparxie/valedictorian-connectors-test-harness",
+  "version": "0.19.0",
+  "description": "Test helpers for Valedictorian connector packages.",
+  "author": "Keni",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cravessant/valedictorian.git",
+    "directory": "packages/connector-testkit"
+  },
+  "bugs": {
+    "url": "https://github.com/cravessant/valedictorian/issues"
+  },
+  "homepage": "https://github.com/cravessant/valedictorian#readme",
+  "keywords": [
+    "connector",
+    "sparxie",
+    "test",
+    "valedictorian"
+  ],
+  "files": [
+    "dist"
+  ],
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "pnpm --filter @sparxie/valedictorian-connectors-core run build && rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@sparxie/valedictorian-connectors-core": "workspace:^0.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1"
+  }
+}

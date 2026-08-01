@@ -3,7 +3,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const testsProjectPath = 'tsconfig.tests.json'
-export const maintainedTestRoots = ['electron', 'scripts', 'src'] as const
+export const maintainedTestRoots = ['electron', 'packages', 'scripts', 'src'] as const
 
 const maintainedTestPattern = new RegExp(
   `^(?:${maintainedTestRoots.join('|')})/(?:[^/]+/)*[^/]+\\.test\\.tsx?$`,
