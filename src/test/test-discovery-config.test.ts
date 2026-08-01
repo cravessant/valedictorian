@@ -23,6 +23,7 @@ describe('test discovery configuration', () => {
   it('limits discovery to maintained test roots', () => {
     expect(maintainedTestIncludes).toEqual([
       'electron/**/*.test.{ts,tsx}',
+      'packages/**/*.test.{ts,tsx}',
       'scripts/**/*.test.{ts,mjs}',
       'src/**/*.test.{ts,tsx}',
     ])
@@ -68,5 +69,23 @@ describe('test discovery configuration', () => {
     expect(packageJson.scripts?.['test:window']).toContain('VALEDICTORIAN_WINDOW_TESTS=1')
     expect(commandTest).toContain("process.env.VALEDICTORIAN_WINDOW_TESTS !== '1'")
     expect(workflow).toContain('VALEDICTORIAN_WINDOW_TESTS: "1"')
+  })
+
+  it('builds connector declarations before every test entrypoint', () => {
+    const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as {
+      scripts?: Record<string, string>
+    }
+
+    expect(packageJson.scripts?.['build:connector-packages']).toContain(
+      '@sparxie/valedictorian-connectors-core',
+    )
+    expect(packageJson.scripts?.['build:connector-packages']).toContain(
+      '@sparxie/valedictorian-connectors-test-harness',
+    )
+    expect(packageJson.scripts?.pretest).toBe('pnpm run build:connector-packages')
+    expect(packageJson.scripts?.['pretest:watch']).toBe('pnpm run build:connector-packages')
+    expect(packageJson.scripts?.['pretypecheck:tests']).toBe(
+      'pnpm run build:connector-packages',
+    )
   })
 })
