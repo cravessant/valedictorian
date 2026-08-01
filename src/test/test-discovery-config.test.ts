@@ -75,6 +75,7 @@ describe('test discovery configuration', () => {
     const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as {
       scripts?: Record<string, string>
     }
+    const workflow = fs.readFileSync(path.resolve('.github/workflows/ci.yml'), 'utf8')
 
     expect(packageJson.scripts?.['build:connector-packages']).toContain(
       '@sparxie/valedictorian-connectors-core',
@@ -86,6 +87,10 @@ describe('test discovery configuration', () => {
     expect(packageJson.scripts?.['pretest:watch']).toBe('pnpm run build:connector-packages')
     expect(packageJson.scripts?.['pretypecheck:tests']).toBe(
       'pnpm run build:connector-packages',
+    )
+    expect(workflow.indexOf('pnpm run build:connector-packages')).toBeGreaterThan(-1)
+    expect(workflow.indexOf('pnpm exec vitest run --shard')).toBeGreaterThan(
+      workflow.indexOf('pnpm run build:connector-packages'),
     )
   })
 })

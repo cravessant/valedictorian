@@ -133,6 +133,7 @@ jobs:
         working-directory: valedictorian-app
         shell: bash
         run: |
+          pnpm run build:connector-packages
           TEST_TEMP_ROOT="$(node scripts/allocate-test-temp.mjs --print-root)"
           [ -n "$TEST_TEMP_ROOT" ] || exit 1
           cleanup_test_temp() {
