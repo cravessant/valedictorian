@@ -1,0 +1,59 @@
+{
+  "name": "@sparxie/valedictorian-cli",
+  "version": "0.1.0-alpha.20",
+  "description": "Command-line client for Valedictorian.",
+  "author": "Sparxie",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "bin": {
+    "valedictorian-cli": "dist/valedictorian.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cravessant/valedictorian.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cravessant/valedictorian/issues"
+  },
+  "homepage": "https://github.com/cravessant/valedictorian#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "pnpm run lint:line-limit-policy && oxlint . && tsc -p tsconfig.json --noEmit",
+    "lint:line-limit-policy": "node scripts/line-limit-policy.mjs",
+    "prepare": "pnpm build",
+    "prepublishOnly": "pnpm lint && pnpm test && pnpm build",
+    "prepack": "pnpm build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@sparxie/sdk": "0.36.0",
+    "@stricli/core": "1.2.7",
+    "cosmiconfig": "9.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "lefthook": "2.1.10",
+    "oxlint": "^1.68.0",
+    "typescript": "^7.0.2",
+    "vitest": "^2.1.9"
+  }
+}

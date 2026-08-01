@@ -1,0 +1,21 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+release
+*.tgz
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Local/editor files
+.DS_Store
+.env
+.env.*
+!.env.example
+.idea
+.vscode/*
+!.vscode/extensions.json

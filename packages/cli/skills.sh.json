@@ -1,0 +1,11 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Valedictorian",
+      "description": "Skills for operating Valedictorian job automation.",
+      "skills": ["valedictorian-cli", "valedictorian-application-agent"]
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Valedictorian CLI"
+  short_description: "Operate the canonical Valedictorian lifecycle"
+  default_prompt: "Use $valedictorian-cli to inspect and safely advance Valedictorian lifecycle records."
