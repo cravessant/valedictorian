@@ -1,3 +1,7 @@
+packages:
+  - "packages/connector-api"
+  - "packages/connector-testkit"
+
 minimumReleaseAgeExclude:
   - '@sparxie/*'
   # TEMPORARY, and deliberately pinned to one exact version rather than the

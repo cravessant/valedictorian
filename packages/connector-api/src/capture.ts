@@ -1,14 +1,15 @@
-import type { CreateCaptureInput, SourceExecutionScopeId } from "@sparxie/sdk"
+import type { CreateCaptureInput } from "./capture-contract.js"
+import type { SourceExecutionScopeId } from "./source-execution.js"
 
 /**
  * Connector-owned Capture intake ABI.
  *
- * `@sparxie/sdk` 0.29.0 publishes the first-class `createCaptureInputSchema` /
+ * `connector API` 0.29.0 publishes the first-class `createCaptureInputSchema` /
  * `CreateCaptureInput` contract but intentionally exposes no raw transport
  * receipt type from its package root. Core therefore owns the connector-facing
  * Capture input/runtime/receipt/revision shapes. A connector supplies provider
  * record content; the host binds the trusted adapter into a strict
- * `CreateCaptureInput`, validates it with Sparxie's public schema, and records
+ * `CreateCaptureInput`, validates it with the connector API schema, and records
  * it inside an envelope whose adjacent provenance carries host-bound connector
  * lineage and reported origin. The envelope wraps one accepted Capture input;
  * it is not a second Capture schema.
@@ -33,7 +34,6 @@ export type ConnectorReportedOrigin = {
   providerId?: string | null
   url?: string | null
 }
-
 /**
  * Provider record content supplied by a connector for Capture intake.
  *

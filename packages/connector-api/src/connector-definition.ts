@@ -1,10 +1,8 @@
-import type {
-  CreateCaptureInput,
-  FieldResolutionOutcome,
-  ConnectorVersionedRendererSchema,
-  SourceExecutionScopeId,
-  TransientRetryReason,
-} from "@sparxie/sdk"
+import type { CreateCaptureInput } from "./capture-contract.js"
+import type { FieldResolutionOutcome } from "./normalization-types.js"
+import type { ConnectorVersionedRendererSchema } from "./connector-contracts.js"
+import type { SourceExecutionScopeId } from "./source-execution.js"
+import type { TransientRetryReason } from "./retry.js"
 import type { JsonValue } from "./json.js"
 import type { ResolverDeclaration } from "./normalization-types.js"
 import type { ConnectorCaptureRevision } from "./capture.js"

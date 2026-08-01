@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest"
-import { connectorRunSummarySchema } from "@sparxie/sdk"
-
 import {
   sanitizeConnectorRefreshStats,
   sanitizeConnectorSynchronization,
@@ -111,23 +109,6 @@ describe("connector core — sanitized outcomes", () => {
         synchronization.pendingResolutionCount === 0
 
       expect(fullyCaughtUp).toBe(false)
-      expect(connectorRunSummarySchema.safeParse({
-        id: "connector-refresh-validation",
-        connectorInstanceId: "connector-refresh-validation",
-        executionScopeId,
-        status: runStatusFor(synchronization.outcome.kind),
-        filterSignature: "connector-refresh-validation",
-        observationCount: 0,
-        warningCount: 0,
-        warnings: [],
-        ...synchronization,
-        startedAt: "2026-07-18T00:00:00.000Z",
-        completedAt: synchronization.outcome.kind === "in_progress"
-          ? null
-          : "2026-07-18T00:00:01.000Z",
-        mode: "manual",
-        scheduleOccurrence: null,
-      }).success).toBe(true)
     },
   )
 
@@ -167,12 +148,3 @@ describe("connector core — sanitized outcomes", () => {
     )
   })
 })
-
-function runStatusFor(
-  outcome: ReturnType<typeof sanitizeConnectorSynchronization>["outcome"]["kind"],
-): "running" | "completed" | "failed" | "cancelled" {
-  if (outcome === "in_progress") return "running"
-  if (outcome === "failed") return "failed"
-  if (outcome === "cancelled") return "cancelled"
-  return "completed"
-}

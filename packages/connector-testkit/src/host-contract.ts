@@ -29,7 +29,6 @@ export type ConnectorInstanceRecord = {
   filters?: unknown
   createdAt: string
 }
-
 export type ConnectorRunRecord = {
   id: string
   startedAt: string

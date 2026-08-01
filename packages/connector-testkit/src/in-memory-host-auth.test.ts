@@ -28,7 +28,7 @@ describe("in-memory connector host — auth", () => {
             return { status: "ready", sessionId: "canonical-session" }
           },
         )
-        return { status: result.status, reason: "jobright_auth_ready" }
+        return { status: result.status, reason: "auth_validation_ready" }
       },
     }
     const host = createInMemoryConnectorHost()
@@ -51,8 +51,8 @@ describe("in-memory connector host — auth", () => {
     expect(establishmentCalls).toBe(1)
     release.resolve()
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { status: "ready", reason: "jobright_auth_ready" },
-      { status: "ready", reason: "jobright_auth_ready" },
+      { status: "ready", reason: "auth_validation_ready" },
+      { status: "ready", reason: "auth_validation_ready" },
     ])
   })
 
@@ -78,7 +78,7 @@ describe("in-memory connector host — auth", () => {
         return {
           status: result.status === "ready" ? "ready" : "failed",
           reason: result.status === "ready"
-            ? "jobright_auth_ready"
+            ? "auth_validation_ready"
             : "auth_validation_failed",
         }
       },
@@ -102,7 +102,7 @@ describe("in-memory connector host — auth", () => {
     release.resolve()
     await expect(validation).resolves.toEqual({
       status: "ready",
-      reason: "jobright_auth_ready",
+      reason: "auth_validation_ready",
     })
     expect(sessions[scope]).toEqual({ generation: 2, sessionId: "newer-session" })
   })
@@ -170,7 +170,7 @@ describe("in-memory connector host — auth", () => {
       },
     }
 
-    expect(connectorWithoutValidateAuth.validateAuth).toBeUndefined()
+    expect("validateAuth" in connectorWithoutValidateAuth).toBe(false)
 
     const statuses: ConnectorAuthValidationResult["status"][] = [
       "ready",
@@ -183,13 +183,13 @@ describe("in-memory connector host — auth", () => {
     ]
     const result: ConnectorAuthValidationResult = {
       status: "ready",
-      reason: "jobright_auth_ready",
+      reason: "auth_validation_ready",
     }
 
     expect(statuses).toContain(result.status)
     expect(result).toEqual({
       status: "ready",
-      reason: "jobright_auth_ready",
+      reason: "auth_validation_ready",
     })
   })
 
@@ -260,9 +260,9 @@ describe("in-memory connector host — auth", () => {
           modes: ["username_password"],
           requirements: [
             {
-              id: "jobright",
+              id: "fixture",
               mode: "username_password",
-              label: "Jobright username and password",
+              label: "Fixture username and password",
               required: true,
             },
           ],
@@ -271,7 +271,7 @@ describe("in-memory connector host — auth", () => {
       async refresh(input, runtime): Promise<ConnectorRefreshResult> {
         receivedGrants.push(
           await runtime.auth.resolve({
-            id: "jobright",
+            id: "fixture",
             mode: "username_password",
           }),
         )
@@ -281,7 +281,7 @@ describe("in-memory connector host — auth", () => {
     }
     const host = createInMemoryConnectorHost({
       secrets: {
-        jobright_credentials: JSON.stringify({
+        fixture_credentials: JSON.stringify({
           username: "user@example.test",
           password: "fixture-password",
         }),
@@ -291,9 +291,9 @@ describe("in-memory connector host — auth", () => {
     host.registerInstance({
       auth: [
         {
-          id: "jobright",
+          id: "fixture",
           mode: "username_password",
-          secretKey: "jobright_credentials",
+          secretKey: "fixture_credentials",
         },
       ],
       connectorId: connector.definition.id,
@@ -317,9 +317,9 @@ describe("in-memory connector host — auth", () => {
 
     expect(receivedGrants).toEqual([
       {
-        id: "jobright",
+        id: "fixture",
         mode: "username_password",
-        secretKey: "jobright_credentials",
+        secretKey: "fixture_credentials",
         sessionId: "connector.instance_username_password",
         status: "ready",
         value: JSON.stringify({
@@ -348,7 +348,7 @@ describe("in-memory connector host — auth", () => {
           modes: ["username_password"],
           requirements: [
             {
-              id: "jobright",
+              id: "fixture",
               mode: "username_password",
               required: true,
             },
@@ -363,30 +363,30 @@ describe("in-memory connector host — auth", () => {
         runtime,
       ): Promise<ConnectorAuthValidationResult> {
         const grant = await runtime.auth.resolve({
-          id: "jobright",
+          id: "fixture",
           mode: "username_password",
         })
         received.push({ input, grant })
         return {
           status: grant.status === "ready" ? "ready" : "missing",
           reason: grant.status === "ready"
-            ? "jobright_auth_ready"
+            ? "auth_validation_ready"
             : "username_password_missing",
         }
       },
     }
     const host = createInMemoryConnectorHost({
       secrets: {
-        jobright_credentials: secretValue,
+        fixture_credentials: secretValue,
       },
     })
 
     host.registerInstance({
       auth: [
         {
-          id: "jobright",
+          id: "fixture",
           mode: "username_password",
-          secretKey: "jobright_credentials",
+          secretKey: "fixture_credentials",
         },
       ],
       connectorId: connector.definition.id,
@@ -405,7 +405,7 @@ describe("in-memory connector host — auth", () => {
 
     expect(result).toEqual({
       status: "ready",
-      reason: "jobright_auth_ready",
+      reason: "auth_validation_ready",
     })
     expect(received).toEqual([
       {
@@ -415,9 +415,9 @@ describe("in-memory connector host — auth", () => {
           workspaceId: "workspace_alpha",
         },
         grant: {
-          id: "jobright",
+          id: "fixture",
           mode: "username_password",
-          secretKey: "jobright_credentials",
+          secretKey: "fixture_credentials",
           status: "ready",
           value: secretValue,
         },

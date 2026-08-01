@@ -14,7 +14,7 @@ import type {
   CreateCaptureInput,
   JobConnector,
 } from "@sparxie/valedictorian-connectors-core"
-import { createCaptureInputSchema } from "@sparxie/sdk"
+import { createCaptureInputSchema } from "@sparxie/valedictorian-connectors-core"
 import { cloneJsonLike, stableJsonStringify } from "./stable-json.js"
 import type {
   InMemoryCaptureRecord,
@@ -36,7 +36,6 @@ export type RuntimeCaptureContext = {
   nextCaptureRevisionSequence: () => number
   nextCaptureOccurrenceSequence: () => number
 }
-
 export function createConnectorRuntime(
   authReferences: ConnectorAuthReference[],
   authRequirements: ConnectorAuthRequirement[],

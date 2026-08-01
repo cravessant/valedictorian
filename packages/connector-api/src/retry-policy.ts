@@ -2,7 +2,7 @@ import {
   retryAdviceSchema,
   type RetryAdvice,
   type TransientRetryReason,
-} from "@sparxie/sdk"
+} from "./retry.js"
 
 export type RetryPolicyInput = {
   attempt: number
@@ -13,7 +13,6 @@ export type RetryPolicyInput = {
   reason: TransientRetryReason
   serverMinimumDelayMs?: number | null
 }
-
 export type RetryPolicyDependencies = {
   nowEpochMs(): number
   random(): number

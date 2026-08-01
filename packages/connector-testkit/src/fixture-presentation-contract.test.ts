@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { installedConnectorDescriptorSchema } from "@sparxie/sdk"
+import { installedConnectorDescriptorSchema } from "@sparxie/valedictorian-connectors-core"
 
 import { createFixtureConnector } from "./index.js"
 

@@ -1,9 +1,9 @@
 import type {
   ConnectorHistoricalBackfillState,
   ConnectorNewestFrontierState,
-  RetryAdvice,
-  SourceOperationOutcome,
-} from "@sparxie/sdk"
+} from "./connector-contracts.js"
+import type { RetryAdvice } from "./retry.js"
+import type { SourceOperationOutcome } from "./source-execution.js"
 import {
   sanitizeConnectorRefreshStopReason,
   type ConnectorRefreshStopReason,

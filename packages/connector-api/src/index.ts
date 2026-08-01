@@ -35,24 +35,50 @@ export {
   type ConnectorOptionValueSchema,
 } from "./dynamic-options.js"
 
+export {
+  scheduleRetry,
+  type RetryPolicyDependencies,
+  type RetryPolicyInput,
+} from "./retry-policy.js"
+
+// These five identifiers are the connector-owned projection of the Sparxie ABI.
+// The established connector-authored contracts below remain local to this API;
+// source-specific and application-owned contracts do not cross this boundary.
 export type {
-  CreateCaptureInput,
-  EvidenceMode,
-  FieldResolutionOutcome,
-  RetryAdvice,
-  SourceExecutionScopeId,
-  SourceOperationOutcome,
-  TransientRetryReason,
   ConnectorHistoricalBackfillState,
   ConnectorNewestFrontierState,
   ConnectorVersionedRendererSchema,
-} from "@sparxie/sdk"
+} from "./connector-contracts.js"
+export { installedConnectorDescriptorSchema } from "./connector-contracts.js"
+export { sourceAdapterKinds } from "./source-adapter-kinds.js"
+export { canonicalDateOnlySchema, type CanonicalDateOnly } from "./canonical-date.js"
+
+export type {
+  CreateCaptureInput,
+  EvidenceMode,
+} from "./capture-contract.js"
 export {
+  captureAdapterSchema,
+  captureEvidenceSchema,
   createCaptureInputSchema,
-  installedConnectorDescriptorSchema,
-  retryAdviceSchema,
+  evidenceModes,
+} from "./capture-contract.js"
+export type {
+  SourceExecutionScopeId,
+  SourceOperationOutcome,
+} from "./source-execution.js"
+export {
   sourceExecutionScopeIdSchema,
-} from "@sparxie/sdk"
+  sourceOperationOutcomeSchema,
+} from "./source-execution.js"
+export type {
+  RetryAdvice,
+  TransientRetryReason,
+} from "./retry.js"
+export {
+  retryAdviceSchema,
+  transientRetryReasons,
+} from "./retry.js"
 
 export type { JsonPrimitive, JsonValue, JsonObject } from "./json.js"
 export {
@@ -69,6 +95,7 @@ export {
   type CanonicalLocation,
   type CanonicalPostedAt,
   type CanonicalPostedAtPrecision,
+  type FieldResolutionOutcome,
   type ResolutionEvidence,
   type ResolverCapability,
   type ResolverCostClass,
@@ -90,12 +117,6 @@ export {
   type ConnectorReportedOrigin,
   type ConnectorReportedOriginKind,
 } from "./capture.js"
-
-export {
-  scheduleRetry,
-  type RetryPolicyDependencies,
-  type RetryPolicyInput,
-} from "./retry-policy.js"
 
 export {
   jobObservationSchemaVersion,
@@ -120,14 +141,14 @@ export type {
   ConnectorCancellationRuntime,
   ConnectorDelayInput,
   ConnectorDelayRuntime,
-  ConnectorNormalizationInput,
-  ConnectorNormalizationRuntime,
   ConnectorOptionRuntime,
   ConnectorProgressCounts,
   ConnectorProgressRuntime,
   ConnectorProgressSnapshot,
   ConnectorProgressStage,
   ConnectorProgressWait,
+  ConnectorNormalizationInput,
+  ConnectorNormalizationRuntime,
   ConnectorProviderUrlResolverRuntime,
   ConnectorRuntime,
 } from "./runtime-ports.js"
@@ -148,6 +169,9 @@ export type {
   ConnectorCheckpointDeclaration,
   ConnectorDefinition,
   ConnectorObservationDeclaration,
+  ConnectorRefreshInput,
+  ConnectorRefreshMode,
+  ConnectorSchemaDeclaration,
   ConnectorOption,
   ConnectorOptionQueryInput,
   ConnectorOptionQueryResult,
@@ -157,8 +181,5 @@ export type {
   ConnectorProviderUrlResolverEvidence,
   ConnectorProviderUrlResolverInput,
   ConnectorProviderUrlResolverResult,
-  ConnectorRefreshInput,
-  ConnectorRefreshMode,
-  ConnectorSchemaDeclaration,
   JobConnector,
 } from "./connector-definition.js"

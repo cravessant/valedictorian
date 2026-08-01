@@ -1,10 +1,11 @@
+import type {
+  ConnectorHistoricalBackfillState,
+  ConnectorNewestFrontierState,
+} from "./connector-contracts.js"
 import {
-  canonicalDateOnlySchema,
   sourceOperationOutcomeSchema,
-  type ConnectorHistoricalBackfillState,
-  type ConnectorNewestFrontierState,
   type SourceOperationOutcome,
-} from "@sparxie/sdk"
+} from "./source-execution.js"
 
 /**
  * Closed warning codes and copy that are safe to persist or expose to an app.
@@ -94,23 +95,21 @@ function warningCode(value: unknown): ConnectorRefreshWarningCode | null {
 /** Closed, app-safe reason facts for connector authentication outcomes. */
 export type ConnectorAuthOutcomeReason =
   | "auth_validation_failed"
-  | "jobright_auth_ready"
-  | "jobright_auth_request_failed"
-  | "jobright_auth_required"
-  | "jobright_login_rejected"
-  | "jobright_login_retryable"
-  | "jobright_login_schema_invalid"
-  | "jobright_newinfo_logined_missing"
-  | "jobright_newinfo_retryable"
-  | "jobright_newinfo_schema_invalid"
-  | "jobright_not_logged_in"
-  | "jobright_rate_limited"
-  | "jobright_session_cookie_missing"
+  | "auth_validation_cancelled"
+  | "auth_validation_expired"
+  | "auth_validation_rate_limited"
+  | "auth_validation_ready"
+  | "auth_validation_required"
+  | "auth_validation_retryable"
+  | "auth_validation_timeout"
   | "secret_missing"
   | "secret_reference_missing"
   | "username_password_malformed"
   | "username_password_missing"
   | "validate_auth_failed"
+  // Provider adapters may retain private diagnostic reason tokens. They are
+  // never persisted by the sanitizer unless mapped to the closed values above.
+  | (string & {})
 
 export type ConnectorAuthValidationStatus =
   | "action_required"
@@ -159,48 +158,37 @@ function authValidationStatus(value: unknown): ConnectorAuthValidationStatus {
 }
 
 const authReasonsByStatus = {
-  ready: new Set<ConnectorAuthOutcomeReason>(["jobright_auth_ready"]),
+  ready: new Set<ConnectorAuthOutcomeReason>(["auth_validation_ready"]),
   missing: new Set<ConnectorAuthOutcomeReason>([
     "secret_missing",
     "secret_reference_missing",
     "username_password_missing",
   ]),
-  expired: new Set<ConnectorAuthOutcomeReason>(["jobright_not_logged_in"]),
+  expired: new Set<ConnectorAuthOutcomeReason>(["auth_validation_expired"]),
   action_required: new Set<ConnectorAuthOutcomeReason>([
-    "jobright_auth_required",
-    "jobright_login_rejected",
-    "jobright_newinfo_logined_missing",
-    "jobright_session_cookie_missing",
+    "auth_validation_required",
     "username_password_malformed",
   ]),
-  rate_limited: new Set<ConnectorAuthOutcomeReason>(["jobright_rate_limited"]),
-  retryable: new Set<ConnectorAuthOutcomeReason>([
-    "jobright_auth_request_failed",
-    "jobright_login_retryable",
-    "jobright_newinfo_retryable",
-  ]),
+  rate_limited: new Set<ConnectorAuthOutcomeReason>(["auth_validation_rate_limited"]),
+  retryable: new Set<ConnectorAuthOutcomeReason>(["auth_validation_retryable"]),
   failed: new Set<ConnectorAuthOutcomeReason>([
     "auth_validation_failed",
-    "jobright_login_schema_invalid",
-    "jobright_newinfo_schema_invalid",
     "validate_auth_failed",
   ]),
-  cancelled: new Set<ConnectorAuthOutcomeReason>(["jobright_auth_request_failed"]),
-  invocation_timeout: new Set<ConnectorAuthOutcomeReason>([
-    "jobright_auth_request_failed",
-  ]),
+  cancelled: new Set<ConnectorAuthOutcomeReason>(["auth_validation_cancelled"]),
+  invocation_timeout: new Set<ConnectorAuthOutcomeReason>(["auth_validation_timeout"]),
 } satisfies Record<ConnectorAuthValidationStatus, Set<ConnectorAuthOutcomeReason>>
 
 const fallbackAuthReasonByStatus = {
-  ready: "jobright_auth_ready",
+  ready: "auth_validation_ready",
   missing: "username_password_missing",
-  expired: "jobright_not_logged_in",
-  action_required: "jobright_auth_required",
-  rate_limited: "jobright_rate_limited",
-  retryable: "jobright_auth_request_failed",
+  expired: "auth_validation_expired",
+  action_required: "auth_validation_required",
+  rate_limited: "auth_validation_rate_limited",
+  retryable: "auth_validation_retryable",
   failed: "auth_validation_failed",
-  cancelled: "jobright_auth_request_failed",
-  invocation_timeout: "jobright_auth_request_failed",
+  cancelled: "auth_validation_cancelled",
+  invocation_timeout: "auth_validation_timeout",
 } as const satisfies Record<ConnectorAuthValidationStatus, ConnectorAuthOutcomeReason>
 
 function authValidationReason(
@@ -216,7 +204,7 @@ function authValidationReason(
     : fallbackAuthReasonByStatus[status]
 }
 
-/** Closed, app-safe reason facts for provider URL resolver outcomes. */
+/** Closed terminal/resumable reason projected into refresh statistics. */
 export type ConnectorProviderUrlResolverReason =
   | "authentication_failed"
   | "authentication_required"
@@ -271,7 +259,7 @@ export type ConnectorSynchronizationFailedReason =
 
 export type ConnectorSynchronizationCancelledReason = "cancelled"
 
-/** Closed connector-side refinement of Sparxie's synchronization shape. */
+/** Closed connector-side refinement of the synchronization shape. */
 export type ConnectorSynchronizationOutcome =
   | { kind: "in_progress" }
   | { kind: "failed"; reason: ConnectorSynchronizationFailedReason }
@@ -310,8 +298,9 @@ export function sanitizeConnectorSynchronization(
 
 export function sanitizeConnectorBoundaryDate(value: unknown): string {
   const candidate = typeof value === "string" ? value.slice(0, 10) : null
-  const parsed = canonicalDateOnlySchema.safeParse(candidate)
-  return parsed.success ? parsed.data : "1970-01-01"
+  return candidate !== null && isCanonicalDate(candidate)
+    ? candidate
+    : "1970-01-01"
 }
 
 export function sanitizeConnectorSynchronizationOutcome(
@@ -443,6 +432,15 @@ function nonNegativeInteger(value: unknown): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function isCanonicalDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [year, month, day] = value.split("-").map(Number)
+  const date = new Date(Date.UTC(year!, month! - 1, day!))
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month! - 1 &&
+    date.getUTCDate() === day
 }
 
 export const connectorExecutionErrorCode = "connector_execution_failed" as const

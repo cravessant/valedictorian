@@ -1,19 +1,19 @@
 {
   "name": "@sparxie/valedictorian-connectors-core",
-  "version": "0.18.2",
+  "version": "0.19.0",
   "description": "Source-agnostic connector ABI for Valedictorian job sources.",
   "author": "Keni",
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cravessant/valedictorian-connectors.git",
-    "directory": "packages/core"
+    "url": "git+https://github.com/cravessant/valedictorian.git",
+    "directory": "packages/connector-api"
   },
   "bugs": {
-    "url": "https://github.com/cravessant/valedictorian-connectors/issues"
+    "url": "https://github.com/cravessant/valedictorian/issues"
   },
-  "homepage": "https://github.com/cravessant/valedictorian-connectors#readme",
+  "homepage": "https://github.com/cravessant/valedictorian#readme",
   "keywords": [
     "connector",
     "jobs",
@@ -30,7 +30,10 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@sparxie/sdk": "0.29.0"
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",

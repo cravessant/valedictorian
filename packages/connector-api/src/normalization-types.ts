@@ -1,17 +1,7 @@
-import { sourceAdapterKinds } from "@sparxie/sdk"
+import { sourceAdapterKinds } from "./source-adapter-kinds.js"
 import type { JsonValue } from "./json.js"
 
-/**
- * Connector-owned technical normalization vocabulary.
- *
- * `@sparxie/sdk` 0.29.0 keeps these resolver/canonical shapes internal to its
- * raw-sourcing module and only publishes `FieldResolutionOutcome` and
- * `NormalizationAttempt` from the package root. The connector ABI still needs
- * the exact resolver declaration and canonical field vocabulary, so core owns
- * lifecycle-exact copies instead of importing an unexported subpath. They are
- * structurally identical to Sparxie's internal shapes; `FieldResolutionOutcome`
- * remains re-exported from `@sparxie/sdk` itself.
- */
+/** Connector-owned technical normalization vocabulary. */
 export type SourceAdapterKind = (typeof sourceAdapterKinds)[number]
 
 export const canonicalCandidateFields = [
@@ -120,3 +110,66 @@ export type CanonicalPostedAt =
       precision: Exclude<CanonicalPostedAtPrecision, "unknown">
       raw: string | null
     }
+
+
+type NormalizationField =
+  | "canonicalIdentity"
+  | "companyName"
+  | "roleTitle"
+  | "employmentType"
+  | "seniority"
+  | "workMode"
+  | "location"
+  | "destinationUrl"
+  | "sourceUrl"
+  | "providerJobId"
+  | "postedAt"
+  | "compensation"
+
+type FieldResolutionOutcomeBase = {
+  resolverId: string
+  resolverVersion: string
+  field: NormalizationField
+  inputHash: string
+  evidence?: ResolutionEvidence[]
+}
+
+export type FieldResolutionOutcome =
+  | (FieldResolutionOutcomeBase & {
+      status: "resolved"
+      value: JsonValue
+      confidence: number
+      authoritative?: boolean
+    })
+  | (FieldResolutionOutcomeBase & {
+      status: "not_applicable" | "abstained" | "blocked" | "rejected" | "failed"
+      reason: string
+    })
+  | (FieldResolutionOutcomeBase & {
+      status: "retry"
+      retry: import("./retry.js").ScheduledRetryAdvice | import("./retry.js").NotDueRetryAdvice
+    })
+  | (FieldResolutionOutcomeBase & {
+      status: "exhausted"
+      retry: import("./retry.js").ExhaustedRetryAdvice
+    })
+  | (FieldResolutionOutcomeBase & {
+      status: "cancelled"
+      retry: import("./retry.js").CancelledRetryAdvice
+    })
+  | (FieldResolutionOutcomeBase & {
+      status: "conflict"
+      reason: string
+      values: JsonValue[]
+    })
+  | (FieldResolutionOutcomeBase & {
+      status: "suppressed"
+      reason: string
+      policyVersion: string
+    })
+  | (FieldResolutionOutcomeBase & {
+      status: "locked"
+      value: JsonValue
+      reason: string
+      policyVersion: string
+    })

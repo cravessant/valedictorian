@@ -5,13 +5,12 @@ import {
   type ConnectorRefreshStatus,
   type RetryAdvice,
 } from "@sparxie/valedictorian-connectors-core"
-import { canonicalDateOnlySchema } from "@sparxie/sdk"
+import { canonicalDateOnlySchema } from "@sparxie/valedictorian-connectors-core"
 
 export type ConnectorRunCoverageWindow = {
   start: string | null
   end: string | null
 }
-
 export function sanitizeConnectorRunCoverage(
   value: unknown,
 ): ConnectorRunCoverageWindow {

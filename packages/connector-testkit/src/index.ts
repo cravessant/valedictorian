@@ -1,5 +1,9 @@
 export type { ConnectorRunCoverageWindow } from "./result-sanitizers.js"
-export { assertValidConnectorRunSummary } from "./result-validation.js"
+export {
+  sanitizeConnectorRunCoverage,
+  sanitizeConnectorRunLifecycle,
+  sanitizeRetryHints,
+} from "./result-sanitizers.js"
 export {
   createFixtureConnector,
   type FixtureConnectorOptions,

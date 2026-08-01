@@ -1,9 +1,9 @@
 import type {
   FieldResolutionOutcome,
-  SourceExecutionScopeId,
-  TransientRetryReason,
-} from "@sparxie/sdk"
-import type { ResolverDeclaration } from "./normalization-types.js"
+  ResolverDeclaration,
+} from "./normalization-types.js"
+import type { SourceExecutionScopeId } from "./source-execution.js"
+import type { TransientRetryReason } from "./retry.js"
 import type {
   ConnectorCaptureIntakeRuntime,
   ConnectorCaptureRevision,

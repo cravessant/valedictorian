@@ -42,7 +42,7 @@ describe("in-memory connector host — sanitized adapter failures", () => {
 
     expect(result).toEqual({
       status: "retryable",
-      reason: "jobright_auth_request_failed",
+      reason: "auth_validation_retryable",
     })
     expect(JSON.stringify(result)).not.toContain(secretDiagnostic)
   })
@@ -383,13 +383,13 @@ describe("in-memory connector host — sanitized adapter failures", () => {
   it.each([
     {
       id: "null-observations",
-      mutate(result: Record<string, unknown>) {
+      mutate: (result: Record<string, unknown>) => {
         result.observations = null
       },
     },
     {
       id: "throwing-status",
-      mutate(result: Record<string, unknown>) {
+      mutate: (result: Record<string, unknown>) => {
         Object.defineProperty(result, "status", {
           get() {
             throw new Error(secretDiagnostic)
@@ -399,7 +399,7 @@ describe("in-memory connector host — sanitized adapter failures", () => {
     },
     {
       id: "malformed-observation",
-      mutate(result: Record<string, unknown>) {
+      mutate: (result: Record<string, unknown>) => {
         result.observations = [{ sourceRecordKey: "fixture:incomplete" }]
       },
     },

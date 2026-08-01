@@ -10,7 +10,7 @@ import {
   sanitizeConnectorRefreshStats,
   sanitizeConnectorAuthValidationResult,
 } from "@sparxie/valedictorian-connectors-core"
-import { canonicalDateOnlySchema } from "@sparxie/sdk"
+import { canonicalDateOnlySchema } from "@sparxie/valedictorian-connectors-core"
 import { cloneJsonLike, stableJsonStringify } from "./stable-json.js"
 import {
   sanitizeConnectorRunCoverage,
@@ -333,7 +333,6 @@ export function createInMemoryConnectorHost(
     },
   }
 }
-
 function coverageBoundaryDate(value: string | null): string {
   const parsed = canonicalDateOnlySchema.safeParse(
     typeof value === "string" ? value.slice(0, 10) : null,

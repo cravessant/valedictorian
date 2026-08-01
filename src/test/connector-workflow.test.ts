@@ -54,9 +54,10 @@ describe('connector workflow dependencies', () => {
     expect(packageJson.pnpm?.overrides).toBeUndefined()
     expect(packageJson.resolutions).toBeUndefined()
     expect(packageJson).not.toHaveProperty('overrides')
-    expect(fs.readFileSync(path.resolve('pnpm-workspace.yaml'), 'utf8')).not.toMatch(
-      /^packages:/m,
-    )
+    const workspace = fs.readFileSync(path.resolve('pnpm-workspace.yaml'), 'utf8')
+    expect(workspace).toContain('- "packages/connector-api"')
+    expect(workspace).toContain('- "packages/connector-testkit"')
+    expect(workspace).not.toContain('packages/*')
     expect(lockfile).not.toMatch(/^overrides:/m)
     // Patches are allowed only as security backports into transitive packaging
     // dependencies; no connector or @sparxie package may be altered locally.
