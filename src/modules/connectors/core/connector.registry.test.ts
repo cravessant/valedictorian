@@ -62,8 +62,8 @@ describe('connector registry', () => {
 
     expect(appPackage.dependencies['@sparxie/sdk']).toBe('0.36.0')
     expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.19.0')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe(
-      'workspace:0.19.1',
+    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-core']).toBe(
+      'workspace:*',
     )
     expect(
       appPackage.devDependencies['@sparxie/valedictorian-connectors-test-harness'],
