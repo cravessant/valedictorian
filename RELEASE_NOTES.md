@@ -12,10 +12,11 @@ Applications. Capture completion exits are state-aware, destinations use their
 canonical URL representation, and Jobright destination outcomes are presented
 with precise next actions.
 
-The app consumes `@sparxie/sdk@0.36.0` and vendors
-`@sparxie/valedictorian-cli@0.1.0-alpha.20`, including the current lifecycle
-pagination contract. Connector requests and definitions are admitted through
-their canonical schemas without retired aliases or compatibility paths.
+The app consumes `@sparxie/sdk@0.36.0` and composes
+`@sparxie/valedictorian-cli@0.1.0-alpha.20` from its imported workspace source,
+including the current lifecycle pagination contract. Connector requests and
+definitions are admitted through their canonical schemas without retired
+aliases or compatibility paths.
 
 Release confidence now includes deterministic isolated validation, a CLI/UI
 development proof, Electron-native geometry coverage, packaged PGlite restart

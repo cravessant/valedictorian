@@ -48,7 +48,7 @@ describe('web toolchain contract', () => {
     const packageJson = readPackageJson()
     const ciWorkflow = fs.readFileSync(path.resolve('.github/workflows/ci.yml'), 'utf8')
 
-    expect(packageJson.scripts?.test).toBe('vitest run')
+    expect(packageJson.scripts?.test).toBe('vitest run && pnpm run test:cli')
     expect(JSON.stringify(packageJson.scripts)).not.toContain('--disable-warning')
     expect(ciWorkflow).not.toContain('--disable-warning')
   })

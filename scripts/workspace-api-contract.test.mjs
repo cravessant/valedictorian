@@ -45,7 +45,11 @@ describe('workspace client package contract', () => {
           .filter(Boolean)
           .sort()
         assert.ok(entries.length > 1)
-        assert.ok(entries.every((entry) => entry.startsWith('package/dist/') || entry === 'package/package.json'))
+        assert.ok(entries.every((entry) => (
+          entry.startsWith('package/dist/')
+          || entry === 'package/package.json'
+          || entry === 'package/LICENSE'
+        )))
         assert.ok(entries.some((entry) => entry === `package/dist/${name === 'client' ? 'generated.js' : 'index.js'}`))
         assert.ok(!entries.some((entry) => entry.includes('/src/')))
       }

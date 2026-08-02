@@ -80,7 +80,7 @@ describe('CLI/UI development proof CLI boundary', () => {
       cwd: fixture.root,
       expectedPackageSha256: fixture.packageSha256,
       manifest: validationManifest(),
-    })).toThrow(/required commit/i)
+    })).toThrow(/workspace source/i)
   })
 
   it('rejects a tampered installed CLI even when name and version still match', () => {
@@ -150,13 +150,20 @@ describe('CLI/UI development proof CLI boundary', () => {
 function cliFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-ui-dev-proof-test-'))
   temporaryDirectories.push(root)
-  const packageDirectory = path.join(
+  const packageDirectory = path.join(root, 'packages', 'cli')
+  const installedPackageDirectory = path.join(
     root,
     'node_modules',
     '@sparxie',
     'valedictorian-cli',
   )
   fs.mkdirSync(path.join(packageDirectory, 'dist'), { recursive: true })
+  fs.mkdirSync(path.dirname(installedPackageDirectory), { recursive: true })
+  fs.symlinkSync(
+    packageDirectory,
+    installedPackageDirectory,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  )
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
     devDependencies: {
       '@sparxie/valedictorian-cli': expectedCliDependency,
@@ -164,8 +171,12 @@ function cliFixture() {
   }))
   fs.writeFileSync(
     path.join(root, 'pnpm-lock.yaml'),
-    '      specifier: file:vendor/valedictorian-cli\n'
-    + '      version: file:vendor/valedictorian-cli\n',
+    'importers:\n'
+    + '  .:\n'
+    + '    devDependencies:\n'
+    + '      "@sparxie/valedictorian-cli":\n'
+    + `        specifier: ${expectedCliDependency}\n`
+    + '        version: link:packages/cli\n',
   )
   fs.writeFileSync(path.join(packageDirectory, 'package.json'), JSON.stringify({
     bin: { 'valedictorian-cli': 'dist/valedictorian.mjs' },

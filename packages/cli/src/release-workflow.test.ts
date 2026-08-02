@@ -27,12 +27,18 @@ describe('CLI release workflow', () => {
     const workflow = fs.readFileSync(ciWorkflowPath, 'utf8')
 
     expect(workflow).toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true')
-    expect(workflow).toContain('actions/checkout@v6')
-    expect(workflow).toContain('pnpm/action-setup@v6')
-    expect(workflow).toContain('actions/setup-node@v6')
-    expect(workflow).toContain('pnpm test')
-    expect(workflow).toContain('pnpm lint')
-    expect(workflow).toContain('pnpm build')
+    expect(workflow).toContain(
+      'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6',
+    )
+    expect(workflow).toContain(
+      'pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6',
+    )
+    expect(workflow).toContain(
+      'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6',
+    )
+    expect(workflow).toContain('pnpm --filter @sparxie/valedictorian-cli run test')
+    expect(workflow).toContain('pnpm --filter @sparxie/valedictorian-cli run lint')
+    expect(workflow).toContain('pnpm --filter @sparxie/valedictorian-cli run build')
     expect(workflow).toContain(
       'types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]',
     )
@@ -43,7 +49,7 @@ describe('CLI release workflow', () => {
     expect(fs.existsSync(releaseWorkflowPath)).toBe(false)
   })
 
-  it('publishes the CLI package to npm from the private repository', () => {
+  it('prepares the CLI package for npm publication from the product repository', () => {
     expect(fs.existsSync(publishWorkflowPath)).toBe(true)
 
     const workflow = fs.readFileSync(publishWorkflowPath, 'utf8')
@@ -54,17 +60,23 @@ describe('CLI release workflow', () => {
     expect(workflow).toContain('contents: read')
     expect(workflow).toContain('id-token: write')
     expect(workflow).toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true')
-    expect(workflow).toContain('actions/checkout@v6')
-    expect(workflow).toContain('pnpm/action-setup@v6')
-    expect(workflow).toContain('actions/setup-node@v6')
+    expect(workflow).toContain(
+      'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6',
+    )
+    expect(workflow).toContain(
+      'pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6',
+    )
+    expect(workflow).toContain(
+      'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6',
+    )
     expect(workflow).toContain('registry-url: https://registry.npmjs.org')
     expect(workflow).not.toContain('corepack enable')
     expect(workflow).toContain('pnpm install --frozen-lockfile')
     expect(workflow).toContain('Verify release tag')
-    expect(workflow).toContain('pnpm lint')
-    expect(workflow).toContain('pnpm test')
-    expect(workflow).toContain('pnpm build')
-    expect(workflow).toContain('pnpm pack --dry-run')
+    expect(workflow).toContain('pnpm --filter @sparxie/valedictorian-cli run lint')
+    expect(workflow).toContain('pnpm --filter @sparxie/valedictorian-cli run test')
+    expect(workflow).toContain('pnpm --filter @sparxie/valedictorian-cli run build')
+    expect(workflow).toContain('pnpm --dir packages/cli pack --dry-run')
     expect(workflow).toContain('Resolve npm dist-tag')
     expect(workflow).toContain('packageJson.version.match(/-(alpha|beta|rc)\\./)')
     expect(workflow).toContain('NPM_DIST_TAG')

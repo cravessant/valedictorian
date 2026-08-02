@@ -2,6 +2,11 @@ import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
+import {
+  expectedCliCommit,
+  expectedCliPackageSha256,
+  expectedCliVersion,
+} from '../electron/cli-ui-dev-proof-cli'
 import { cliUiDevProofLaunch } from './cli-ui-dev-proof-launch'
 import { installElectronNativeUiProofSignalForwarding } from './electron-native-ui-proof-process'
 
@@ -70,12 +75,11 @@ function hasPinnedCli(value: unknown) {
     actual
     && typeof actual === 'object'
     && 'version' in actual
-    && actual.version === '0.1.0-alpha.20'
+    && actual.version === expectedCliVersion
     && 'commit' in actual
-    && actual.commit === 'd576ebfa84119e809666faac668ccd33b5fa3946'
+    && actual.commit === expectedCliCommit
     && 'packageSha256' in actual
-    && actual.packageSha256
-      === 'sha256:bce852c571c7f9bcdefdaa1de2eba6d5369fffe419c0129d39bcc9f6cb3b052b',
+    && actual.packageSha256 === expectedCliPackageSha256,
   )
 }
 

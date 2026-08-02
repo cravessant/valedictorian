@@ -1,8 +1,0 @@
-minimumReleaseAgeExclude:
-  - sparxie
-  - '@sparxie/*'
-
-allowBuilds:
-  esbuild: false
-  lefthook: true
-  sparxie: true

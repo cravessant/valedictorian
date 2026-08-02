@@ -24,13 +24,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 26.5.0
           registry-url: https://registry.npmjs.org
@@ -40,6 +40,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify release tag
+        working-directory: packages/cli
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs'
@@ -54,19 +55,20 @@ jobs:
           NODE
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm --filter @sparxie/valedictorian-cli run lint
 
       - name: Test
-        run: pnpm test
+        run: pnpm --filter @sparxie/valedictorian-cli run test
 
       - name: Build
-        run: pnpm build
+        run: pnpm --filter @sparxie/valedictorian-cli run build
 
       - name: Verify package contents
-        run: pnpm pack --dry-run
+        run: pnpm --dir packages/cli pack --dry-run
 
       - name: Resolve npm dist-tag
         id: npm-dist-tag
+        working-directory: packages/cli
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs'
@@ -80,6 +82,7 @@ jobs:
           NODE
 
       - name: Publish
+        working-directory: packages/cli
         env:
           NPM_DIST_TAG: ${{ steps.npm-dist-tag.outputs.tag }}
         run: |

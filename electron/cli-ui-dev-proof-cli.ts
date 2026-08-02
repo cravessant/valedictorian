@@ -3,12 +3,13 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { IsolatedValidationManifest } from '@sparxie/valedictorian-local-runtime/isolated-validation'
+import { load as loadYaml } from 'js-yaml'
 
 export const cliUiDevProofCompanyName = 'Validation Company CLI Proof'
 export const expectedCliCommit = 'd576ebfa84119e809666faac668ccd33b5fa3946'
-export const expectedCliDependency = 'file:vendor/valedictorian-cli'
+export const expectedCliDependency = 'workspace:0.1.0-alpha.20'
 export const expectedCliPackageSha256 =
-  'sha256:bce852c571c7f9bcdefdaa1de2eba6d5369fffe419c0129d39bcc9f6cb3b052b'
+  'sha256:479bf7e1ea29ed03bee5beb17e1e9078b20a6cdf1515a8933c534195b9ece2c9'
 export const expectedCliVersion = '0.1.0-alpha.20'
 
 const cliOutputLimit = 32_768
@@ -222,13 +223,25 @@ function resolvePinnedCli(cwd: string, expectedPackageSha256: string) {
   )
   const devDependencies = objectValue(dependency.devDependencies, 'application devDependencies')
   if (devDependencies['@sparxie/valedictorian-cli'] !== expectedCliDependency) {
-    throw new Error('The repository-controlled CLI dependency does not match the required commit.')
+    throw new Error('The repository-controlled CLI dependency is not the required workspace source.')
   }
-  const lockfile = fs.readFileSync(path.join(cwd, 'pnpm-lock.yaml'), 'utf8')
+  const lockfile = objectValue(
+    loadYaml(fs.readFileSync(path.join(cwd, 'pnpm-lock.yaml'), 'utf8')),
+    'pnpm lockfile',
+  )
+  const importers = objectValue(lockfile.importers, 'pnpm lockfile importers')
+  const rootImporter = objectValue(importers['.'], 'pnpm root importer')
+  const lockedDevDependencies = objectValue(
+    rootImporter.devDependencies,
+    'pnpm root devDependencies',
+  )
+  const lockedCli = objectValue(
+    lockedDevDependencies['@sparxie/valedictorian-cli'],
+    'pnpm CLI dependency',
+  )
   if (
-    !lockfile.includes('specifier: file:vendor/valedictorian-cli')
-    || !lockfile.includes('version: file:vendor/valedictorian-cli')
-    || lockfile.includes('@sparxie/valedictorian-cli@git+')
+    lockedCli.specifier !== expectedCliDependency
+    || lockedCli.version !== 'link:packages/cli'
   ) {
     throw new Error('The repository-controlled CLI lock provenance is missing or external.')
   }
@@ -236,6 +249,10 @@ function resolvePinnedCli(cwd: string, expectedPackageSha256: string) {
   const packageDirectory = fs.realpathSync(
     path.join(cwd, 'node_modules', '@sparxie', 'valedictorian-cli'),
   )
+  const workspaceDirectory = fs.realpathSync(path.join(cwd, 'packages', 'cli'))
+  if (packageDirectory !== workspaceDirectory) {
+    throw new Error('The installed repository-controlled CLI is not the imported workspace source.')
+  }
   const packageDocument = objectValue(
     JSON.parse(fs.readFileSync(path.join(packageDirectory, 'package.json'), 'utf8')),
     'CLI package',
@@ -268,7 +285,7 @@ function resolvePinnedCli(cwd: string, expectedPackageSha256: string) {
   }
 }
 
-function hashCliPackagePayload(packageDirectory: string) {
+export function hashCliPackagePayload(packageDirectory: string) {
   const files = ['package.json', ...regularFiles(path.join(packageDirectory, 'dist'))
     .map((filePath) => path.relative(packageDirectory, filePath).split(path.sep).join('/'))]
     .sort()

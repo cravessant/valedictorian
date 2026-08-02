@@ -212,6 +212,10 @@ jobs:
         working-directory: valedictorian-app
         run: pnpm lint
 
+      - name: Test CLI workspace package
+        working-directory: valedictorian-app
+        run: pnpm run test:cli
+
       - name: Verify virtual display support
         run: command -v xvfb-run
 

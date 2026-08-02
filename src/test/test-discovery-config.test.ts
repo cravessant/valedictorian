@@ -39,7 +39,7 @@ describe('test discovery configuration', () => {
     expect(projectConfig('jsdom')?.exclude).toEqual(maintainedTestExcludes)
   })
 
-  it('keeps the standalone CLI package outside app test ownership', () => {
+  it('keeps CLI package tests under their package baseline instead of app test ownership', () => {
     expect(maintainedTestIncludes).toEqual(
       expect.not.arrayContaining(['packages/**/*.test.{ts,tsx}']),
     )
@@ -124,7 +124,7 @@ describe('test discovery configuration', () => {
       'pnpm run build:dependency-packages',
     )
     expect(dependencyBuild).toBe(
-      'pnpm run build:connector-packages && pnpm run build:workspace-server-package && pnpm --filter @sparxie/valedictorian-local-runtime run build:package && pnpm run build:workspace-dependent-packages',
+      'pnpm run build:connector-packages && pnpm run build:cli-package && pnpm run build:workspace-server-package && pnpm --filter @sparxie/valedictorian-local-runtime run build:package && pnpm run build:workspace-dependent-packages',
     )
     expect(packageJson.scripts?.pretypecheck).toBe('pnpm run build:local-runtime-package')
     expect(localRuntimePackage.scripts?.build).toBe(

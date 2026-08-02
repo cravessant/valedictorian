@@ -4,7 +4,7 @@ pre-commit:
   parallel: true
   commands:
     line-limit-policy:
-      run: pnpm run lint:line-limit-policy -- --staged
+      run: pnpm --dir ../.. run lint:line-limit-policy -- --staged
     oxlint:
       glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
       run: pnpm exec oxlint {staged_files}

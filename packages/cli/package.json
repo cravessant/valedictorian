@@ -5,6 +5,7 @@
   "author": "Sparxie",
   "license": "MIT",
   "type": "module",
+  "valedictorianSourceCommit": "d576ebfa84119e809666faac668ccd33b5fa3946",
   "packageManager": "pnpm@11.3.0",
   "engines": {
     "node": ">=22.12.0"
@@ -36,8 +37,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "lint": "pnpm run lint:line-limit-policy && oxlint . && tsc -p tsconfig.json --noEmit",
-    "lint:line-limit-policy": "node scripts/line-limit-policy.mjs",
+    "lint": "pnpm --dir ../.. run lint:line-limit-policy && oxlint . --config ../../.oxlintrc.json --report-unused-disable-directives --deny-warnings && tsc -p tsconfig.json --noEmit",
     "prepare": "pnpm build",
     "prepublishOnly": "pnpm lint && pnpm test && pnpm build",
     "prepack": "pnpm build",
@@ -54,6 +54,6 @@
     "lefthook": "2.1.10",
     "oxlint": "^1.68.0",
     "typescript": "^7.0.2",
-    "vitest": "^2.1.9"
+    "vitest": "^3.2.7"
   }
 }

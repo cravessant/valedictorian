@@ -6,8 +6,8 @@
   alpha workspaces must be recreated rather than upgraded.
 - Move lifecycle renderer state to TanStack React Query and share the proven controller mechanics
   across Jobs, Opportunities, and Applications.
-- Adopt the current Sparxie SDK and vendored Valedictorian CLI contracts, including current
-  lifecycle pagination and canonical connector admission.
+- Adopt the current Sparxie SDK and imported Valedictorian CLI workspace contracts, including
+  current lifecycle pagination and canonical connector admission.
 - Make Capture completion exits state-aware, adopt URL-only destinations, and present precise
   Jobright destination outcomes in the desktop workflow.
 - Remove retired compatibility readers, Company coverage migration, obsolete cutover scaffolding,
