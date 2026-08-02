@@ -7,10 +7,10 @@ import { load as loadYaml } from 'js-yaml'
 
 export const cliUiDevProofCompanyName = 'Validation Company CLI Proof'
 export const expectedCliCommit = 'd576ebfa84119e809666faac668ccd33b5fa3946'
-export const expectedCliDependency = 'workspace:0.1.0-alpha.20'
+export const expectedCliDependency = 'workspace:0.1.0-alpha.21'
 export const expectedCliPackageSha256 =
-  'sha256:479bf7e1ea29ed03bee5beb17e1e9078b20a6cdf1515a8933c534195b9ece2c9'
-export const expectedCliVersion = '0.1.0-alpha.20'
+  'sha256:da8f63519405a7bb5f0bf155f2204b153c0b4199dda42d3914ed546da96e85d9'
+export const expectedCliVersion = '0.1.0-alpha.21'
 
 const cliOutputLimit = 32_768
 const cliTimeoutMs = 10_000

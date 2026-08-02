@@ -43,8 +43,8 @@ describe('connector workflow dependencies', () => {
     const packageJson = readPackageJson()
 
     expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.19.0')
-    expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-core']).toBe(
-      'workspace:0.19.1',
+    expect(packageJson.dependencies['@sparxie/valedictorian-connectors-core']).toBe(
+      'workspace:*',
     )
     expect(
       packageJson.devDependencies['@sparxie/valedictorian-connectors-test-harness'],
@@ -86,13 +86,16 @@ describe('connector workflow dependencies', () => {
       const version = CONNECTOR_PACKAGE_VERSIONS[
         name as keyof typeof CONNECTOR_PACKAGE_VERSIONS
       ]
+      const specifier = name === '@sparxie/valedictorian-connectors-core'
+        ? 'workspace:*'
+        : `workspace:${version}`
       expect(connectorSpecifier(
         packageJson,
         name as (typeof CONNECTOR_PACKAGES)[number],
-      )).toBe(`workspace:${version}`)
+      )).toBe(specifier)
       expect(lockfile).toMatch(
         new RegExp(
-          `'${name}':\\n\\s+specifier: workspace:${version.replaceAll('.', '\\.')}\\n`
+          `'${name}':\\n\\s+specifier: ${specifier.replaceAll('.', '\\.').replace('*', '\\*')}\\n`
             + `\\s+version: link:${workspacePath}`,
         ),
       )
