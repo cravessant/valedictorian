@@ -21,18 +21,27 @@
     "manualGeneratedEdits": false,
     "openApiForConnectorAbi": false,
     "packageMovementAuthorized": false,
-    "implementationAuthorized": false
+    "implementationAuthorized": false,
+    "p25PackagePublicationAuthorized": true
   },
   "httpBoundaries": [
     {
       "id": "workspace",
       "ownerRepository": "cravessant/valedictorian",
-      "currentRepository": "cravessant/valedictorian-app",
+      "currentRepository": "cravessant/valedictorian",
       "authoredSchemaBoundary": "packages/workspace/server",
       "openApiArtifact": "packages/workspace/openapi/workspace.openapi.json",
       "generatedClientBoundary": "packages/workspace/client",
-      "packageIdentity": null,
-      "visibility": "private-product-workspace-package",
+      "packageIdentity": "@sparxie/valedictorian-workspace-client",
+      "publicationPackageIdentities": [
+        "@sparxie/valedictorian-workspace-server",
+        "@sparxie/valedictorian-workspace-client",
+        "@sparxie/valedictorian-workspace-conformance",
+        "@sparxie/valedictorian-local-runtime"
+      ],
+      "visibility": "public-product-npm-packages",
+      "implementationStatus": "implemented",
+      "publicationAuthorized": true,
       "producerRuntimeMayImport": [
         "workspace-authored-schemas",
         "workspace-server-implementation"
@@ -58,12 +67,13 @@
         "authentication-and-authorization-requirements"
       ],
       "currentBaseline": {
-        "contract": "@sparxie/sdk@0.36.0-handwritten-compatibility-facade",
+        "contract": "producer-owned-workspace-schema-openapi-and-generated-client",
         "operationEvidence": "architecture/workspace-authority.json",
-        "generatedPipelineExists": false,
+        "generatedPipelineExists": true,
         "implementationRisk": "regex-route-dispatch-sdk-schema-casts-and-prefix-based-ipc-allowance-must-be-replaced-without-contract-drift"
       },
-      "implementationIssue": "https://github.com/cravessant/valedictorian-app/issues/552"
+      "implementationIssue": "https://github.com/cravessant/valedictorian-app/issues/552",
+      "publicationIssue": "https://github.com/cravessant/valedictorian-app/issues/565"
     },
     {
       "id": "source",
@@ -230,7 +240,7 @@
   "connectorAbiException": {
     "id": "connector_abi",
     "ownerRepository": "cravessant/valedictorian",
-    "currentRepository": "cravessant/valedictorian-connectors",
+    "currentRepository": "cravessant/valedictorian",
     "transport": "in-process-versioned-typescript-runtime-abi",
     "openApi": false,
     "authoredContract": "zod-runtime-schemas-and-typescript-interfaces",
@@ -251,6 +261,8 @@
       "shared-service-types-through-connector-abi"
     ],
     "compatibility": "independent-semver-runtime-schema-and-declaration-conformance",
+    "publicationAuthorized": true,
+    "publicationIssue": "https://github.com/cravessant/valedictorian-app/issues/562",
     "staticJobrightIssue": "https://github.com/cravessant/valedictorian-app/issues/545",
     "dynamicLoadingIssue": "https://github.com/cravessant/valedictorian-app/issues/522"
   },
@@ -951,6 +963,11 @@
       "replace-handwritten-private-http-clients-with-generated-peer-process-clients",
       "generate-private-client-with-producer-import-prohibition",
       "prove-disposable-source-consumer"
+    ],
+    "workspaceP25": [
+      "publish-only-the-four-approved-product-package-boundaries",
+      "preserve-the-private-root-workspace",
+      "require-trusted-publisher-provenance-and-clean-registry-consumers"
     ],
     "all": [
       "do-not-create-shared-types-or-universal-sdk",

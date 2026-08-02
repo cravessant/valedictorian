@@ -9,7 +9,7 @@ Use this skill as the browser-operator protocol for an existing canonical Applic
 
 ## Current Capability Boundary
 
-- Use `applications attempts list` and `applications events list` only as diagnostics. The alpha.18 CLI cannot start, step, or complete those records.
+- Use `applications attempts list` and `applications events list` only as diagnostics. The current CLI cannot start, step, or complete those records.
 - Use `runs start|step|complete --run-type application_attempt` for agent-owned audit.
 - Use `applications update-status` only for canonical pursuit states: `active`, `submitted`, `interviewing`, `offered`, `withdrawn`, `rejected`, or `accepted`.
 - The CLI cannot persist Action Queue operational holds such as `ready_for_review` or `needs_user_info`, inspect auto-submit policy, or select a resume. Record blockers in the run and report this limitation.

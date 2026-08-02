@@ -91,9 +91,20 @@ describe('producer-owned API generation direction decision', () => {
       decision.httpBoundaries.map((boundary) => [boundary.id, boundary]),
     )
     expect(byId.workspace).toMatchObject({
-      packageIdentity: null,
-      visibility: 'private-product-workspace-package',
+      packageIdentity: '@sparxie/valedictorian-workspace-client',
+      publicationPackageIdentities: [
+        '@sparxie/valedictorian-workspace-server',
+        '@sparxie/valedictorian-workspace-client',
+        '@sparxie/valedictorian-workspace-conformance',
+        '@sparxie/valedictorian-local-runtime',
+      ],
+      visibility: 'public-product-npm-packages',
       generatedClientBoundary: 'packages/workspace/client',
+      currentRepository: 'cravessant/valedictorian',
+      implementationStatus: 'implemented',
+      publicationAuthorized: true,
+      publicationIssue:
+        'https://github.com/cravessant/valedictorian-app/issues/565',
     })
     expect(byId.source).toMatchObject({
       packageIdentity: '@valedictorian/source-client',
@@ -177,9 +188,9 @@ describe('producer-owned API generation direction decision', () => {
       ]),
     )
     expect(baselines.workspace).toEqual({
-      contract: '@sparxie/sdk@0.36.0-handwritten-compatibility-facade',
+      contract: 'producer-owned-workspace-schema-openapi-and-generated-client',
       operationEvidence: 'architecture/workspace-authority.json',
-      generatedPipelineExists: false,
+      generatedPipelineExists: true,
       implementationRisk:
         'regex-route-dispatch-sdk-schema-casts-and-prefix-based-ipc-allowance-must-be-replaced-without-contract-drift',
     })
@@ -203,6 +214,7 @@ describe('producer-owned API generation direction decision', () => {
     expect(decision.invariants).toMatchObject({
       packageMovementAuthorized: false,
       implementationAuthorized: false,
+      p25PackagePublicationAuthorized: true,
     })
   })
 
@@ -210,7 +222,7 @@ describe('producer-owned API generation direction decision', () => {
     expect(decision.connectorAbiException).toEqual({
       id: 'connector_abi',
       ownerRepository: 'cravessant/valedictorian',
-      currentRepository: 'cravessant/valedictorian-connectors',
+      currentRepository: 'cravessant/valedictorian',
       transport: 'in-process-versioned-typescript-runtime-abi',
       openApi: false,
       authoredContract: 'zod-runtime-schemas-and-typescript-interfaces',
@@ -232,6 +244,9 @@ describe('producer-owned API generation direction decision', () => {
       ],
       compatibility:
         'independent-semver-runtime-schema-and-declaration-conformance',
+      publicationAuthorized: true,
+      publicationIssue:
+        'https://github.com/cravessant/valedictorian-app/issues/562',
       staticJobrightIssue:
         'https://github.com/cravessant/valedictorian-app/issues/545',
       dynamicLoadingIssue:
@@ -417,6 +432,11 @@ describe('producer-owned API generation direction decision', () => {
     expect(decision.implementationGates.browserB01B02).toContain(
       'separate-source-facing-worker-coordinator-runner-dispatch-and-metrics-contracts',
     )
+    expect(decision.implementationGates.workspaceP25).toEqual([
+      'publish-only-the-four-approved-product-package-boundaries',
+      'preserve-the-private-root-workspace',
+      'require-trusted-publisher-provenance-and-clean-registry-consumers',
+    ])
     expect(decision.implementationGates.all).toEqual([
       'do-not-create-shared-types-or-universal-sdk',
       'do-not-move-packages-or-persistence-under-p04',

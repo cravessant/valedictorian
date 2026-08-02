@@ -142,14 +142,14 @@ importers:
         specifier: 4.2.1
         version: 4.2.1
       '@sparxie/valedictorian-cli':
-        specifier: workspace:0.1.0-alpha.20
+        specifier: workspace:0.1.0-alpha.21
         version: link:packages/cli
       '@sparxie/valedictorian-connectors-core':
-        specifier: 0.19.0
-        version: 0.19.0
+        specifier: workspace:0.19.1
+        version: link:packages/connector-api
       '@sparxie/valedictorian-connectors-test-harness':
-        specifier: 0.19.0
-        version: 0.19.0
+        specifier: workspace:0.19.1
+        version: link:packages/connector-testkit
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1
@@ -264,7 +264,7 @@ importers:
   packages/connector-testkit:
     dependencies:
       '@sparxie/valedictorian-connectors-core':
-        specifier: workspace:^0.19.0
+        specifier: workspace:^0.19.1
         version: link:../connector-api
     devDependencies:
       '@types/node':
@@ -280,8 +280,8 @@ importers:
         specifier: 0.36.0
         version: 0.36.0
       '@sparxie/valedictorian-connectors-core':
-        specifier: 0.19.0
-        version: 0.19.0
+        specifier: workspace:0.19.1
+        version: link:../connector-api
       '@sparxie/valedictorian-connectors-jobright':
         specifier: 0.19.0
         version: 0.19.0
@@ -2019,9 +2019,6 @@ packages:
   '@sparxie/valedictorian-connectors-jobright@0.19.0':
     resolution: {integrity: sha512-bkVqMAmr1Jid2OPvXyM+EVgeXK1BuH/+ePD6nGzVmCX9307HVPcSHs+DT+pcpV1F3lp35PzxoVvQLaQzzRl+wA==}
     engines: {node: '>=22.12.0'}
-
-  '@sparxie/valedictorian-connectors-test-harness@0.19.0':
-    resolution: {integrity: sha512-RBW2fzjz4fZNW637AwplI94m3qQNJ3I+YCZezT9SvN8IPnKu8v1GfcHBMq4/u3Xnhb6qEl7mDaZFT2eYvRSsOw==}
 
   '@stricli/core@1.2.7':
     resolution: {integrity: sha512-a0HxA/cSWjqHj/9GM+cfc/zGNmBdxVTQQpHIEvY1AbDEgo4ZU84cTCbtywYEQOHw2wIc6Vu+PKv+ZQoqZwkHnQ==}
@@ -5501,10 +5498,6 @@ snapshots:
       zod: 4.4.3
 
   '@sparxie/valedictorian-connectors-jobright@0.19.0':
-    dependencies:
-      '@sparxie/valedictorian-connectors-core': 0.19.0
-
-  '@sparxie/valedictorian-connectors-test-harness@0.19.0':
     dependencies:
       '@sparxie/valedictorian-connectors-core': 0.19.0
 

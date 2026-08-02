@@ -6,7 +6,8 @@
     "status": "accepted",
     "authority": "https://github.com/cravessant/valedictorian-app/issues/521#issuecomment-5151558549",
     "implementationAuthorized": false,
-    "publicationAuthorized": false
+    "publicationAuthorized": true,
+    "publicationIssue": "https://github.com/cravessant/valedictorian-app/issues/562"
   },
   "packageIdentities": {
     "api": {
@@ -160,6 +161,6 @@
       "sandbox",
       "loader-failure-codes"
     ],
-    "noImplementationOrPackageChange": true
+    "noImplementationOrPackageChangeUnderIssue521": true
   }
 }

@@ -15,6 +15,9 @@ import {
 
 export const activeWorkflowPaths = [
   '.github/workflows/ci.yml',
+  '.github/workflows/publish-cli.yml',
+  '.github/workflows/publish-connectors.yml',
+  '.github/workflows/publish-workspace.yml',
   '.github/workflows/release-mac.yml',
 ]
 

@@ -32,7 +32,7 @@ the wire.
 
 | Boundary | Authored authority | OpenAPI | Generated client | Initial consumers |
 | --- | --- | --- | --- | --- |
-| Portable workspace | `cravessant/valedictorian` `packages/workspace/server` | `packages/workspace/openapi/workspace.openapi.json` | private `packages/workspace/client` | desktop, CLI, future P11 conformance and a future real managed adapter |
+| Portable workspace | `cravessant/valedictorian` `packages/workspace/server` | `packages/workspace/openapi/workspace.openapi.json` | public `@sparxie/valedictorian-workspace-client` | desktop, CLI, workspace conformance and a future real managed adapter |
 | Source | `cravessant/valedictorian-source` server schemas | `openapi/source.openapi.json` | public `@valedictorian/source-client` when a public product consumer requires it | product Source adapter and operator dashboard |
 | Browser Runtime | `cravessant/valedictorian-browser-runtime` Pydantic/FastAPI models | `openapi/browser-runtime.openapi.json` | private `@valedictorian/browser-runtime-client` | Source only until another caller is explicitly approved |
 
@@ -43,16 +43,13 @@ Resolution and explicitly classified local-only secret/filesystem operations.
 The producer cannot split authority across a handwritten client and the server
 model.
 
-The workspace baseline remains the handwritten `@sparxie/sdk@0.36.0`
-compatibility facade. P11 authors the server schemas, preserves the complete
-P03 operation/capability/failure contract, generates the OpenAPI and client,
-and adapts the current server without moving persistence. Its real import scan
-must also eliminate producer dependence on handwritten SDK schema casts and
-route dispatch as the authored server boundary replaces them. Portable
-conformance is a future P11 artifact, not a current S02 consumer row.
-The current IPC transport's workspace-prefix allowance is not an operation
-registry; P11 must prove a route-registry/spec/client bijection and reject an
-undeclared path while retaining explicit local/private classifications.
+P11 implemented the producer-owned schemas, deterministic OpenAPI and generated
+client while preserving the P03 operation, capability and failure contract.
+P25 later authorized public npm publication of the workspace server, client,
+conformance package and local runtime without making the root workspace public.
+This later implementation does not change the original S02 consumer evidence.
+The route-registry/spec/client bijection and undeclared-path rejection remain
+required release proofs alongside explicit local/private classifications.
 
 Source currently contains tooling scaffolding but no real service command
 surface. R02 must record real project commands and routes before choosing a

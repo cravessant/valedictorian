@@ -107,9 +107,9 @@
   },
   "devDependencies": {
     "@electron/asar": "4.2.1",
-    "@sparxie/valedictorian-cli": "workspace:0.1.0-alpha.20",
-    "@sparxie/valedictorian-connectors-core": "0.19.0",
-    "@sparxie/valedictorian-connectors-test-harness": "0.19.0",
+    "@sparxie/valedictorian-cli": "workspace:0.1.0-alpha.21",
+    "@sparxie/valedictorian-connectors-core": "workspace:0.19.1",
+    "@sparxie/valedictorian-connectors-test-harness": "workspace:0.19.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

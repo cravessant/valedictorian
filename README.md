@@ -2,6 +2,39 @@
 
 Local-first desktop app for tracking job applications.
 
+## Install
+
+Install the prerelease CLI from the public npm registry:
+
+```sh
+pnpm --registry=https://registry.npmjs.org/ \
+  --config.minimumReleaseAge=0 \
+  add -g @sparxie/valedictorian-cli@alpha
+```
+
+Install the public lifecycle and application skills from this repository:
+
+```sh
+npx --yes skills add cravessant/valedictorian \
+  --global \
+  --agent codex \
+  --skill valedictorian-cli \
+  --skill valedictorian-application-agent \
+  --yes
+```
+
+The product also publishes these npmjs package boundaries:
+
+- `@sparxie/valedictorian-connectors-core`
+- `@sparxie/valedictorian-connectors-test-harness`
+- `@sparxie/valedictorian-workspace-server`
+- `@sparxie/valedictorian-workspace-client`
+- `@sparxie/valedictorian-workspace-conformance`
+- `@sparxie/valedictorian-local-runtime`
+
+Use [GitHub Issues](https://github.com/cravessant/valedictorian/issues) for
+package and product defects.
+
 ## Workspaces
 
 All workspace data lives in the selected folder:
@@ -78,3 +111,8 @@ or a `v*` tag:
 git tag v0.1.0-alpha.1
 git push origin v0.1.0-alpha.1
 ```
+
+Signed desktop downloads and checksums are published on
+[GitHub Releases](https://github.com/cravessant/valedictorian/releases).
+Package publishers, tag namespaces, migration canaries, and promotion commands
+are documented in [`RELEASING.md`](RELEASING.md).

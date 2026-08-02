@@ -56,9 +56,24 @@ function listTypeScriptFiles(directory: string): string[] {
 }
 
 describe('@sparxie/valedictorian-local-runtime boundary', () => {
-  it('declares the private independently buildable package identity', () => {
+  it('declares the public independently buildable package identity', () => {
     expect(manifest.name).toBe(architecture.package.name)
-    expect(manifest.private).toBe(architecture.package.private)
+    expect(manifest.private).not.toBe(true)
+    expect(architecture.package.private).toBe(false)
+    expect(manifest.license).toBe('MIT')
+    expect(manifest.homepage).toBe('https://github.com/cravessant/valedictorian#readme')
+    expect(manifest.bugs).toEqual({
+      url: 'https://github.com/cravessant/valedictorian/issues',
+    })
+    expect(manifest.publishConfig).toEqual({
+      access: 'public',
+      registry: 'https://registry.npmjs.org/',
+    })
+    expect(manifest.repository).toEqual({
+      type: 'git',
+      url: 'git+https://github.com/cravessant/valedictorian.git',
+      directory: 'packages/local-runtime',
+    })
     expect(architecture.package.independentlyBuildable).toBe(true)
     expect(architecture.package.path).toBe('packages/local-runtime')
     expect(manifest.dependencies).toEqual(expect.objectContaining({

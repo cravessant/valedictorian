@@ -20,7 +20,7 @@ valedictorian-cli context
 valedictorian-cli --help
 ```
 
-From the `valedictorian-cli` repository:
+From a `cravessant/valedictorian` product checkout:
 
 ```sh
 pnpm install --frozen-lockfile

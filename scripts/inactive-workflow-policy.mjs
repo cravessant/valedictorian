@@ -16,7 +16,6 @@ export { reviewedActionPins, reviewedActionVersions }
 
 export const inactiveWorkflowPaths = [
   'packages/cli/.github/workflows/ci.yml',
-  'packages/cli/.github/workflows/publish.yml',
 ]
 
 const inactiveReviewedActionFamilies = new Set([

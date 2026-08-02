@@ -38,6 +38,12 @@
         "packages/cli",
         "packages/connector-api",
         "packages/connector-testkit"
+      ],
+      "p25PublicPackageDestinations": [
+        "packages/workspace/server",
+        "packages/workspace/client",
+        "packages/workspace/conformance",
+        "packages/local-runtime"
       ]
     },
     {

@@ -6,7 +6,7 @@
   "package": {
     "name": "@sparxie/valedictorian-local-runtime",
     "path": "packages/local-runtime",
-    "private": true,
+    "private": false,
     "independentlyBuildable": true
   },
   "ownedSource": [

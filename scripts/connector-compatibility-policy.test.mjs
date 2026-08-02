@@ -9,7 +9,7 @@ const adrPath = path.join(repositoryRoot, 'architecture/connector-compatibility-
 const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
 
 describe('connector compatibility and support policy', () => {
-  it('records the accepted #521 decision without authorizing implementation or publication', () => {
+  it('records the accepted #521 decision and later P22 publication gate', () => {
     expect(policy.schemaVersion).toBe(1)
     expect(policy.decision).toEqual({
       id: 'connector-api-compatibility-and-support',
@@ -18,7 +18,9 @@ describe('connector compatibility and support policy', () => {
       authority:
         'https://github.com/cravessant/valedictorian-app/issues/521#issuecomment-5151558549',
       implementationAuthorized: false,
-      publicationAuthorized: false,
+      publicationAuthorized: true,
+      publicationIssue:
+        'https://github.com/cravessant/valedictorian-app/issues/562',
     })
     expect(fs.readFileSync(adrPath, 'utf8')).toContain(
       '[#521](https://github.com/cravessant/valedictorian-app/issues/521)',
@@ -193,7 +195,7 @@ describe('connector compatibility and support policy', () => {
         'sandbox',
         'loader-failure-codes',
       ],
-      noImplementationOrPackageChange: true,
+      noImplementationOrPackageChangeUnderIssue521: true,
     })
   })
 })

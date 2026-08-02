@@ -24,7 +24,8 @@ If installing the npm package while Valedictorian is still in alpha, install the
 pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g @sparxie/valedictorian-cli@alpha
 ```
 
-When working from the `valedictorian-cli` repository, use the local build instead:
+When working from a `cravessant/valedictorian` product checkout, use the local
+build instead:
 
 ```sh
 pnpm build
@@ -33,7 +34,10 @@ node dist/valedictorian.js doctor
 
 Commands default to human-readable output. Use `--json` when another tool, script, or agent needs structured diagnostics or record fields. Workspace-scoped commands require `--workspace <id-or-name>`; the flag may be placed before the command or on the command itself. Only root commands such as `doctor`, `context`, `workspaces list`, and `workspaces open/create` are workspace-neutral. If the API URL is not local, state the sanitized target URL and wait for clear user intent before changing data.
 
-The lifecycle commands require the alpha.18 command surface. If `captures`, `jobs`, and `opportunities` are absent from root help, stop and report that the installed CLI predates lifecycle parity; do not substitute legacy sourcing commands.
+The lifecycle commands require the `0.1.0-alpha.21` command surface. If
+`captures`, `jobs`, and `opportunities` are absent from root help, stop and
+report that the installed CLI predates lifecycle parity; do not substitute
+legacy sourcing commands.
 
 ## Lifecycle Model
 
@@ -48,8 +52,8 @@ The normal progression is `captures promote-to-job` → `jobs promote-to-opportu
 
 1. Locate the CLI:
    - Prefer an installed `valedictorian-cli` binary when available.
-   - In the CLI repo, run `pnpm build` if `dist/` may be stale, then use `node dist/valedictorian.js`.
-   - Run `valedictorian-cli doctor --workspace <id-or-name>` or `node dist/valedictorian.js doctor --workspace <id-or-name>` before the first API operation in a new environment when a workspace is known.
+   - In a source checkout, run the CLI package build if `dist/` may be stale, then use `node packages/cli/dist/valedictorian.js`.
+   - Run `valedictorian-cli doctor --workspace <id-or-name>` or `node packages/cli/dist/valedictorian.js doctor --workspace <id-or-name>` before the first API operation in a new environment when a workspace is known.
    - Run `valedictorian-cli context` to print the API target and workspace discovery state without mutating anything.
    - Run `--help` on the nearest command before unfamiliar commands.
 2. Configure the API environment:
