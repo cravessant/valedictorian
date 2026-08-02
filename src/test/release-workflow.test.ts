@@ -33,10 +33,18 @@ describe('Mac release workflow', () => {
     expect(workflow).toContain('runs-on: blacksmith-6vcpu-macos-latest')
     expect(workflow).toContain('retention-days: 1')
     expect(workflow).not.toContain('retention-days: 7')
-    expect(workflow).toContain('actions/checkout@v6')
-    expect(workflow).toContain('pnpm/action-setup@v6')
-    expect(workflow).toContain('actions/setup-node@v6')
-    expect(workflow).toContain('actions/upload-artifact@v7')
+    expect(workflow).toContain(
+      'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6',
+    )
+    expect(workflow).toContain(
+      'pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6',
+    )
+    expect(workflow).toContain(
+      'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6',
+    )
+    expect(workflow).toContain(
+      'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7',
+    )
     expect(workflow).toContain('pnpm install --frozen-lockfile')
     expect(workflow).toContain('Verify release tag')
     expect(workflow).toContain('Release tag ${actualTag} does not match package version ${expectedTag}')
@@ -168,7 +176,9 @@ describe('Mac release workflow', () => {
     const buildMacJob = workflow.slice(workflow.indexOf('build-mac:'))
 
     expect(verifyJob).toContain('cache: pnpm')
-    expect(buildMacJob).toContain('actions/setup-node@v6')
+    expect(buildMacJob).toContain(
+      'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6',
+    )
     expect(buildMacJob).not.toContain('cache: pnpm')
     expect(buildMacJob).not.toContain('cache-dependency-path:')
   })

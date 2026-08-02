@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
+  approvedSelectedActionPatterns,
   reviewedActionPins,
   reviewedActionVersions,
 } from './workflow-action-pins.mjs'
@@ -12,43 +13,43 @@ import {
   workflowUsesMatchCanonicalLines,
 } from './workflow-uses.mjs'
 
-export { reviewedActionPins, reviewedActionVersions }
-
-export const inactiveWorkflowPaths = [
-  'packages/cli/.github/workflows/ci.yml',
-  'packages/cli/.github/workflows/publish.yml',
+export const activeWorkflowPaths = [
+  '.github/workflows/ci.yml',
+  '.github/workflows/release-mac.yml',
 ]
 
-const inactiveReviewedActionFamilies = new Set([
-  'actions/checkout',
-  'actions/setup-node',
-  'pnpm/action-setup',
-])
+export { approvedSelectedActionPatterns }
 
-const actionUsePattern = /^\s*uses:\s*([^@\s#]+)@([^\s#]+)(?:\s+#\s*(\S+))?\s*$/
+const actionUsePattern = /^\s*(?:-\s*)?uses:\s*([^@\s#]+)@([^\s#]+)(?:\s+#\s*(\S+))?\s*$/
+const staticActionIdentifierPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const workflowFilePattern = /\.ya?ml$/
+const approvedSelectedActionFamilies = new Set(
+  approvedSelectedActionPatterns.map((pattern) => pattern.slice(0, -2)),
+)
 
-export function findInactiveWorkflowPolicyViolations({
+export function findActiveWorkflowPolicyViolations({
   discoveredPaths,
   workflows,
 }) {
   const violations = []
-  if (JSON.stringify(discoveredPaths) !== JSON.stringify(inactiveWorkflowPaths)) {
-    violations.push('inactive workflow inventory does not match the reviewed CLI workflow set')
+  const observedActionFamilies = new Set()
+  if (JSON.stringify(discoveredPaths) !== JSON.stringify(activeWorkflowPaths)) {
+    violations.push('active workflow inventory does not match the reviewed workflow set')
   }
 
-  for (const workflowPath of inactiveWorkflowPaths) {
+  for (const workflowPath of activeWorkflowPaths) {
     const source = workflows.get(workflowPath)
     if (source === undefined) {
-      violations.push(`${workflowPath}: reviewed inactive workflow is missing`)
+      violations.push(`${workflowPath}: reviewed active workflow is missing`)
       continue
     }
+
     const structuralUses = inventoryWorkflowUses(source)
     for (const problem of structuralUses.problems) {
       violations.push(`${workflowPath}: ${problem}`)
     }
     const usesLines = bindCanonicalWorkflowUses(
-      findWorkflowUsesLines(source, /^\s*uses:/),
+      findWorkflowUsesLines(source, /^\s*(?:-\s*)?uses:/),
       structuralUses.scalarUseOffsets,
       actionUsePattern,
     )
@@ -62,34 +63,49 @@ export function findInactiveWorkflowPolicyViolations({
     if (usesLines.length === 0) {
       violations.push(`${workflowPath}: workflow contains no reviewed action uses`)
     }
-    for (const { match } of usesLines) {
+
+    for (const { line, number } of usesLines) {
+      const match = actionUsePattern.exec(line)
       if (!match) {
-        violations.push(`${workflowPath}: action use must have a full SHA and version comment`)
+        violations.push(`${workflowPath}:${number}: action use must have a full SHA and version comment`)
         continue
       }
       const [, action, revision, versionComment] = match
-      if (!inactiveReviewedActionFamilies.has(action)) {
-        violations.push(`${workflowPath}: ${action} is not in the reviewed action allowlist`)
+      if (!staticActionIdentifierPattern.test(action)) {
+        violations.push(`${workflowPath}:${number}: action identifier must be static owner/name`)
         continue
       }
+      observedActionFamilies.add(action)
       const reviewedRevision = reviewedActionPins.get(action)
-      if (revision !== reviewedRevision) {
-        violations.push(`${workflowPath}: ${action} does not use its reviewed full commit SHA`)
+      if (!approvedSelectedActionFamilies.has(action)) {
+        violations.push(`${workflowPath}:${number}: ${action} is not in the selected action allowlist`)
+      }
+      if (reviewedRevision === undefined) {
+        violations.push(`${workflowPath}:${number}: ${action} is not in the reviewed action allowlist`)
+      } else if (revision !== reviewedRevision) {
+        violations.push(`${workflowPath}:${number}: ${action} does not use its reviewed full commit SHA`)
       }
       if (!/^[0-9a-f]{40}$/.test(revision)) {
-        violations.push(`${workflowPath}: ${action} is not pinned to a full lowercase commit SHA`)
+        violations.push(`${workflowPath}:${number}: ${action} is not pinned to a full lowercase commit SHA`)
       }
       const reviewedVersion = reviewedActionVersions.get(action)
       if (versionComment !== reviewedVersion) {
-        violations.push(`${workflowPath}: ${action} must retain the reviewed ${reviewedVersion} comment`)
+        violations.push(`${workflowPath}:${number}: ${action} must retain the reviewed ${reviewedVersion} comment`)
       }
     }
+  }
+  if (!setsEqual(observedActionFamilies, approvedSelectedActionFamilies)) {
+    violations.push('active workflow action families do not match the selected action allowlist')
   }
   return violations
 }
 
-export function readInactiveWorkflowState(root = process.cwd()) {
-  const discoveredPaths = listWorkflowFiles(path.join(root, 'packages'))
+function setsEqual(left, right) {
+  return left.size === right.size && [...left].every((value) => right.has(value))
+}
+
+export function readActiveWorkflowState(root = process.cwd()) {
+  const discoveredPaths = listWorkflowFiles(path.join(root, '.github', 'workflows'))
     .map((filePath) => repositoryPath(root, filePath))
     .sort()
   return {
@@ -106,11 +122,7 @@ function listWorkflowFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(directory, entry.name)
     if (entry.isDirectory()) return listWorkflowFiles(entryPath)
-    return entry.isFile()
-      && entryPath.includes(`${path.sep}.github${path.sep}workflows${path.sep}`)
-      && workflowFilePattern.test(entry.name)
-      ? [entryPath]
-      : []
+    return entry.isFile() && workflowFilePattern.test(entry.name) ? [entryPath] : []
   })
 }
 
@@ -119,7 +131,7 @@ function repositoryPath(root, filePath) {
 }
 
 function run() {
-  const violations = findInactiveWorkflowPolicyViolations(readInactiveWorkflowState())
+  const violations = findActiveWorkflowPolicyViolations(readActiveWorkflowState())
   for (const violation of violations) process.stderr.write(`${violation}\n`)
   if (violations.length > 0) process.exitCode = 1
 }
