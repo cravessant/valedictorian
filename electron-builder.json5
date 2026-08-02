@@ -17,7 +17,13 @@
   "files": [
     "dist",
     "dist-electron",
-    "node_modules/@electric-sql/pglite/**/*"
+    "node_modules/@electric-sql/pglite/**/*",
+    "!node_modules/@sparxie/valedictorian-local-runtime/src{,/**/*}",
+    "!node_modules/@sparxie/valedictorian-local-runtime/tsconfig.build.json",
+    "!node_modules/@sparxie/valedictorian-local-runtime/vitest.config.ts",
+    "!node_modules/@sparxie/valedictorian-workspace-server/src{,/**/*}",
+    "!node_modules/@sparxie/valedictorian-workspace-server/tsconfig.build.json",
+    "!node_modules/@sparxie/valedictorian-workspace-server/WIRE-SCHEMA.md"
   ],
   "extraResources": [
     {

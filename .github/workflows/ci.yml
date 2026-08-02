@@ -308,6 +308,10 @@ jobs:
             throw "Expected one configured NSIS installer; found $($installers.Count)"
           }
 
+      - name: Verify packaged declared-source closure
+        working-directory: valedictorian-app
+        run: pnpm run proof:packaged-declared-sources
+
       - name: Inspect Windows assets and verify PGlite restart
         if: runner.os == 'Windows'
         working-directory: valedictorian-app
