@@ -1,6 +1,9 @@
 packages:
   - "packages/connector-api"
   - "packages/connector-testkit"
+  - "packages/workspace/server"
+  - "packages/workspace/client"
+  - "packages/workspace/conformance"
 
 minimumReleaseAgeExclude:
   - '@sparxie/*'

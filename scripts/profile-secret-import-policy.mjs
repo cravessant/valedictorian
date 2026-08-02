@@ -218,7 +218,10 @@ export function listStagedPolicyPaths() {
  * @returns {PolicyFile[]}
  */
 function readIndexPolicyFile(filePath) {
-  const result = spawnSync('git', ['show', `:${filePath}`], { encoding: 'utf8' })
+  const result = spawnSync('git', ['show', `:${filePath}`], {
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  })
   if (result.error) throw result.error
   if (result.status !== 0) return []
   return [{ path: filePath, source: result.stdout }]

@@ -64,7 +64,10 @@ export function listStagedPolicyPaths() {
  * @returns {PolicyFile[]}
  */
 function readIndexPolicyFile(filePath) {
-  const result = spawnSync('git', ['show', `:${filePath}`], { encoding: 'utf8' })
+  const result = spawnSync('git', ['show', `:${filePath}`], {
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  })
   if (result.error) throw result.error
   // A path absent from the index is reported by its absence rather than by
   // failing the run, so a staged deletion of the root configuration surfaces as

@@ -68,6 +68,9 @@ importers:
       '@sparxie/valedictorian-connectors-jobright':
         specifier: 0.19.0
         version: 0.19.0
+      '@sparxie/valedictorian-workspace-server':
+        specifier: workspace:0.1.0
+        version: link:packages/workspace/server
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@6.4.3(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
@@ -236,6 +239,46 @@ importers:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
+
+  packages/workspace/client:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/workspace/conformance:
+    dependencies:
+      '@sparxie/valedictorian-workspace-client':
+        specifier: workspace:0.1.0
+        version: link:../client
+      '@sparxie/valedictorian-workspace-server':
+        specifier: workspace:0.1.0
+        version: link:../server
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(lightningcss@1.32.0)(tsx@4.22.4)
+
+  packages/workspace/server:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
 packages:
 

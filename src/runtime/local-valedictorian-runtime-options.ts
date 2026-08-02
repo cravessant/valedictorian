@@ -9,8 +9,11 @@ import type { UuidV7Generator } from '../db/uuidv7'
 import type { ProfileService } from '../modules/profile/public'
 import type { SecretCodec, SecretService } from '../modules/secrets/public'
 import type { LocalScheduledWorkSource } from '../modules/scheduling/public'
+import type { WorkspaceAuthorityAdmissionController } from '@sparxie/valedictorian-workspace-server'
 
 export interface LocalValedictorianClientOptions {
+  /** Shared authority fence for direct, HTTP, scheduler, and maintenance mutations. */
+  authorityAdmissionController?: WorkspaceAuthorityAdmissionController
   /** Caller-owned, already-migrated shared workspace database. */
   database: PgliteDatabase
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle

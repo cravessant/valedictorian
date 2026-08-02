@@ -1,0 +1,34 @@
+{
+  "name": "@sparxie/valedictorian-workspace-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Producer-owned workspace HTTP schemas and deterministic generation.",
+  "type": "module",
+  "files": ["dist"],
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./generator": {
+      "types": "./dist/generator.d.ts",
+      "import": "./dist/generator.js"
+    },
+    "./route-registry": {
+      "types": "./dist/contract.d.ts",
+      "import": "./dist/contract.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && cp src/released-sdk-schemas.json dist/released-sdk-schemas.json",
+    "generate": "tsx src/generate.ts",
+    "check:generated": "tsx src/generate.ts && git diff --exit-code -- packages/workspace/openapi/workspace.openapi.json packages/workspace/client/src/generated.ts",
+    "prepack": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.22.4",
+    "typescript": "^7.0.2"
+  }
+}

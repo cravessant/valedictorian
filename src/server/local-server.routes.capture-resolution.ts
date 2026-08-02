@@ -3,6 +3,7 @@ import {
   captureResolutionListInputSchema,
   completeCaptureManuallyInputSchema,
   completeCaptureManuallyV2InputSchema,
+  correctCaptureResolutionInputSchema,
   replayCaptureRevisionInputSchema,
   retryCaptureProcessingInputSchema,
 } from '@sparxie/sdk'
@@ -40,12 +41,16 @@ export async function handleCaptureResolutionRoutes(input: {
     return true
   }
   const match = requestUrl.pathname.match(
-    /^\/v[12]\/capture-resolution\/captures\/([^/]+)(?:\/(retry|replay|completion))?$/,
+    /^\/v[12]\/capture-resolution\/captures\/([^/]+)(?:\/(retry|replay|correction|completion))?$/,
   )
   if (!match) return false
   const captureId = decodeURIComponent(match[1]!)
   const action = match[2]
-  if (action && request.method === 'POST') {
+  if (
+    action
+    && ((request.method === 'POST' && action !== 'correction')
+      || (request.method === 'PATCH' && action === 'correction'))
+  ) {
     if (version === 'v2' && action !== 'completion') return false
     const body = await readJsonBody(request)
     const requestInput = { ...(body as Record<string, unknown>), captureId }
@@ -62,6 +67,11 @@ export async function handleCaptureResolutionRoutes(input: {
       }
       const parsed = parseLocalHttpInput(() => completeCaptureManuallyInputSchema.parse(requestInput))
       writeJson(response, 200, await client.captureResolution.complete(parsed))
+      return true
+    }
+    if (action === 'correction') {
+      const parsed = parseLocalHttpInput(() => correctCaptureResolutionInputSchema.parse(requestInput))
+      writeJson(response, 200, await client.captureResolution.correct(parsed))
       return true
     }
     const parsed = parseLocalHttpInput(() => replayCaptureRevisionInputSchema.parse(requestInput))

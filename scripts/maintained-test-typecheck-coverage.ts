@@ -7,6 +7,7 @@ export const maintainedTestRoots = [
   'electron',
   'packages/connector-api',
   'packages/connector-testkit',
+  'packages/workspace',
   'scripts',
   'src',
 ] as const

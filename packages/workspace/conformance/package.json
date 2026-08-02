@@ -1,0 +1,29 @@
+{
+  "name": "@sparxie/valedictorian-workspace-conformance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Maintained direction, generation, and consumer proofs for the workspace contract.",
+  "type": "module",
+  "files": ["dist"],
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build"
+  },
+  "peerDependencies": {
+    "@sparxie/valedictorian-workspace-client": "workspace:0.1.0",
+    "@sparxie/valedictorian-workspace-server": "workspace:0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.7"
+  }
+}

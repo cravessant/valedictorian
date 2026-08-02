@@ -25,6 +25,7 @@ describe('test discovery configuration', () => {
       'electron/**/*.test.{ts,tsx}',
       'packages/connector-api/**/*.test.{ts,tsx}',
       'packages/connector-testkit/**/*.test.{ts,tsx}',
+      'packages/workspace/**/*.test.{ts,tsx}',
       'scripts/**/*.test.{ts,mjs}',
       'src/**/*.test.{ts,tsx}',
     ])
@@ -46,6 +47,7 @@ describe('test discovery configuration', () => {
     const testsProjectSource = fs.readFileSync(path.resolve('tsconfig.tests.json'), 'utf8')
     expect(testsProjectSource).toContain('packages/connector-api')
     expect(testsProjectSource).toContain('packages/connector-testkit')
+    expect(testsProjectSource).toContain('packages/workspace')
     expect(testsProjectSource).not.toContain('"packages",')
     expect(testsProjectSource).not.toContain('packages/cli')
 
@@ -54,7 +56,7 @@ describe('test discovery configuration', () => {
     }
     const lintScript = packageJson.scripts?.lint ?? ''
     expect(lintScript).toContain(
-      'oxlint electron packages/connector-api packages/connector-testkit scripts src vite.config.ts',
+      'oxlint electron packages/connector-api packages/connector-testkit packages/workspace/server packages/workspace/client packages/workspace/conformance scripts src vite.config.ts',
     )
     expect(lintScript).not.toContain('oxlint .')
     expect(lintScript).not.toContain('packages/cli')
@@ -107,10 +109,10 @@ describe('test discovery configuration', () => {
     expect(packageJson.scripts?.['build:connector-packages']).toContain(
       '@sparxie/valedictorian-connectors-test-harness',
     )
-    expect(packageJson.scripts?.pretest).toBe('pnpm run build:connector-packages')
-    expect(packageJson.scripts?.['pretest:watch']).toBe('pnpm run build:connector-packages')
+    expect(packageJson.scripts?.pretest).toBe('pnpm run build:connector-packages && pnpm run build:workspace-packages')
+    expect(packageJson.scripts?.['pretest:watch']).toBe('pnpm run build:connector-packages && pnpm run build:workspace-packages')
     expect(packageJson.scripts?.['pretypecheck:tests']).toBe(
-      'pnpm run build:connector-packages',
+      'pnpm run build:connector-packages && pnpm run build:workspace-packages',
     )
     expect(workflow.indexOf('pnpm run build:connector-packages')).toBeGreaterThan(-1)
     expect(workflow.indexOf('pnpm exec vitest run --shard')).toBeGreaterThan(

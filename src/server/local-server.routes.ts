@@ -38,6 +38,13 @@ import {
   handleHttpRequestError,
   type ValedictorianHttpRequestErrorLogger,
 } from './local-server.error-boundary'
+import {
+  assertWorkspaceRouterCoverage,
+  createWorkspaceFailure,
+  findWorkspaceRoute,
+  isDeclaredWorkspacePath,
+} from '@sparxie/valedictorian-workspace-server'
+import { workspaceAuthorityAdmissionForClient } from '../runtime/workspace-authority-admission'
 
 function buildLocalCapabilities(
   connectorScheduling: ConnectorSchedulingCapability,
@@ -83,14 +90,17 @@ export async function handleRequest({
     ?? new URL(request.url ?? '/', 'http://127.0.0.1').pathname
   try {
     const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
+    const declaredWorkspaceRoute = findWorkspaceRoute(requestUrl.pathname, request.method)
     const isLocalSecretResolveRoute = isLocalSecretResolvePath(requestUrl.pathname)
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/health') {
+      assertWorkspaceRouterCoverage(declaredWorkspaceRoute, true)
       writeJson(response, 200, { ok: true })
       return
     }
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/capabilities') {
+      assertWorkspaceRouterCoverage(declaredWorkspaceRoute, true)
       writeJson(
         response,
         200,
@@ -120,6 +130,7 @@ export async function handleRequest({
     }
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/workspaces') {
+      assertWorkspaceRouterCoverage(declaredWorkspaceRoute, true)
       if (!workspaceManager) {
         writeJson(response, 404, { message: 'Workspace registry is unavailable' })
         return
@@ -130,6 +141,7 @@ export async function handleRequest({
     }
 
     if (request.method === 'POST' && requestUrl.pathname === '/v1/workspaces/open') {
+      assertWorkspaceRouterCoverage(declaredWorkspaceRoute, true)
       if (!workspaceManager) {
         writeJson(response, 404, { message: 'Workspace registry is unavailable' })
         return
@@ -148,6 +160,7 @@ export async function handleRequest({
     }
 
     if (request.method === 'POST' && requestUrl.pathname === '/v1/workspaces/create') {
+      assertWorkspaceRouterCoverage(declaredWorkspaceRoute, true)
       if (!workspaceManager) {
         writeJson(response, 404, { message: 'Workspace registry is unavailable' })
         return
@@ -185,7 +198,12 @@ export async function handleRequest({
       request.url = `/v${workspaceMatch[1]}${workspaceMatch[3]}${requestUrl.search}`
 
       try {
-        await handleRequest({
+        const workspaceRoute = findWorkspaceRoute(
+          new URL(request.url, 'http://127.0.0.1').pathname,
+          request.method,
+        )
+        const admission = workspaceAuthorityAdmissionForClient(workspaceClient)
+        const dispatch = () => handleRequest({
           client: workspaceClient,
           connectorScheduling,
           localSecretResolutionEnabled,
@@ -196,6 +214,21 @@ export async function handleRequest({
           token,
           workspaceScoped: true,
         })
+        if (
+          admission?.mode === 'portable'
+          && workspaceRoute
+          && isMutationOperationClass(workspaceRoute.operationClass)
+        ) {
+          await admission.runWithContext({
+            authorityEpoch: readAuthorityEpoch(request.headers['x-workspace-authority-epoch']),
+            idempotencyKey: readHeader(request.headers['idempotency-key']),
+            operation: workspaceRoute.operationId,
+            requestFingerprint: readHeader(request.headers['x-request-fingerprint']),
+            workspaceId: decodeURIComponent(workspaceMatch[2]),
+          }, dispatch)
+        } else {
+          await dispatch()
+        }
       } finally {
         request.url = originalUrl
       }
@@ -209,6 +242,30 @@ export async function handleRequest({
         return
       }
       writeJson(response, 404, { message: 'Not found' })
+      return
+    }
+
+    if (
+      workspaceScoped
+      && !declaredWorkspaceRoute
+    ) {
+      if (isLocalSecretResolvePath(pathname)) {
+        writeNoStoreJson(response, 404, { message: 'Not found' })
+      } else {
+        writeJson(response, 404, { message: 'Not found' })
+      }
+      return
+    }
+
+    if (request.method === 'GET' && requestUrl.pathname === '/v1/receipts/by-idempotency-key') {
+      writeJson(
+        response,
+        409,
+        createWorkspaceFailure(
+          'capability_unsupported',
+          'Durable receipt lookup is unavailable on this v1 local authority.',
+        ),
+      )
       return
     }
 
@@ -443,6 +500,9 @@ export async function handleRequest({
       return
     }
 
+    if (declaredWorkspaceRoute) {
+      assertWorkspaceRouterCoverage(declaredWorkspaceRoute, false)
+    }
     writeJson(response, 404, { message: 'Not found' })
   } catch (error) {
     handleHttpRequestError({
@@ -457,13 +517,25 @@ export async function handleRequest({
 }
 
 function isDomainRoute(pathname: string) {
-  const isV1DomainRoute = /^\/v1\/(applications|captures|capture-resolution|companies|jobs|opportunities|action-queue|connector-descriptors|connectors|policy|profile|runs|scores|secrets)(?:\/|$)/.test(
-    pathname,
-  )
-  return isV1DomainRoute || /^\/v2\/capture-resolution(?:\/|$)/.test(pathname)
+  return isDeclaredWorkspacePath(pathname)
 }
 
 export function isLocalSecretResolvePath(pathname: string) {
   return pathname === '/v1/secrets/local/resolve'
     || /^\/v1\/workspaces\/[^/]+\/secrets\/local\/resolve$/.test(pathname)
+}
+
+function isMutationOperationClass(operationClass: string): boolean {
+  return operationClass === 'authoritative_execution'
+    || operationClass === 'authoritative_mutation'
+    || operationClass === 'secret_administration'
+}
+
+function readHeader(value: string | readonly string[] | undefined): string {
+  return typeof value === 'string' ? value : value?.[0] ?? ''
+}
+
+function readAuthorityEpoch(value: string | readonly string[] | undefined): number {
+  const epoch = Number(readHeader(value))
+  return Number.isSafeInteger(epoch) && epoch >= 0 ? epoch : Number.NaN
 }

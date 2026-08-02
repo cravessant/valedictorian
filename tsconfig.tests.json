@@ -12,6 +12,7 @@
     "electron",
     "packages/connector-api",
     "packages/connector-testkit",
+    "packages/workspace",
     "scripts",
     "src",
     "vite.config.ts"

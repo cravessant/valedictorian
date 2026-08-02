@@ -60,6 +60,11 @@ import {
   createWorkspaceSecretMethods,
 } from './local-profile-secret-client'
 import { assertSeedOptions, seedLocalData } from './local-valedictorian-seeding'
+import { WorkspaceAuthorityAdmissionController } from '@sparxie/valedictorian-workspace-server'
+import {
+  guardLocalValedictorianClient,
+  guardScheduledWorkSource,
+} from './workspace-authority-admission'
 export type {
   LocalValedictorianClientOptions,
   ValedictorianSeedDataMode,
@@ -92,6 +97,7 @@ const unavailableSecretCodec: SecretCodec = {
   },
 }
 export async function createLocalValedictorianClient({
+  authorityAdmissionController,
   database,
   connectorRunRecovery,
   connectorRegistry = createDefaultLocalConnectorRegistry(),
@@ -112,6 +118,12 @@ export async function createLocalValedictorianClient({
   workspaceId = 'local-workspace',
 }: LocalValedictorianClientOptions): Promise<LocalValedictorianClient> {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
+  const admission = authorityAdmissionController
+    ?? new WorkspaceAuthorityAdmissionController({ workspaceId })
+  admission.admit('internal.workspace.initialize', {}, 'internal')
+  const registerAdmittedScheduledWorkSource = (source: Parameters<
+    NonNullable<typeof registerScheduledWorkSource>
+  >[0]) => registerScheduledWorkSource?.(guardScheduledWorkSource(source, admission))
   const connectorScheduling = resolveConnectorSchedulingCapability(connectorSchedulingOption)
   const openedAt = now().toISOString()
   await database.insert(workspaces).values({
@@ -220,7 +232,9 @@ export async function createLocalValedictorianClient({
     sourceExecutionGovernor,
     workspaceId,
   })
-  for (const source of connectorWorkspace.scheduledWorkSources) registerScheduledWorkSource?.(source)
+  for (const source of connectorWorkspace.scheduledWorkSources) {
+    registerAdmittedScheduledWorkSource(source)
+  }
   const lifecycle = createLocalLifecycleMethods(database, {
     workspaceId,
     now,
@@ -302,7 +316,7 @@ export async function createLocalValedictorianClient({
     workspaceId,
     now,
   })
-  registerScheduledWorkSource?.(createScheduledWorkSource({
+  registerAdmittedScheduledWorkSource(createScheduledWorkSource({
     id: 'normalization',
     repository: normalizationRepository,
     execute: (work) => normalizationExecutor(work),
@@ -313,7 +327,7 @@ export async function createLocalValedictorianClient({
     state: captureDestination,
     execute: (context, signal) => connectorWorkspace.resolveProviderDestination(context, signal),
   })
-  registerScheduledWorkSource?.(createScheduledWorkSource({
+  registerAdmittedScheduledWorkSource(createScheduledWorkSource({
     id: 'capture_destination_resolution',
     repository: destinationRepository,
     execute: (work, signal) => destinationExecutor(work, signal),
@@ -352,5 +366,5 @@ export async function createLocalValedictorianClient({
   } else {
     await recoverInterruptedRuns()
   }
-  return client
+  return guardLocalValedictorianClient(client, admission)
 }

@@ -28,6 +28,7 @@ import {
   writeNoStoreJson,
 } from './local-server.http'
 import { LocalWorkspaceConflictError } from './local-workspaces'
+import { WorkspaceProtocolError } from '@sparxie/valedictorian-workspace-server'
 
 const invalidConnectorOverviewCursorBody = Object.freeze({
   code: 'invalid_connector_overview_cursor',
@@ -164,6 +165,10 @@ function mapKnownHttpFailure(
 } | undefined {
   const pathname = normalizeWorkspaceScopedPath(context.pathname)
   const code = readStringProperty(error, 'code')
+
+  if (error instanceof WorkspaceProtocolError) {
+    return { body: error.failure, statusCode: error.failure.httpStatus }
+  }
 
   // The lifecycle facade renders its own fixed, non-leaking `{status, body}` at the composition
   // boundary (404/409/400/500); surface it verbatim.

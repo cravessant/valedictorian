@@ -1,3 +1,5 @@
+import { findWorkspaceRoute } from '@sparxie/valedictorian-workspace-server/route-registry'
+
 export type ValedictorianHttpTransportRequest = {
   body?: string | null
   headers?: Record<string, string>
@@ -133,7 +135,7 @@ function assertAllowedValedictorianHttpRoute(
   encodedWorkspaceId: string,
 ) {
   if (pathname === '/v1/capabilities') {
-    if (method !== 'GET') {
+    if (!findWorkspaceRoute(pathname, method)) {
       throw new ValedictorianHttpTransportError(
         'Valedictorian HTTP transport only allows GET for capabilities.',
       )
@@ -141,32 +143,22 @@ function assertAllowedValedictorianHttpRoute(
     return
   }
 
-  const workspacePrefix = `/v1/workspaces/${encodedWorkspaceId}`
-  if (pathname !== workspacePrefix && !pathname.startsWith(`${workspacePrefix}/`)) {
+  const version = pathname.startsWith('/v2/') ? 'v2' : 'v1'
+  const workspacePrefix = `/${version}/workspaces/${encodedWorkspaceId}`
+  if (!pathname.startsWith(`${workspacePrefix}/`)) {
     throw new ValedictorianHttpTransportError(
       'Valedictorian HTTP transport path is not allowed for the active workspace.',
     )
   }
 
-  const relativePath = pathname === workspacePrefix
-    ? ''
-    : pathname.slice(workspacePrefix.length + 1)
+  const relativePath = pathname.slice(workspacePrefix.length + 1)
 
   assertDeniedLocalSecretResolveRoute(relativePath)
-
-  if (relativePath.startsWith('connectors/')) {
-    const afterConnectors = relativePath.slice('connectors/'.length)
-    const connectorSeparator = afterConnectors.indexOf('/')
-    if (connectorSeparator !== -1) {
-      const connectorResourcePath = afterConnectors.slice(connectorSeparator + 1)
-      if (
-        connectorResourcePath === 'schedule'
-        || connectorResourcePath.startsWith('schedule/')
-      ) {
-        assertAllowedConnectorScheduleRoute(connectorResourcePath, method)
-        return
-      }
-    }
+  const route = findWorkspaceRoute(`/${version}/${relativePath}`, method)
+  if (!route || route.localOnly) {
+    throw new ValedictorianHttpTransportError(
+      'Valedictorian HTTP transport route is not declared for the active workspace.',
+    )
   }
 }
 
@@ -179,30 +171,6 @@ function assertDeniedLocalSecretResolveRoute(relativePath: string) {
       'Valedictorian HTTP transport local secret resolution is not allowed.',
     )
   }
-}
-
-function assertAllowedConnectorScheduleRoute(schedulePath: string, method: string) {
-  if (schedulePath === 'schedule') {
-    if (method !== 'GET' && method !== 'PUT' && method !== 'DELETE') {
-      throw new ValedictorianHttpTransportError(
-        'Valedictorian HTTP transport schedule method is not allowed.',
-      )
-    }
-    return
-  }
-
-  if (schedulePath === 'schedule/pause' || schedulePath === 'schedule/resume') {
-    if (method !== 'POST') {
-      throw new ValedictorianHttpTransportError(
-        'Valedictorian HTTP transport schedule action method is not allowed.',
-      )
-    }
-    return
-  }
-
-  throw new ValedictorianHttpTransportError(
-    'Valedictorian HTTP transport schedule subroute is not allowed.',
-  )
 }
 
 function normalizeAllowedMethod(method: string) {

@@ -1,4 +1,5 @@
 import { transferableAbortController } from 'node:util'
+import { workspaceRouteRegistry } from '@sparxie/valedictorian-workspace-server'
 import { describe, expect, it, vi } from 'vitest'
 import {
   createPrivilegedValedictorianFetch,
@@ -18,6 +19,30 @@ import {
 } from './valedictorian-http.preload'
 
 describe('Valedictorian HTTP transport boundary', () => {
+  it('keeps IPC admission bijective with portable registry method/path pairs', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }))
+    const transport = createValedictorianHttpTransport({
+      apiBaseUrl: 'https://api.valedictorian.test',
+      fetchImplementation: fetchMock as typeof fetch,
+      workspaceId: 'ws-1',
+    })
+    const portable = workspaceRouteRegistry.filter((route) =>
+      !['health.get', 'capabilities.get', 'workspaces.list', 'workspaces.open', 'workspaces.create']
+        .includes(route.operationId),
+    )
+    for (const route of portable) {
+      const concrete = route.path.replace(/\{[^}]+\}/g, 'fixture')
+      const scoped = concrete.replace(/^\/(v[12])/, '/$1/workspaces/ws-1')
+      const call = transport.request({ method: route.method, url: `https://api.valedictorian.test${scoped}` })
+      if (route.localOnly) {
+        await expect(call).rejects.toBeInstanceOf(ValedictorianHttpTransportError)
+      } else {
+        await expect(call).resolves.toMatchObject({ status: 200 })
+      }
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(portable.filter((route) => !route.localOnly).length)
+  })
+
   it('allows root capabilities and exact active-workspace schedule calls with main-side auth', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = new Request(input, init)
@@ -118,7 +143,7 @@ describe('Valedictorian HTTP transport boundary', () => {
     })).rejects.toBeInstanceOf(ValedictorianHttpTransportError)
   })
 
-  it('allows only GET capabilities and exact schedule management routes while rejecting forbidden schedule subroutes', async () => {
+  it('allows exact registry routes while rejecting undeclared path and method pairs', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', {
       headers: { 'content-type': 'application/json' },
       status: 200,
@@ -137,8 +162,12 @@ describe('Valedictorian HTTP transport boundary', () => {
       { method: 'DELETE', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule' },
       { method: 'POST', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/pause', body: '{}' },
       { method: 'POST', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/resume', body: '{}' },
+      { method: 'POST', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/dispatch-due', body: '{}' },
+      { method: 'GET', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/audit' },
+      { method: 'GET', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/occurrences' },
       { method: 'GET', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/applications' },
       { method: 'POST', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/runs', body: '{}' },
+      { method: 'GET', url: 'https://api.valedictorian.test/v2/workspaces/ws-1/capture-resolution/captures' },
     ] as const
 
     for (const request of allowed) {
@@ -153,9 +182,8 @@ describe('Valedictorian HTTP transport boundary', () => {
       { method: 'POST', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule', body: '{}' },
       { method: 'PATCH', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule', body: '{}' },
       { method: 'GET', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/pause' },
-      { method: 'POST', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/dispatch-due', body: '{}' },
-      { method: 'GET', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/audit' },
-      { method: 'GET', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/occurrences' },
+      { method: 'PUT', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/applications', body: '{}' },
+      { method: 'GET', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/not-in-registry' },
       { method: 'GET', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/extra' },
       { method: 'GET', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/extra/nested' },
       { method: 'POST', url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule/pause/extra', body: '{}' },
