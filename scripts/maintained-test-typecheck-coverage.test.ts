@@ -41,6 +41,7 @@ describe('maintained test type-check coverage', () => {
       'electron/windows/window.test.tsx',
       'packages/connector-api/src/contract.test.ts',
       'packages/connector-testkit/src/host.test.ts',
+      'packages/cli/src/standalone.test.ts',
       'scripts/policy.test.ts',
       'src/app/App.test.tsx',
       'src/app/App.tsx',
@@ -140,7 +141,16 @@ describe('maintained test type-check coverage', () => {
     const discovered = discoverMaintainedTests()
 
     expect(discovered.length).toBeGreaterThan(0)
-    expect(maintainedTestRoots).toEqual(['electron', 'packages', 'scripts', 'src'])
+    expect(maintainedTestRoots).toEqual([
+      'electron',
+      'packages/connector-api',
+      'packages/connector-testkit',
+      'scripts',
+      'src',
+    ])
+    expect(discovered).toEqual(
+      expect.not.arrayContaining(['packages/cli/src/standalone.test.ts']),
+    )
     expect(findUncoveredMaintainedTests(discovered, listProgramFiles())).toEqual([])
   }, 120_000)
 })

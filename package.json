@@ -19,7 +19,7 @@
     "build": "pnpm run typecheck && vite build && electron-builder",
     "build:mac": "vite build && electron-builder --mac --publish never",
     "build:connector-packages": "pnpm --filter @sparxie/valedictorian-connectors-core run build && pnpm --filter @sparxie/valedictorian-connectors-test-harness run build",
-    "lint": "pnpm run typecheck && pnpm run typecheck:tests && pnpm run peers:check && pnpm run audit:high && pnpm run lint:line-limit-policy && pnpm run lint:profile-secret-import-policy && pnpm run architecture:check && pnpm run lint:source-execution-ownership && pnpm run lint:connector-row-flow && pnpm run inspect:pglite-runtime && oxlint . --react-plugin --type-aware --report-unused-disable-directives --deny-warnings",
+    "lint": "pnpm run typecheck && pnpm run typecheck:tests && pnpm run peers:check && pnpm run audit:high && pnpm run lint:line-limit-policy && pnpm run lint:profile-secret-import-policy && pnpm run architecture:check && pnpm run lint:source-execution-ownership && pnpm run lint:connector-row-flow && pnpm run inspect:pglite-runtime && oxlint electron packages/connector-api packages/connector-testkit scripts src vite.config.ts --react-plugin --type-aware --report-unused-disable-directives --deny-warnings",
     "audit:high": "pnpm run proof:brace-expansion-patch && pnpm audit --audit-level high",
     "proof:brace-expansion-patch": "node scripts/brace-expansion-patch-proof.mjs",
     "architecture:check": "node scripts/architecture-check.mjs",

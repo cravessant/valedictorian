@@ -8,6 +8,13 @@
     "allowJs": true,
     "checkJs": false
   },
-  "include": ["electron", "packages", "scripts", "src", "vite.config.ts"],
+  "include": [
+    "electron",
+    "packages/connector-api",
+    "packages/connector-testkit",
+    "scripts",
+    "src",
+    "vite.config.ts"
+  ],
   "exclude": []
 }

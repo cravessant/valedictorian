@@ -23,7 +23,8 @@ describe('test discovery configuration', () => {
   it('limits discovery to maintained test roots', () => {
     expect(maintainedTestIncludes).toEqual([
       'electron/**/*.test.{ts,tsx}',
-      'packages/**/*.test.{ts,tsx}',
+      'packages/connector-api/**/*.test.{ts,tsx}',
+      'packages/connector-testkit/**/*.test.{ts,tsx}',
       'scripts/**/*.test.{ts,mjs}',
       'src/**/*.test.{ts,tsx}',
     ])
@@ -34,6 +35,29 @@ describe('test discovery configuration', () => {
       ...jsdomTestIncludes,
     ])
     expect(projectConfig('jsdom')?.exclude).toEqual(maintainedTestExcludes)
+  })
+
+  it('keeps the standalone CLI package outside app test ownership', () => {
+    expect(maintainedTestIncludes).toEqual(
+      expect.not.arrayContaining(['packages/**/*.test.{ts,tsx}']),
+    )
+    expect(maintainedTestIncludes.some((pattern) => pattern.includes('packages/cli'))).toBe(false)
+
+    const testsProjectSource = fs.readFileSync(path.resolve('tsconfig.tests.json'), 'utf8')
+    expect(testsProjectSource).toContain('packages/connector-api')
+    expect(testsProjectSource).toContain('packages/connector-testkit')
+    expect(testsProjectSource).not.toContain('"packages",')
+    expect(testsProjectSource).not.toContain('packages/cli')
+
+    const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as {
+      scripts?: Record<string, string>
+    }
+    const lintScript = packageJson.scripts?.lint ?? ''
+    expect(lintScript).toContain(
+      'oxlint electron packages/connector-api packages/connector-testkit scripts src vite.config.ts',
+    )
+    expect(lintScript).not.toContain('oxlint .')
+    expect(lintScript).not.toContain('packages/cli')
   })
 
   it('owns every maintained test through exactly one environment project', () => {
