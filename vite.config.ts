@@ -9,7 +9,8 @@ import { rendererManualChunk } from './scripts/renderer-chunk-policy'
 export const mainExternals = ['@electric-sql/pglite', 'undici']
 export const maintainedTestIncludes = [
   'electron/**/*.test.{ts,tsx}',
-  'packages/**/*.test.{ts,tsx}',
+  'packages/connector-api/**/*.test.{ts,tsx}',
+  'packages/connector-testkit/**/*.test.{ts,tsx}',
   'scripts/**/*.test.{ts,mjs}',
   'src/**/*.test.{ts,tsx}',
 ]
