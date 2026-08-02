@@ -264,7 +264,7 @@ importers:
         specifier: 9.0.2
         version: 9.0.2(typescript@7.0.2)
       drizzle-orm:
-        specifier: ^0.45.2
+        specifier: 0.45.2
         version: 0.45.2(@electric-sql/pglite@0.5.4)
       env-paths:
         specifier: 4.0.0

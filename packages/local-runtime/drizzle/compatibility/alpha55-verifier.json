@@ -1,0 +1,23 @@
+{
+  "baselineSha256": "c918d88b8b4d97b2e97e222c7ed3c1fa68de4a6ea26027fd6d480dc90992669d",
+  "bundleSha256": "2c1a423b0509802a8029863f821a79cb87aacaa0528ca27e76d5cff2c96fd52e",
+  "drizzleJournalSha256": "b687eb1eb87e0fb742882558206d675fc689c9ac2afebfc05106dad43eaac708",
+  "drizzleVersion": "0.45.2",
+  "pgliteRuntimeSha256": {
+    "initdb.wasm": "aa134fde5c96733ff9ab9644f409d9337ae7b3f42a66914a4dad2beec03824df",
+    "pglite.data": "e39943c245ec32c36ed89bd5000229c8f3874983db93b7081d949155aaefaebf",
+    "pglite.wasm": "a20a37e2eb30553ae44f728001f0ead1b32cdcd53ab21f81fa2117b2947ef599"
+  },
+  "pgliteVersion": "0.5.4",
+  "runtimeTag": "v0.1.0-alpha.55",
+  "sourceFilesSha256": {
+    "src/db/pglite-runtime-assets.ts": "6589f09b7133143e990eada8924bcfe3c79e7055816db219efd809e07f1c1f67",
+    "src/db/pglite.ts": "7ea99694eba4e3b49ec727cc86b4e35d1f6ca25c9f2e8afc54dac7fa6d9b1e0c",
+    "src/db/schema.ts": "c9c5c9eafc75f67d63522103db082606be8abc49bb5e041d18751826f4804977",
+    "src/db/workspaces.schema.ts": "4eaa2bdb37a83d3ae50ccc1aca3c38e8fbe95fa9d8fb32002385c4a3d38f6757",
+    "src/modules/capture/capture.schema.ts": "19160166633d3a75c2d52a1149d80974cb160bf507dff53ef4881b66c6f50b11"
+  },
+  "sourceTreeSha256": "ecc38e31999fd90b954af642db6129187077e84f",
+  "version": 1,
+  "workspaceVersion": 1
+}

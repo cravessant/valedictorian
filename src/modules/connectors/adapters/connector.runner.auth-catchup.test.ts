@@ -567,6 +567,8 @@ describe.sequential('connector runner', () => {
   it('redacts overlapping secret values longest-first before persisting connector results', async () => {
     const { database, repository } = await createConnectorRepositoryTestContext()
     const secretService = createPgliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
+    const shortSecret = 'overlap-secret-canary-7f4a'
+    const longSecret = `${shortSecret}-extended`
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
@@ -599,18 +601,18 @@ describe.sequential('connector runner', () => {
           }),
           stats: {
             observations: 0,
-            copiedValue: 'abc123',
+            copiedValue: longSecret,
             unrelatedMetadataId: 'connector-run-1233-not-a-secret',
           },
           warnings: [
             {
-              code: 'fixture.abc123.leak',
-              message: 'leaked abc123',
+              code: 'fixture.overlap-secret.leak',
+              message: `leaked ${longSecret}`,
             },
           ],
           nextCheckpoint: {
             checkpoint: {
-              copiedValue: 'abc123',
+              copiedValue: longSecret,
             },
             schemaVersion: 'fixture-checkpoint@1',
           },
@@ -622,13 +624,13 @@ describe.sequential('connector runner', () => {
       key: 'short_key',
       kind: 'token',
       label: 'Short key',
-      value: 'abc',
+      value: shortSecret,
     })
     await secretService.upsert({
       key: 'long_key',
       kind: 'token',
       label: 'Long key',
-      value: 'abc123',
+      value: longSecret,
     })
     await runner.registerInstance({
       id: 'connector-instance-overlap-secret',
@@ -676,8 +678,8 @@ describe.sequential('connector runner', () => {
     }])
     const persisted = JSON.stringify({ checkpoint, persistedRun })
     expect(persisted).toContain('[redacted-secret]')
-    expect(persisted).not.toContain('abc123')
-    expect(persisted).not.toContain('abc')
+    expect(persisted).not.toContain(longSecret)
+    expect(persisted).not.toContain(shortSecret)
   })
 
   it('returns missing secret-backed grants without exposing persistence to connectors', async () => {

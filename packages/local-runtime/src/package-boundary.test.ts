@@ -79,6 +79,7 @@ describe('@sparxie/valedictorian-local-runtime boundary', () => {
       './job-edge-contract',
       './lifecycle',
       './local-client',
+      './migration-recovery',
       './pglite',
       './policy',
       './profile',

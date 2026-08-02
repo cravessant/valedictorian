@@ -46,6 +46,10 @@
       "types": "./dist/workspace-runtime.d.ts",
       "import": "./dist/workspace-runtime.js"
     },
+    "./migration-recovery": {
+      "types": "./dist/migration-recovery.d.ts",
+      "import": "./dist/migration-recovery.js"
+    },
     "./connectors": {
       "types": "./dist/modules/connectors/public.d.ts",
       "import": "./dist/modules/connectors/public.js"
@@ -556,7 +560,7 @@
     "@sparxie/valedictorian-connectors-jobright": "0.19.0",
     "@sparxie/valedictorian-workspace-server": "workspace:0.1.0",
     "cosmiconfig": "9.0.2",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "0.45.2",
     "env-paths": "4.0.0",
     "jsonc-parser": "3.3.1",
     "pathe": "2.0.3",
