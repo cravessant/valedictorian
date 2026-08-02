@@ -16,12 +16,12 @@
 import { describe, expect, it } from 'vitest'
 import { and, eq, isNull } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { createPgliteCaptureService, type CaptureService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { createPgliteJobIdentityService } from '../job/job.identity'
-import { jobCaptureEvidenceReferences, jobExternalIdentities } from '../job/job.schema'
-import { createLifecycleJobOrchestration, type JobEvidenceReferenceInput } from './job.orchestration'
+import { createPgliteJobIdentityService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.identity'
+import { jobCaptureEvidenceReferences, jobExternalIdentities } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import { createLifecycleJobOrchestration, type JobEvidenceReferenceInput } from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/job.orchestration'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

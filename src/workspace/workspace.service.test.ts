@@ -2,13 +2,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { createFileWorkspaceRegistryStore } from './workspace.registry'
-import { initializeWorkspace } from './workspace.initializer'
+import { createFileWorkspaceRegistryStore } from '@sparxie/valedictorian-local-runtime/workspace-files'
+import { initializeWorkspace } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import {
   createWorkspaceService,
   resolveWorkspaceLaunchState,
   resolveInitialWorkspace,
-} from './workspace.service'
+} from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 function createTempPath(prefix: string) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix))

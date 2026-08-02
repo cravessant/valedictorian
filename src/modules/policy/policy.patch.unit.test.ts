@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { admitPolicyConfigPatch, policyConfigPatchViolation, unsupportedPolicyConfigField } from './policy.patch'
+import { admitPolicyConfigPatch, policyConfigPatchViolation, unsupportedPolicyConfigField } from '@sparxie/valedictorian-local-runtime/testing/modules/policy/policy.patch'
 
 describe('policy config patch admission', () => {
   it('admits canonical sections', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConnectorRendererSchema } from '@sparxie/sdk'
-import { validateConnectorSchemaValue } from './connector.renderer-schema-validation'
+import { validateConnectorSchemaValue } from '@sparxie/valedictorian-local-runtime/connectors'
 
 describe('connector renderer schema validation', () => {
   const dateSchema = {

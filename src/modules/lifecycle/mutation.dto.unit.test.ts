@@ -10,12 +10,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import { captureMutationResultSchema, lifecycleBlockerCodes } from '@sparxie/sdk'
-import { toCaptureResource, type CaptureHeadRow } from '../capture/capture.dto'
+import { toCaptureResource, type CaptureHeadRow } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.dto'
 import {
   classifyMutationFailure,
   toBlockedMutationResult,
   toSucceededMutationResult,
-} from './mutation.dto'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/mutation.dto'
 
 const head: CaptureHeadRow = {
   id: 'cap-1',

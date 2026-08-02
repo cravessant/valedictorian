@@ -8,7 +8,7 @@ import type {
   JobCompanyAssignmentPresentation,
   ManualCompanyResolution,
 } from '@sparxie/sdk'
-import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
+import type { LocalWorkspaceClientV2 } from '@sparxie/valedictorian-local-runtime/local-client'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,10 +30,10 @@ import {
 } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/use-toast'
 import { JobCompanyReassignmentModal } from '@/modules/workspace-resources/JobCompanyReassignmentModal'
-import { jobFactsTiming } from '../job/job.timing'
+import { jobFactsTiming } from '@sparxie/valedictorian-local-runtime/job-edge-contract'
 import type { CaptureCompletionIntent } from './configs/capture-config'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from './lifecycle-actor'
-import { validateDestinationUrl } from '../capture/destination-url-safety'
+import { validateDestinationUrl } from '@sparxie/valedictorian-local-runtime/capture-edge-contract'
 import { CaptureDestinationOutcome } from './CaptureDestinationOutcome'
 
 export interface CaptureCompletionCompanySelection {

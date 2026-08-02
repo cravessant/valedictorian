@@ -6,36 +6,36 @@ import {
   type JobId,
 } from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
-import { workspaces } from '../../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { assignInitialCompanyOn } from '../company/company.assignment.service'
+import { assignInitialCompanyOn } from '@sparxie/valedictorian-local-runtime/testing/modules/company/company.assignment.service'
 import {
   jobCompanyAssignments,
   workspaceCompanies,
-} from '../company/company.schema'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/company/company.schema'
 import {
   createPgliteJobIdentityService,
   type JobIdentityService,
-} from '../job/job.identity'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.identity'
 import {
   jobCaptureEvidenceReferences,
   jobExternalIdentities,
   jobHistory,
   jobs,
-} from '../job/job.schema'
-import type { JobFailure } from '../job/job.service'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import type { JobFailure } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
 import {
   createPgliteJobPromotion,
   type JobPromotionService,
-} from '../lifecycle/capture-to-job.promotion'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/capture-to-job.promotion'
 import {
   captureResolutionCommandReceipts,
   captureResolutionGenerations,
   captureResolutionStageResults,
-} from './capture.schema'
-import { createManualCaptureCompletionService } from './capture.manual-completion'
-import { createPgliteCaptureService } from './capture.service'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.schema'
+import { createManualCaptureCompletionService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.manual-completion'
+import { createPgliteCaptureService } from '@sparxie/valedictorian-local-runtime/capture'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const WORKSPACE = 'manual-completion-workspace'

@@ -8,8 +8,8 @@ import { declaredTables, misplacedTableCalls } from './architecture-state-resolu
 export const STATE_OWNERSHIP_MANIFEST = 'architecture/state-ownership.json'
 
 /** Where a capability-owned declaration must live, and where it must not (#328). */
-export const CAPABILITY_DECLARATION_ROOT = 'src/modules'
-export const PLATFORM_DECLARATION_ROOT = 'src/db'
+export const CAPABILITY_DECLARATION_ROOT = 'packages/local-runtime/src/modules'
+export const PLATFORM_DECLARATION_ROOT = 'packages/local-runtime/src/db'
 
 const ownerNamePattern = /^[a-z][a-z0-9-]*$/
 const ownerKinds = new Set(['capability', 'platform'])
@@ -121,7 +121,11 @@ function findManifestShapeViolations(root, manifest) {
  */
 function isModuleDirectory(root, candidate) {
   const segments = candidate.split('/')
-  if (segments.length !== 3 || `${segments[0]}/${segments[1]}` !== CAPABILITY_DECLARATION_ROOT) {
+  const capabilitySegments = CAPABILITY_DECLARATION_ROOT.split('/')
+  if (
+    segments.length !== capabilitySegments.length + 1
+    || segments.slice(0, capabilitySegments.length).join('/') !== CAPABILITY_DECLARATION_ROOT
+  ) {
     return false
   }
   const absolutePath = path.join(root, candidate)
@@ -131,12 +135,12 @@ function isModuleDirectory(root, candidate) {
 /**
  * Shape rules for both roots an owner can name.
  *
- * `module` is the capability root and is pinned to `src/modules/<owner>`. That is not
+ * `module` is the capability root and is pinned to `packages/local-runtime/src/modules/<owner>`. That is not
  * a new convention: the rest of the check already reads exactly this identity, since
  * `observedStateAccess` and the cross-capability purpose predicate both compare an
  * owner's name against the module directory a path belongs to. Leaving the field free
  * to name any existing path let it be widened to the whole module root, after which
- * every declaration anywhere under `src/modules` counted as being at home.
+ * every declaration anywhere under `packages/local-runtime/src/modules` counted as being at home.
  *
  * `declarationModule` is the only way a declaration root can differ from the
  * capability root, and it is deliberately hard to abuse. It exists on capability
@@ -225,14 +229,14 @@ function findOwnerRootViolations(root, owners) {
  * somewhere else with its `schemaModule` edited to match reads as consistent and
  * passes. This rule is keyed on the owner instead of on agreement: a capability-owned
  * table is declared in that owner's own declaration root, and the platform ownership
- * root is declared outside `src/modules` entirely. Both legs read the live
+ * root is declared outside `packages/local-runtime/src/modules` entirely. Both legs read the live
  * declaration, so editing `schemaModule` cannot launder a move — and because the
  * root is per-owner rather than the whole module tree, neither can leaving a
  * re-export behind in the owning module while the definition sits in a sibling.
  *
  * That only holds while the roots themselves are pinned, which is what
  * `findOwnerRootViolations` is for: a root free to name any existing path can simply
- * be widened to `src/modules`, and every location below it passes.
+ * be widened to `packages/local-runtime/src/modules`, and every location below it passes.
  *
  * The remaining escape would be to relabel the owner: call `connectors` platform and
  * the capability leg no longer applies. So an owner whose name is a real module

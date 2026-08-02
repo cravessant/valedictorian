@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { connectorRuns, opportunities, sourceExecutionScopes } from '../../../../db/schema'
+import { connectorRuns, opportunities, sourceExecutionScopes } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './connector.repository.pglite-test-helpers'

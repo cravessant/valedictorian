@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizeConnectorRefreshResult } from './connector.refresh-result-sanitizer'
+import { sanitizeConnectorRefreshResult } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.refresh-result-sanitizer'
 
 describe('connector refresh result sanitizer', () => {
   it('projects a negative pending resolution count to zero', () => {

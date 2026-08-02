@@ -8,12 +8,12 @@ import {
   migratePgliteDatabase,
   type PgliteClient,
   type PgliteDatabase,
-} from '../db/pglite'
-import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
+} from '@sparxie/valedictorian-local-runtime/database'
+import type { LocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 import {
   createLocalValedictorianClient as createRuntimeLocalValedictorianClient,
-} from '../runtime/local-valedictorian-client'
-import type { LocalValedictorianClientOptions } from '../runtime/local-valedictorian-runtime-options'
+} from '@sparxie/valedictorian-local-runtime/local-client'
+import type { LocalValedictorianClientOptions } from '@sparxie/valedictorian-local-runtime/testing/runtime/local-valedictorian-runtime-options'
 import { prepareConfiguredPgliteDataPath } from '../test/pglite-template'
 
 type LocalTestClientOptions = Omit<LocalValedictorianClientOptions, 'database'>

@@ -14,12 +14,12 @@
 import { describe, expect, it } from 'vitest'
 import { jobHistoryResultSchema, jobListResultSchema, jobSchema } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
-import type { JobService } from './job.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { createPgliteCaptureService, type CaptureService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.service'
+import type { JobService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { jobCaptureEvidenceReferences, jobExternalIdentities } from './job.schema'
-import { createPgliteJobReadModel } from './job.read-model'
+import { jobCaptureEvidenceReferences, jobExternalIdentities } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import { createPgliteJobReadModel } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.read-model'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

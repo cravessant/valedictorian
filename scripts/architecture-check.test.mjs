@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
@@ -43,26 +44,26 @@ describe('architecture check manifests', () => {
     const files = passingFixture()
     const result = check({
       ...files,
-      'src/modules/job/job.schema.ts':
-        `${files['src/modules/job/job.schema.ts']}export const jobHistory = pgTable('job_history', {})\n`,
+      'packages/local-runtime/src/modules/job/job.schema.ts':
+        `${files['packages/local-runtime/src/modules/job/job.schema.ts']}export const jobHistory = pgTable('job_history', {})\n`,
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[unowned-state] src/modules/job/job.schema.ts exports job_history as jobHistory without a matching entry in architecture/state-ownership.json\n',
+      '[unowned-state] packages/local-runtime/src/modules/job/job.schema.ts exports job_history as jobHistory without a matching entry in architecture/state-ownership.json\n',
     )
   })
 
   it('rejects a sibling-module import on an undeclared edge', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.service.ts':
+      'packages/local-runtime/src/modules/job/job.service.ts':
         "import { columns } from '../capture/capture.service'\n\nexport const run = columns\n",
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[undeclared-module-edge] src/modules/job/job.service.ts imports src/modules/capture/capture.service.ts; module edge job -> capture is not declared in architecture/module-graph.json\n',
+      '[undeclared-module-edge] packages/local-runtime/src/modules/job/job.service.ts imports packages/local-runtime/src/modules/capture/capture.service.ts; module edge job -> capture is not declared in architecture/module-graph.json\n',
     )
   })
 
@@ -72,13 +73,13 @@ describe('architecture check manifests', () => {
     })
     const result = check({
       ...files,
-      'src/modules/job/job.repository.ts':
+      'packages/local-runtime/src/modules/job/job.repository.ts':
         "import { captures } from '../capture/capture.schema'\n\nexport const read = () => captures\n",
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[foreign-owner-table-access] src/modules/job/job.repository.ts imports captures owned by capture; zone job needs an exact entry in architecture/module-graph.json\n',
+      '[foreign-owner-table-access] packages/local-runtime/src/modules/job/job.repository.ts imports captures owned by capture; zone job needs an exact entry in architecture/module-graph.json\n',
     )
   })
 
@@ -103,7 +104,7 @@ describe('architecture check manifests', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[broadened-architecture-exception] architecture/module-graph.json entry foreign-owner-table-access src/modules/connectors/connector.repository.ts -> src/modules/source-execution/source-execution.schema.ts must carry exactly owner, reason, recordedIn, retiredBy, rule, source, table, target\n',
+      '[broadened-architecture-exception] architecture/module-graph.json entry foreign-owner-table-access packages/local-runtime/src/modules/connectors/connector.repository.ts -> packages/local-runtime/src/modules/source-execution/source-execution.schema.ts must carry exactly owner, reason, recordedIn, retiredBy, rule, source, table, target\n',
     )
   })
 
@@ -123,7 +124,7 @@ describe('architecture check manifests', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[stale-architecture-exception] architecture/module-graph.json exception foreign-owner-table-access src/modules/connectors/connector.repository.ts -> src/modules/source-execution/source-execution.schema.ts for source_execution_scopes matches no maintained import\n',
+      '[stale-architecture-exception] architecture/module-graph.json exception foreign-owner-table-access packages/local-runtime/src/modules/connectors/connector.repository.ts -> packages/local-runtime/src/modules/source-execution/source-execution.schema.ts for source_execution_scopes matches no maintained import\n',
     )
   })
 
@@ -143,13 +144,13 @@ describe('architecture check manifests', () => {
       manifest.tables.job_history = {
         owner: 'job',
         schemaExport: 'jobHistory',
-        schemaModule: 'src/modules/job/job.schema.ts',
+        schemaModule: 'packages/local-runtime/src/modules/job/job.schema.ts',
       }
     }))
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[stale-state-ownership] architecture/state-ownership.json entry job_history claims export jobHistory in src/modules/job/job.schema.ts, which no longer declares it\n',
+      '[stale-state-ownership] architecture/state-ownership.json entry job_history claims export jobHistory in packages/local-runtime/src/modules/job/job.schema.ts, which no longer declares it\n',
     )
   })
 
@@ -174,7 +175,7 @@ describe('architecture check manifests', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[untruthful-retirement-claim] architecture/module-graph.json exception foreign-owner-table-access src/modules/connectors/connector.repository.ts -> src/modules/source-execution/source-execution.schema.ts claims retirement by ${retiredBy}, which is not a declared retiring issue\n`,
+      `[untruthful-retirement-claim] architecture/module-graph.json exception foreign-owner-table-access packages/local-runtime/src/modules/connectors/connector.repository.ts -> packages/local-runtime/src/modules/source-execution/source-execution.schema.ts claims retirement by ${retiredBy}, which is not a declared retiring issue\n`,
     )
   })
 
@@ -200,11 +201,11 @@ describe('computed module specifiers', () => {
     ['a template literal', 'export const load = () => import(`../job/job.schema`)\n'],
     ['a substituted template', 'export const load = (n) => import(`../job/${n}.schema`)\n'],
   ])('refuses a dynamic import built from %s', (_label, source) => {
-    const result = check({ ...passingFixture(), 'src/modules/capture/capture.load.ts': source })
+    const result = check({ ...passingFixture(), 'packages/local-runtime/src/modules/capture/capture.load.ts': source })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[computed-module-import] src/modules/capture/capture.load.ts imports a module whose specifier is computed; a target that cannot be read from the source cannot be stamped, so it is refused\n',
+      '[computed-module-import] packages/local-runtime/src/modules/capture/capture.load.ts imports a module whose specifier is computed; a target that cannot be read from the source cannot be stamped, so it is refused\n',
     )
   })
 
@@ -244,7 +245,7 @@ describe('aggregate and alias attribution', () => {
   it('attributes every table behind an aggregate forwarded under a new name', () => {
     const result = check({
       ...aggregateFixture(),
-      'src/db/all-tables.ts': "export { schema as allTables } from './schema'\n",
+      'packages/local-runtime/src/db/all-tables.ts': "export { schema as allTables } from './schema'\n",
       'src/runtime/runtime.ts':
         "import { allTables } from '../db/all-tables'\n\nexport const boot = () => allTables\n",
     })
@@ -256,58 +257,58 @@ describe('aggregate and alias attribution', () => {
   it('follows a renamed table export through a barrel', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.barrel.ts': "export { jobs as postings } from './job.schema'\n",
-      'src/modules/capture/capture.read.ts':
+      'packages/local-runtime/src/modules/job/job.barrel.ts': "export { jobs as postings } from './job.schema'\n",
+      'packages/local-runtime/src/modules/capture/capture.read.ts':
         "import { postings } from '../job/job.barrel'\n\nexport const read = postings\n",
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/modules/capture/capture.read.ts'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/modules/capture/capture.read.ts'))
   })
 
   it('follows a renamed table export through several barrels', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.first.ts': "export { jobs as postings } from './job.schema'\n",
-      'src/modules/job/job.second.ts': "export { postings as listings } from './job.first'\n",
-      'src/modules/job/job.third.ts': "export { listings as roles } from './job.second'\n",
-      'src/modules/capture/capture.read.ts':
+      'packages/local-runtime/src/modules/job/job.first.ts': "export { jobs as postings } from './job.schema'\n",
+      'packages/local-runtime/src/modules/job/job.second.ts': "export { postings as listings } from './job.first'\n",
+      'packages/local-runtime/src/modules/job/job.third.ts': "export { listings as roles } from './job.second'\n",
+      'packages/local-runtime/src/modules/capture/capture.read.ts':
         "import { roles } from '../job/job.third'\n\nexport const read = roles\n",
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/modules/capture/capture.read.ts'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/modules/capture/capture.read.ts'))
   })
 
   it('follows a table through a local alias re-export', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.barrel.ts':
+      'packages/local-runtime/src/modules/job/job.barrel.ts':
         "import { jobs } from './job.schema'\n\nexport { jobs as postings }\n",
-      'src/modules/capture/capture.read.ts':
+      'packages/local-runtime/src/modules/capture/capture.read.ts':
         "import { postings } from '../job/job.barrel'\n\nexport const read = postings\n",
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/modules/capture/capture.read.ts'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/modules/capture/capture.read.ts'))
   })
 
   it('rejects an aggregate permission dropped for one member', () => {
     const result = check(withModuleGraph(aggregateFixture(), (manifest) => {
       manifest.permissions = manifest.permissions.filter(
-        (entry) => entry.source !== 'src/db/schema.ts' || entry.table !== 'jobs',
+        (entry) => entry.source !== 'packages/local-runtime/src/db/schema.ts' || entry.table !== 'jobs',
       )
     }))
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/db/schema.ts', 'src/db'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/db/schema.ts', 'packages/local-runtime/src/db'))
   })
 
   it('rejects a permission for a table the aggregate no longer carries', () => {
     const files = aggregateFixture()
     const result = check({
       ...files,
-      'src/db/schema.ts': [
+      'packages/local-runtime/src/db/schema.ts': [
         "import { captures } from '../modules/capture/capture.schema'",
         '',
         'export const schema = { captures }',
@@ -317,7 +318,7 @@ describe('aggregate and alias attribution', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[stale-architecture-permission] architecture/module-graph.json permission schema-composition src/db/schema.ts -> src/modules/job/job.schema.ts for jobs matches no maintained import\n',
+      '[stale-architecture-permission] architecture/module-graph.json permission schema-composition packages/local-runtime/src/db/schema.ts -> packages/local-runtime/src/modules/job/job.schema.ts for jobs matches no maintained import\n',
     )
   })
 })
@@ -333,26 +334,29 @@ describe('opaque state access', () => {
     ['literal dynamic import', "export const read = () => import('../job/job.schema')\n", 'dynamic'],
     ['default re-export', "export { default as jobs } from '../job/job.schema'\n", 'default'],
   ])('refuses a %s of a state module', (_label, source, kind) => {
-    const result = check({ ...passingFixture(), 'src/modules/capture/capture.read.ts': source })
+    const result = check({ ...passingFixture(), 'packages/local-runtime/src/modules/capture/capture.read.ts': source })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[opaque-state-import] src/modules/capture/capture.read.ts reaches src/modules/job/job.schema.ts through a ${kind} import; owned tables must be named one by one so ownership stays attributable\n`,
+      `[opaque-state-import] packages/local-runtime/src/modules/capture/capture.read.ts reaches packages/local-runtime/src/modules/job/job.schema.ts through a ${kind} import; owned tables must be named one by one so ownership stays attributable\n`,
     )
   })
 })
 
 describe('scan coverage', () => {
   it.each([
-    ['a .test-helpers file', 'src/modules/job/job.test-helpers.ts'],
-    ['a .test-harness file', 'src/modules/job/job.test-harness.ts'],
+    ['a .test-helpers file', 'packages/local-runtime/src/modules/job/job.test-helpers.ts'],
+    ['a .test-harness file', 'packages/local-runtime/src/modules/job/job.test-harness.ts'],
     ['a file under src/test', 'src/test/job-support.ts'],
-    ['a .fixture file', 'src/modules/job/job.fixture.ts'],
+    ['a .fixture file', 'packages/local-runtime/src/modules/job/job.fixture.ts'],
   ])('sees state laundered through %s', (_label, supportPath) => {
     const relative = supportPath.startsWith('src/test/')
       ? '../modules/job/job.schema'
       : './job.schema'
-    const consumerImport = supportPath.replace(/^src\//, '../').replace(/\.ts$/, '')
+    const consumerImport = path.posix.relative(
+      'src/runtime',
+      supportPath.replace(/\.ts$/, ''),
+    )
     const result = check({
       ...passingFixture(),
       [supportPath]: `export { jobs } from '${relative}'\n`,
@@ -367,8 +371,8 @@ describe('scan coverage', () => {
   it('sees state laundered through several support hops', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.test-harness.ts': "export { jobs as postings } from './job.schema'\n",
-      'src/modules/job/job.test-helpers.ts': "export { postings } from './job.test-harness'\n",
+      'packages/local-runtime/src/modules/job/job.test-harness.ts': "export { jobs as postings } from './job.schema'\n",
+      'packages/local-runtime/src/modules/job/job.test-helpers.ts': "export { postings } from './job.test-harness'\n",
       'src/test/job-support.ts': "export { postings as roles } from '../modules/job/job.test-helpers'\n",
       'src/runtime/runtime.ts':
         "import { roles } from '../test/job-support'\n\nexport const boot = () => roles\n",
@@ -381,12 +385,12 @@ describe('scan coverage', () => {
   it('records a test file reaching another module state', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/capture/capture.pglite.test.ts':
+      'packages/local-runtime/src/modules/capture/capture.pglite.test.ts':
         "import { jobs } from '../job/job.schema'\n\nexport const arranged = jobs\n",
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/modules/capture/capture.pglite.test.ts'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/modules/capture/capture.pglite.test.ts'))
   })
 
   it('leaves the directed edge inventory to production module source', () => {
@@ -396,12 +400,12 @@ describe('scan coverage', () => {
           ...captureAccessesJobs(),
           owner: 'capture',
           purpose: 'test-state-access',
-          source: 'src/modules/job/job.uses-capture.test.ts',
+          source: 'packages/local-runtime/src/modules/job/job.uses-capture.test.ts',
           table: 'captures',
-          target: 'src/modules/capture/capture.schema.ts',
+          target: 'packages/local-runtime/src/modules/capture/capture.schema.ts',
         })
       }),
-      'src/modules/job/job.uses-capture.test.ts':
+      'packages/local-runtime/src/modules/job/job.uses-capture.test.ts':
         "import { captures } from '../capture/capture.schema'\n\nexport const asserted = 1\nvoid captures\n",
     })
 
@@ -414,8 +418,8 @@ describe('syntax-aware reading', () => {
   it('reads a specifier containing angle brackets without rewriting it', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/a>b.schema.ts': "export { jobs } from './job.schema'\n",
-      'src/modules/capture/CapturePanel.tsx': [
+      'packages/local-runtime/src/modules/job/a>b.schema.ts': "export { jobs } from './job.schema'\n",
+      'packages/local-runtime/src/modules/capture/CapturePanel.tsx': [
         "import { jobs } from '../job/a>b.schema'",
         '',
         'export function CapturePanel() {',
@@ -426,7 +430,7 @@ describe('syntax-aware reading', () => {
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/modules/capture/CapturePanel.tsx'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/modules/capture/CapturePanel.tsx'))
   })
 
   it.each([
@@ -436,7 +440,7 @@ describe('syntax-aware reading', () => {
   ])('keeps reading past %s next to JSX', (_label, statement) => {
     const result = check({
       ...passingFixture(),
-      'src/modules/capture/CapturePanel.tsx': [
+      'packages/local-runtime/src/modules/capture/CapturePanel.tsx': [
         'export function CapturePanel() {',
         `  ${statement}`,
         '  return <section>{[1, 2].map((n) => <span key={n}>{n / 2}</span>)}</section>',
@@ -450,7 +454,7 @@ describe('syntax-aware reading', () => {
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/modules/capture/CapturePanel.tsx'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/modules/capture/CapturePanel.tsx'))
   })
 
   it.each([
@@ -461,7 +465,7 @@ describe('syntax-aware reading', () => {
   ])('sees %s written after JSX', (_label, tail, rule) => {
     const result = check({
       ...passingFixture(),
-      'src/modules/capture/CapturePanel.tsx': [
+      'packages/local-runtime/src/modules/capture/CapturePanel.tsx': [
         'export function CapturePanel({ open }: { open: boolean }) {',
         '  return open ? <section aria-label="c">{String(open)}</section> : <br />',
         '}',
@@ -473,13 +477,13 @@ describe('syntax-aware reading', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(rule)
-    expect(result.stderr).toContain('src/modules/capture/CapturePanel.tsx')
+    expect(result.stderr).toContain('packages/local-runtime/src/modules/capture/CapturePanel.tsx')
   })
 
   it('reads edges out of a TSX module whose body has no ES module grammar', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/JobPanel.tsx': [
+      'packages/local-runtime/src/modules/job/JobPanel.tsx': [
         "import { readJobs } from '../capture/capture.service'",
         '',
         'export function JobPanel({ open }: { open: boolean }) {',
@@ -491,18 +495,18 @@ describe('syntax-aware reading', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[undeclared-module-edge] src/modules/job/JobPanel.tsx imports src/modules/capture/capture.service.ts; module edge job -> capture is not declared in architecture/module-graph.json\n',
+      '[undeclared-module-edge] packages/local-runtime/src/modules/job/JobPanel.tsx imports packages/local-runtime/src/modules/capture/capture.service.ts; module edge job -> capture is not declared in architecture/module-graph.json\n',
     )
   })
 
   it('refuses a file it cannot parse instead of reading part of it', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.broken.ts': "import { jobs from '../job.schema'\n",
+      'packages/local-runtime/src/modules/job/job.broken.ts': "import { jobs from '../job.schema'\n",
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('[unlexable-module-source] src/modules/job/job.broken.ts')
+    expect(result.stderr).toContain('[unlexable-module-source] packages/local-runtime/src/modules/job/job.broken.ts')
   })
 })
 
@@ -517,36 +521,36 @@ describe('stable permissions', () => {
   it.each([
     [
       'schema-composition claimed off the canonical aggregate',
-      { purpose: 'schema-composition', source: 'src/modules/capture/capture.service.ts' },
-      'only src/db/schema.ts composes the canonical schema',
+      { purpose: 'schema-composition', source: 'packages/local-runtime/src/modules/capture/capture.service.ts' },
+      'only packages/local-runtime/src/db/schema.ts composes the canonical schema',
     ],
     [
       'schema-registration claimed by another file',
       {
         purpose: 'schema-registration',
-        source: 'src/modules/capture/capture.service.ts',
-        target: 'src/db/schema.ts',
+        source: 'packages/local-runtime/src/modules/capture/capture.service.ts',
+        target: 'packages/local-runtime/src/db/schema.ts',
       },
-      'only src/db/pglite.ts registers the canonical schema',
+      'only packages/local-runtime/src/db/pglite.ts registers the canonical schema',
     ],
     [
       'schema-registration pointed at a schema slice',
-      { purpose: 'schema-registration', source: 'src/db/pglite.ts' },
-      'registration reads src/db/schema.ts, not src/modules/job/job.schema.ts',
+      { purpose: 'schema-registration', source: 'packages/local-runtime/src/db/pglite.ts' },
+      'registration reads packages/local-runtime/src/db/schema.ts, not packages/local-runtime/src/modules/job/job.schema.ts',
     ],
     [
       'foreign-key-reference claimed by a service file',
-      { purpose: 'foreign-key-reference', source: 'src/modules/capture/capture.service.ts' },
+      { purpose: 'foreign-key-reference', source: 'packages/local-runtime/src/modules/capture/capture.service.ts' },
       'only a schema file declares a foreign-key column',
     ],
     [
       'platform-ownership-root claimed for a capability table',
-      { purpose: 'platform-ownership-root', source: 'src/db/pglite.ts' },
+      { purpose: 'platform-ownership-root', source: 'packages/local-runtime/src/db/pglite.ts' },
       'jobs is owned by capability owner job',
     ],
     [
       'test-state-access claimed on a production service path',
-      { purpose: 'test-state-access', source: 'src/modules/capture/capture.service.ts' },
+      { purpose: 'test-state-access', source: 'packages/local-runtime/src/modules/capture/capture.service.ts' },
       'a test purpose may only be claimed by a maintained test or test-support path',
     ],
     [
@@ -571,13 +575,13 @@ describe('stable permissions', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[broadened-architecture-permission] architecture/module-graph.json permission because-i-said-so src/db/schema.ts -> src/modules/job/job.schema.ts names purpose because-i-said-so, which this check does not define\n',
+      '[broadened-architecture-permission] architecture/module-graph.json permission because-i-said-so packages/local-runtime/src/db/schema.ts -> packages/local-runtime/src/modules/job/job.schema.ts names purpose because-i-said-so, which this check does not define\n',
     )
   })
 
   it.each([
-    ['a directory', { source: 'src/db' }, 'is not an exact repository file'],
-    ['a glob', { source: 'src/db/*.ts' }, 'uses a pattern for source'],
+    ['a directory', { source: 'packages/local-runtime/src/db' }, 'is not an exact repository file'],
+    ['a glob', { source: 'packages/local-runtime/src/db/*.ts' }, 'uses a pattern for source'],
   ])('rejects a permission broadened to %s', (_label, overrides, expected) => {
     const result = check(withModuleGraph(passingFixture(), (manifest) => {
       manifest.permissions = [permission(overrides)]
@@ -596,7 +600,7 @@ describe('stable permissions', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[broadened-architecture-permission] architecture/module-graph.json entry schema-composition src/db/schema.ts -> src/modules/job/job.schema.ts must carry exactly owner, purpose, reason, recordedIn, source, table, target\n',
+      '[broadened-architecture-permission] architecture/module-graph.json entry schema-composition packages/local-runtime/src/db/schema.ts -> packages/local-runtime/src/modules/job/job.schema.ts must carry exactly owner, purpose, reason, recordedIn, source, table, target\n',
     )
   })
 
@@ -616,7 +620,7 @@ describe('stable permissions', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[unstamped-architecture-permission] architecture/module-graph.json permission schema-composition src/db/schema.ts -> src/modules/job/job.schema.ts is not stamped by a declared issue reference\n',
+      '[unstamped-architecture-permission] architecture/module-graph.json permission schema-composition packages/local-runtime/src/db/schema.ts -> packages/local-runtime/src/modules/job/job.schema.ts is not stamped by a declared issue reference\n',
     )
   })
 
@@ -627,15 +631,15 @@ describe('stable permissions', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[stale-architecture-permission] architecture/module-graph.json permission schema-composition src/db/schema.ts -> src/modules/job/job.schema.ts for jobs matches no maintained import\n',
+      '[stale-architecture-permission] architecture/module-graph.json permission schema-composition packages/local-runtime/src/db/schema.ts -> packages/local-runtime/src/modules/job/job.schema.ts for jobs matches no maintained import\n',
     )
   })
 })
 
 describe('aggregate transformation attribution', () => {
   const consumerReads = (producer, exported) => ({
-    'src/modules/job/job.producer.ts': producer,
-    'src/modules/capture/capture.read.ts':
+    'packages/local-runtime/src/modules/job/job.producer.ts': producer,
+    'packages/local-runtime/src/modules/capture/capture.read.ts':
       `import { ${exported} } from '../job/job.producer'\n\nexport const value = ${exported}\n`,
   })
 
@@ -684,23 +688,23 @@ describe('aggregate transformation attribution', () => {
     const result = check({ ...passingFixture(), ...consumerReads(producer, exported) })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/modules/capture/capture.read.ts'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/modules/capture/capture.read.ts'))
   })
 
   it('still records the import when a producer wraps a table at runtime', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/capture/capture.read.ts':
+      'packages/local-runtime/src/modules/capture/capture.read.ts':
         "import { jobs } from '../job/job.schema'\n\nexport const getSchema = () => jobs\n",
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/modules/capture/capture.read.ts'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/modules/capture/capture.read.ts'))
   })
 })
 
 describe('table constructor identity', () => {
-  const declare = (source) => ({ ...passingFixture(), 'src/modules/job/job.rogue.ts': source })
+  const declare = (source) => ({ ...passingFixture(), 'packages/local-runtime/src/modules/job/job.rogue.ts': source })
 
   it.each([
     [
@@ -728,7 +732,7 @@ describe('table constructor identity', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[unowned-state] src/modules/job/job.rogue.ts exports rogue as rogue without a matching entry in architecture/state-ownership.json\n',
+      '[unowned-state] packages/local-runtime/src/modules/job/job.rogue.ts exports rogue as rogue without a matching entry in architecture/state-ownership.json\n',
     )
   })
 
@@ -749,7 +753,7 @@ describe('table constructor identity', () => {
     const result = check(declare(source))
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('[opaque-table-declaration] src/modules/job/job.rogue.ts')
+    expect(result.stderr).toContain('[opaque-table-declaration] packages/local-runtime/src/modules/job/job.rogue.ts')
   })
 
   it('leaves an unrelated local function named pgTable alone', () => {
@@ -763,7 +767,7 @@ describe('table constructor identity', () => {
 })
 
 describe('table constructor termination', () => {
-  const declare = (source) => ({ ...passingFixture(), 'src/modules/job/job.rogue.ts': source })
+  const declare = (source) => ({ ...passingFixture(), 'packages/local-runtime/src/modules/job/job.rogue.ts': source })
 
   it.each([
     [
@@ -779,7 +783,7 @@ describe('table constructor termination', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[unowned-state] src/modules/job/job.rogue.ts exports rogue as rogue without a matching entry in architecture/state-ownership.json\n',
+      '[unowned-state] packages/local-runtime/src/modules/job/job.rogue.ts exports rogue as rogue without a matching entry in architecture/state-ownership.json\n',
     )
   })
 
@@ -820,13 +824,13 @@ describe('table constructor termination', () => {
     const result = check(declare(source))
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('[opaque-table-declaration] src/modules/job/job.rogue.ts')
+    expect(result.stderr).toContain('[opaque-table-declaration] packages/local-runtime/src/modules/job/job.rogue.ts')
   })
 })
 
 describe('assignment and nested destructuring', () => {
   const consumer = {
-    'src/modules/capture/capture.read.ts':
+    'packages/local-runtime/src/modules/capture/capture.read.ts':
       "import { roles } from '../job/job.producer'\n\nexport const value = 1\nvoid roles\n",
   }
 
@@ -838,18 +842,18 @@ describe('assignment and nested destructuring', () => {
   ])('attributes jobs through %s', (_label, producer) => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.producer.ts': `${producer}\n`,
+      'packages/local-runtime/src/modules/job/job.producer.ts': `${producer}\n`,
       ...consumer,
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain(foreignJobs('src/modules/capture/capture.read.ts'))
+    expect(result.stderr).toContain(foreignJobs('packages/local-runtime/src/modules/capture/capture.read.ts'))
   })
 
   it('records the import when an aggregate member is destructured into an array', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.producer.ts':
+      'packages/local-runtime/src/modules/job/job.producer.ts':
         "import { jobs } from './job.schema'\n\nconst bag = [jobs]\nexport const [roles] = bag\n",
     })
 
@@ -865,13 +869,13 @@ describe('duplicate declarations', () => {
   it('rejects the same physical table declared in two modules, naming both', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/capture/capture.extra.schema.ts':
+      'packages/local-runtime/src/modules/capture/capture.extra.schema.ts':
         "import { pgTable } from 'drizzle-orm/pg-core'\n\nexport const jobsAgain = pgTable('jobs', {})\n",
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[duplicate-state-declaration] physical table jobs is declared 2 times, at src/modules/capture/capture.extra.schema.ts:jobsAgain and src/modules/job/job.schema.ts:jobs; one table has one declaration and one owner\n',
+      '[duplicate-state-declaration] physical table jobs is declared 2 times, at packages/local-runtime/src/modules/capture/capture.extra.schema.ts:jobsAgain and packages/local-runtime/src/modules/job/job.schema.ts:jobs; one table has one declaration and one owner\n',
     )
   })
 
@@ -879,20 +883,20 @@ describe('duplicate declarations', () => {
     const files = passingFixture()
     const result = check({
       ...files,
-      'src/modules/job/job.schema.ts':
-        `${files['src/modules/job/job.schema.ts']}export const jobsAgain = pgTable('jobs', {})\n`,
+      'packages/local-runtime/src/modules/job/job.schema.ts':
+        `${files['packages/local-runtime/src/modules/job/job.schema.ts']}export const jobsAgain = pgTable('jobs', {})\n`,
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('[duplicate-state-declaration] physical table jobs is declared 2 times')
-    expect(result.stderr).toContain('src/modules/job/job.schema.ts:jobs')
-    expect(result.stderr).toContain('src/modules/job/job.schema.ts:jobsAgain')
+    expect(result.stderr).toContain('packages/local-runtime/src/modules/job/job.schema.ts:jobs')
+    expect(result.stderr).toContain('packages/local-runtime/src/modules/job/job.schema.ts:jobsAgain')
   })
 
   it('reports a duplicate deterministically, with both sites sorted', () => {
     const files = {
       ...passingFixture(),
-      'src/modules/capture/capture.extra.schema.ts':
+      'packages/local-runtime/src/modules/capture/capture.extra.schema.ts':
         "import { pgTable } from 'drizzle-orm/pg-core'\n\nexport const jobsAgain = pgTable('jobs', {})\n",
     }
     const root = writeFixture(files, fixtureRoots)
@@ -908,22 +912,22 @@ describe('duplicate declarations', () => {
   it('accepts two distinct tables sharing an export name in distinct modules', () => {
     const result = check(withStateOwnership({
       ...passingFixture(),
-      'src/modules/capture/capture.alpha.schema.ts': schema('alpha'),
-      'src/modules/job/job.beta.schema.ts': schema('beta'),
+      'packages/local-runtime/src/modules/capture/capture.alpha.schema.ts': schema('alpha'),
+      'packages/local-runtime/src/modules/job/job.beta.schema.ts': schema('beta'),
     }, (manifest) => {
       manifest.schemaModules.push(
-        'src/modules/capture/capture.alpha.schema.ts',
-        'src/modules/job/job.beta.schema.ts',
+        'packages/local-runtime/src/modules/capture/capture.alpha.schema.ts',
+        'packages/local-runtime/src/modules/job/job.beta.schema.ts',
       )
       manifest.tables.alpha = {
         owner: 'capture',
         schemaExport: 'alpha',
-        schemaModule: 'src/modules/capture/capture.alpha.schema.ts',
+        schemaModule: 'packages/local-runtime/src/modules/capture/capture.alpha.schema.ts',
       }
       manifest.tables.beta = {
         owner: 'job',
         schemaExport: 'beta',
-        schemaModule: 'src/modules/job/job.beta.schema.ts',
+        schemaModule: 'packages/local-runtime/src/modules/job/job.beta.schema.ts',
       }
     }))
 
@@ -943,7 +947,7 @@ describe('duplicate declarations', () => {
 })
 
 describe('assignment-destructured constructor', () => {
-  const declare = (source) => ({ ...passingFixture(), 'src/modules/job/job.rogue.ts': source })
+  const declare = (source) => ({ ...passingFixture(), 'packages/local-runtime/src/modules/job/job.rogue.ts': source })
 
   it.each([
     [
@@ -967,7 +971,7 @@ describe('assignment-destructured constructor', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[unowned-state] src/modules/job/job.rogue.ts exports rogue as rogue without a matching entry in architecture/state-ownership.json\n',
+      '[unowned-state] packages/local-runtime/src/modules/job/job.rogue.ts exports rogue as rogue without a matching entry in architecture/state-ownership.json\n',
     )
   })
 
@@ -977,7 +981,7 @@ describe('assignment-destructured constructor', () => {
     ))
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('[opaque-table-declaration] src/modules/job/job.rogue.ts')
+    expect(result.stderr).toContain('[opaque-table-declaration] packages/local-runtime/src/modules/job/job.rogue.ts')
   })
 
   it('leaves an unrelated local helper named pgTable alone', () => {
@@ -991,7 +995,7 @@ describe('assignment-destructured constructor', () => {
 })
 
 describe('namespace transport', () => {
-  const declare = (source) => ({ ...passingFixture(), 'src/modules/job/job.rogue.ts': source })
+  const declare = (source) => ({ ...passingFixture(), 'packages/local-runtime/src/modules/job/job.rogue.ts': source })
   const NS = "import * as pg from 'drizzle-orm/pg-core'\n\n"
 
   it.each([
@@ -1010,7 +1014,7 @@ describe('namespace transport', () => {
     const result = check(declare(source))
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('[opaque-table-declaration] src/modules/job/job.rogue.ts')
+    expect(result.stderr).toContain('[opaque-table-declaration] packages/local-runtime/src/modules/job/job.rogue.ts')
   })
 
   it('still discovers a direct namespace constructor call', () => {
@@ -1018,7 +1022,7 @@ describe('namespace transport', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[unowned-state] src/modules/job/job.rogue.ts exports rogue as rogue without a matching entry in architecture/state-ownership.json\n',
+      '[unowned-state] packages/local-runtime/src/modules/job/job.rogue.ts exports rogue as rogue without a matching entry in architecture/state-ownership.json\n',
     )
     expect(result.stderr).not.toContain('[opaque-table-declaration]')
   })
@@ -1037,7 +1041,7 @@ describe('namespace transport', () => {
     const result = check(declare(source))
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('[unowned-state] src/modules/job/job.rogue.ts')
+    expect(result.stderr).toContain('[unowned-state] packages/local-runtime/src/modules/job/job.rogue.ts')
     expect(result.stderr).not.toContain('[opaque-table-declaration]')
   })
 
@@ -1075,8 +1079,8 @@ describe('one exact access, one policy entry', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(expected(
-      'src/modules/connectors/connector.repository.ts',
-      'src/modules/source-execution/source-execution.schema.ts',
+      'packages/local-runtime/src/modules/connectors/connector.repository.ts',
+      'packages/local-runtime/src/modules/source-execution/source-execution.schema.ts',
       'source_execution_scopes',
       'exception and permission',
     ))
@@ -1090,8 +1094,8 @@ describe('one exact access, one policy entry', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(expected(
-      'src/modules/capture/capture.service.ts',
-      'src/modules/job/job.schema.ts',
+      'packages/local-runtime/src/modules/capture/capture.service.ts',
+      'packages/local-runtime/src/modules/job/job.schema.ts',
       'jobs',
       'exception and permission',
     ))
@@ -1104,8 +1108,8 @@ describe('one exact access, one policy entry', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(expected(
-      'src/modules/connectors/connector.repository.ts',
-      'src/modules/source-execution/source-execution.schema.ts',
+      'packages/local-runtime/src/modules/connectors/connector.repository.ts',
+      'packages/local-runtime/src/modules/source-execution/source-execution.schema.ts',
       'source_execution_scopes',
       'exception and exception',
     ))
@@ -1118,8 +1122,8 @@ describe('one exact access, one policy entry', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(expected(
-      'src/modules/capture/capture.service.ts',
-      'src/modules/job/job.schema.ts',
+      'packages/local-runtime/src/modules/capture/capture.service.ts',
+      'packages/local-runtime/src/modules/job/job.schema.ts',
       'jobs',
       'permission and permission',
     ))
@@ -1128,14 +1132,14 @@ describe('one exact access, one policy entry', () => {
   it('accepts two distinct tables for one source and target', () => {
     const result = check(withModuleGraph({
       ...passingFixture(),
-      'src/modules/job/job.schema.ts': [
+      'packages/local-runtime/src/modules/job/job.schema.ts': [
         "import { pgTable } from 'drizzle-orm/pg-core'",
         '',
         "export const jobs = pgTable('jobs', {})",
         "export const captures = pgTable('capture_rows', {})",
         '',
       ].join('\n'),
-      'src/modules/capture/capture.service.ts':
+      'packages/local-runtime/src/modules/capture/capture.service.ts':
         "import { jobs, captures } from '../job/job.schema'\n\nvoid jobs\nvoid captures\nexport const columns = 1\n",
     }, (manifest) => {
       manifest.permissions.push({

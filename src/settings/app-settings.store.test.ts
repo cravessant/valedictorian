@@ -3,18 +3,18 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { defaultAppSettings } from './app-settings'
-import { createApplicationFileSecretStore } from './app-secret.composition'
 import {
+  createApplicationFileSecretStore,
   defaultAtomicDocumentFileOperations,
   type AtomicDocumentFileOperations,
-} from './atomic-document'
+} from '@sparxie/valedictorian-local-runtime/protected-secrets'
 import {
   apiTokenSecretReference,
   createFileAppSettingsStore,
   createWorkspaceAppSettingsStore,
   writeAppSettingsDocumentAtomically,
 } from './app-settings.store'
-import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
+import { resolveWorkspaceLayout } from '@sparxie/valedictorian-local-runtime/workspace-files'
 
 const TOKEN_CANARY = 'canary-api-token-9f3c2a1b'
 const DOCUMENT_CANARY = 'canary-settings-document-3a5e1d7c'

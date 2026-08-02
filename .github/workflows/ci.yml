@@ -133,8 +133,7 @@ jobs:
         working-directory: valedictorian-app
         shell: bash
         run: |
-          pnpm run build:connector-packages
-          pnpm run build:workspace-packages
+          pnpm run build:dependency-packages
           TEST_TEMP_ROOT="$(node scripts/allocate-test-temp.mjs --print-root)"
           [ -n "$TEST_TEMP_ROOT" ] || exit 1
           cleanup_test_temp() {
@@ -268,9 +267,9 @@ jobs:
         working-directory: valedictorian-app
         run: pnpm run inspect:electron-runtime
 
-      - name: Build workspace packages
+      - name: Build dependency packages
         working-directory: valedictorian-app
-        run: pnpm run build:workspace-packages
+        run: pnpm run build:dependency-packages
 
       - name: Run macOS package checks
         if: runner.os == 'macOS'

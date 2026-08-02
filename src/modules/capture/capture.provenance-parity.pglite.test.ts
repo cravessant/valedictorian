@@ -14,12 +14,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import {
   createPgliteCaptureService,
   type CaptureAdapterKind,
   type CaptureProvenance,
-} from './capture.service'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.service'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

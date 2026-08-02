@@ -22,7 +22,7 @@ import { scanMaintainedSource } from './architecture-state-resolution.mjs'
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 const proofScript = path.join(repositoryRoot, 'scripts/source-execution-ownership-proof.mjs')
 
-const PERSISTENCE = 'src/modules/connectors/adapters/persistence'
+const PERSISTENCE = 'packages/local-runtime/src/modules/connectors/adapters/persistence'
 const ADMISSION = `${PERSISTENCE}/connector-run-request.repository.ts`
 const INSTANCE_STORE = `${PERSISTENCE}/connector-instance.repository.ts`
 const INSTANCE = `${PERSISTENCE}/connector-instance.persistence.ts`
@@ -209,7 +209,7 @@ describe('source-execution ownership in the module graph', () => {
   it('leaves connectors production source only the two retained reads', () => {
     const reaches = [...observed.accesses.values()].filter(
       (access) => access.owner === 'source-execution'
-        && access.source.startsWith('src/modules/connectors/')
+        && access.source.startsWith('packages/local-runtime/src/modules/connectors/')
         && !isMaintainedTestPath(access.source),
     )
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { DispatchConnectorScheduleDueResult } from '@sparxie/sdk'
-import type { ConnectorRunRecord } from '../ports/connector.repository.port'
-import { resolveAdmittedScheduleDispatch } from './connector-schedule.execution'
+import type { ConnectorRunRecord } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.repository.port'
+import { resolveAdmittedScheduleDispatch } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector-schedule.execution'
 
 const NOW = '2026-07-18T11:00:00.000Z'
 

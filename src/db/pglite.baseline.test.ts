@@ -3,9 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { getTableName } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from './pglite'
-import { schema } from './schema'
-import { DEFAULT_WORKSPACE_ID } from './workspaces.schema'
+import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from '@sparxie/valedictorian-local-runtime/database'
+import { schema } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import { DEFAULT_WORKSPACE_ID } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { BASELINE_TAG, TRIGGER_SOURCE_PATH } from '../../scripts/generate-database-baseline'
 
 /**
@@ -69,7 +69,7 @@ describe.sequential('PGlite database baseline', () => {
   }
 
   it('journals one entry whose generated portion declares no lower-level safeguards', () => {
-    const drizzleDir = path.join(repoRoot, 'drizzle')
+    const drizzleDir = path.join(repoRoot, 'packages/local-runtime/drizzle')
     expect(fs.readdirSync(drizzleDir).filter((name) => name.endsWith('.sql')))
       .toEqual([`${BASELINE_TAG}.sql`])
     const journal = JSON.parse(

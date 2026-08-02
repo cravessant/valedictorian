@@ -3,8 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { defaultAppSettings } from '../settings/app-settings'
-import { initializeWorkspace } from './workspace.initializer'
-import { resolveWorkspaceLayout } from './workspace.paths'
+import { initializeWorkspace } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
+import { resolveWorkspaceLayout } from '@sparxie/valedictorian-local-runtime/workspace-files'
 
 function createTempWorkspaceRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-workspace-'))

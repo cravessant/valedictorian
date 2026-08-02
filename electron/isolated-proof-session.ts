@@ -2,8 +2,8 @@ import { isolatedValidationFixture } from '../src/runtime/isolated-validation.fi
 import {
   readIsolatedValidationEnvironment,
   type IsolatedValidationManifest,
-} from '../src/runtime/isolated-validation'
-import type { WorkspaceSummary } from '../src/workspace/workspace.initializer'
+} from '@sparxie/valedictorian-local-runtime/isolated-validation'
+import type { WorkspaceSummary } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 interface IsolatedProofWindow {
   isDestroyed(): boolean

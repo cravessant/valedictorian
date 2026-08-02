@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { describe, expect, it } from 'vitest'
-import { schema, sourceExecutionScopes } from '../../../../db/schema'
+import { schema, sourceExecutionScopes } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import { useResettablePgliteTestOwner } from '../../../../test/pglite-test-owner'
-import { createPgliteConnectorRepository } from './connector.repository'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

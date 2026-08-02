@@ -1,6 +1,6 @@
-import type { WorkspaceRecord } from '../workspace/workspace.registry'
-import type { WorkspaceSummary } from '../workspace/workspace.initializer'
-import type { CreateWorkspaceInput, WorkspaceLaunchState } from '../workspace/workspace.service'
+import type { WorkspaceRecord } from '@sparxie/valedictorian-local-runtime/workspace-files'
+import type { WorkspaceSummary } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
+import type { CreateWorkspaceInput, WorkspaceLaunchState } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 interface IpcRendererLike {
   invoke: (channel: string, payload?: unknown) => Promise<unknown>

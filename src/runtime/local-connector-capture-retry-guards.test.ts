@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { sql } from 'drizzle-orm'
-import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
-import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
+import { completedConnectorRefreshContract } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.refresh-result.test-helpers'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
 import {
   availableConnectorSchedulingCapability,
   createScheduleHttpTempDatabasePath,
@@ -11,7 +11,7 @@ import {
   createTestLocalValedictorianClient as createLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
 } from './local-valedictorian-client.test-harness'
-import type { LocalScheduledWorkSource } from '../modules/scheduling/public'
+import type { LocalScheduledWorkSource } from '@sparxie/valedictorian-local-runtime/scheduling'
 
 describe('local connector capture retry guards', () => {
   it('does not advertise due retry work while its execution scope requires action', async () => {

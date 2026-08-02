@@ -45,16 +45,15 @@ export function loadModuleGraph(root) {
  * checked across every maintained file with no exemption at all.
  *
  * @param {import('./architecture-state-resolution.mjs').SourceScan} scan
- * @param {string} moduleRoot
+ * @param {string} _moduleRoot
  * @returns {Map<string, { source: string, target: string }>}
  */
-export function observedModuleEdges(scan, moduleRoot) {
+export function observedModuleEdges(scan, _moduleRoot) {
   /** @type {Map<string, { source: string, target: string }>} */
   const edges = new Map()
   for (const file of scan.files.values()) {
     if (!file.module || isTestPath(file.path)) continue
     for (const target of file.targets.values()) {
-      if (!target.startsWith(`${moduleRoot}/`)) continue
       const targetModule = moduleOfPath(target)
       if (!targetModule || targetModule === file.module) continue
       const key = `${file.module} -> ${targetModule}`
@@ -144,7 +143,10 @@ function findEdgeShapeViolations(root, manifest) {
         ]
       }
       for (const moduleName of [edge.from, edge.to]) {
-        if (!fs.existsSync(path.join(root, manifest.moduleRoot, moduleName))) {
+        if (
+          !fs.existsSync(path.join(root, manifest.moduleRoot, moduleName))
+          && !fs.existsSync(path.join(root, 'src', 'modules', moduleName))
+        ) {
           return [
             `[stale-module-edge] ${MODULE_GRAPH_MANIFEST} edge ${label} names missing module ${moduleName}`,
           ]
@@ -167,8 +169,8 @@ function findEdgeShapeViolations(root, manifest) {
 export function findModuleGraphViolations(root, scan) {
   const manifest = loadModuleGraph(root)
   if (!manifest) {
-    return fs.existsSync(path.join(root, 'src', 'modules'))
-      ? [`[missing-module-graph] ${MODULE_GRAPH_MANIFEST} is required while src/modules exists`]
+    return fs.existsSync(path.join(root, 'packages', 'local-runtime', 'src', 'modules'))
+      ? [`[missing-module-graph] ${MODULE_GRAPH_MANIFEST} is required while packages/local-runtime/src/modules exists`]
       : []
   }
 

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from './pglite'
+import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from '@sparxie/valedictorian-local-runtime/database'
 
 /**
  * #298 schema proof for the lifecycle aggregates (Capture, Job, Opportunity,

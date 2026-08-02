@@ -10,17 +10,17 @@ import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { createJobrightProviderFieldResolver } from '@sparxie/valedictorian-connectors-jobright'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { createPgliteCaptureService, type JsonValue } from '../capture/capture.service'
-import { createCaptureFieldOutcomeStore } from '../capture/capture.field-outcomes'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { createPgliteCaptureService, type JsonValue } from '@sparxie/valedictorian-local-runtime/capture'
+import { createCaptureFieldOutcomeStore } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.field-outcomes'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { jobs } from '../job/job.schema'
-import { createPgliteJobPromotion } from './capture-to-job.promotion'
+import { jobs } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import { createPgliteJobPromotion } from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/capture-to-job.promotion'
 import {
   createNormalizationExecutor,
   createNormalizationWorkRepository,
   enqueueNormalizationWork,
-} from '../scheduling/normalization-work'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/normalization-work'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const WS = 'ws-promo'

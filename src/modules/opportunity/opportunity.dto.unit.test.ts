@@ -15,7 +15,7 @@ import {
   toOpportunityResource,
   type OpportunityHeadRow,
   type OpportunityHistoryRow,
-} from './opportunity.dto'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.dto'
 
 const firstPage = (limit: number) => ({ limit, cursor: null, backward: false })
 

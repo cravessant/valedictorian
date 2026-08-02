@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   occurrenceOutcomeForRunStatus,
-} from './connector-schedule.occurrence-outcome'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector-schedule.occurrence-outcome'
 
 describe('occurrenceOutcomeForRunStatus', () => {
   it.each([

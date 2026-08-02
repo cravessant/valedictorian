@@ -9,14 +9,14 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { captures } from './capture.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { captures } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.schema'
 import {
   createPgliteCaptureService,
   type AcceptCaptureInput,
   type CaptureProvenance,
   type CaptureService,
-} from './capture.service'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.service'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

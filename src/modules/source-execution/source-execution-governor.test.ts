@@ -2,12 +2,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { createPgliteClient, migratePgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
 import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import {
   createSourceExecutionGovernor,
   deriveSourceExecutionScopeId,
-} from './source-execution-governor'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/source-execution/source-execution-governor'
 
 const resettableDatabase = useResettablePgliteTestDatabase()
 

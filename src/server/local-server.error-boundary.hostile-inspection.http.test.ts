@@ -1,6 +1,6 @@
 import type http from 'node:http'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { handleHttpRequestError } from './local-server.error-boundary'
+import { handleHttpRequestError } from '@sparxie/valedictorian-local-runtime/testing/server/local-server.error-boundary'
 import {
   createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,

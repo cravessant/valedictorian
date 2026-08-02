@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { jobFactsSchema } from '@sparxie/sdk'
-import { jobFactsTiming, normalizeLifecycleJobTerms } from './job.timing'
+import { jobFactsTiming, normalizeLifecycleJobTerms } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.timing'
 
 const UNKNOWN = { terms: [], timingMode: 'unknown', startDate: null, endDate: null } as const
 

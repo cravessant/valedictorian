@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
+import { completedConnectorRefreshContract } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.refresh-result.test-helpers'
 import { MAX_CONNECTOR_SCHEDULE_HISTORY_LIMIT } from '@sparxie/sdk'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,

@@ -5,8 +5,8 @@ import {
 } from '@sparxie/sdk'
 import { registerConnectorsIpc } from '../ipc/connectors.ipc'
 import { createConnectorsPreloadApi } from '../ipc/connectors.preload'
-import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
-import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
 import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import {
   createScheduleHttpTempDatabasePath,

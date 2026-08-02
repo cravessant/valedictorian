@@ -31,6 +31,16 @@ import { resolutionCandidates } from './architecture-source-graph.mjs'
  */
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 const preloadEntry = path.join(repositoryRoot, 'electron/preload.ts')
+const connectorEdgeContractEntry = path.join(
+  repositoryRoot,
+  'packages/local-runtime/src/connector-edge-contract.ts',
+)
+const connectorRendererEntry = path.join(repositoryRoot, 'src/modules/connectors/renderer.ts')
+const rendererEntry = path.join(repositoryRoot, 'src/main.tsx')
+const hostConnectorSurface = path.join(
+  repositoryRoot,
+  'packages/local-runtime/src/modules/connectors/public.ts',
+)
 
 /**
  * Node's own inventory, so no hand-written list can fall behind. Both spellings are
@@ -40,6 +50,7 @@ const preloadEntry = path.join(repositoryRoot, 'electron/preload.ts')
 const nodeBuiltins = new Set(builtinModules)
 const FORBIDDEN_PACKAGE = /^(?:drizzle-orm(?:\/|$)|@electric-sql\/)/
 const FORBIDDEN_FILE = /\.(?:schema|persistence|repository)\.ts$|(?:^|\/)(?:schema|pglite)\.ts$/
+const EVALUATED_MODULE_FILE = /\.[cm]?[jt]sx?$/
 
 /**
  * @param {string} specifier
@@ -165,7 +176,7 @@ export function rendererImportGraph(entry, root = repositoryRoot) {
       const resolved = candidates.find(
         (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
       )
-      if (!resolved || closure.has(resolved)) continue
+      if (!resolved || !EVALUATED_MODULE_FILE.test(resolved) || closure.has(resolved)) continue
       const relative = label(resolved)
       if (FORBIDDEN_FILE.test(relative)) {
         reaches.push([...trail, relative].join(' -> '))
@@ -212,9 +223,64 @@ describe('electron preload renderer safety', () => {
     const { closure } = rendererImportGraph(preloadEntry)
     const surfaces = [...closure]
       .map((file) => path.relative(repositoryRoot, file).split(path.sep).join('/'))
-      .filter((file) => /^src\/modules\/[^/]+\/public\.ts$/.test(file))
+      .filter((file) =>
+        /^(?:src|packages\/local-runtime\/src)\/modules\/[^/]+\/public\.ts$/.test(file))
 
     expect(surfaces).toEqual([])
+  })
+
+  it('uses the sandbox connector edge contract instead of host connector composition', () => {
+    const preloadSource = fs.readFileSync(
+      path.join(repositoryRoot, 'src/ipc/connectors.preload.ts'),
+      'utf8',
+    )
+    const { closure } = rendererImportGraph(preloadEntry)
+
+    expect(preloadSource).toContain(
+      "from '@sparxie/valedictorian-local-runtime/connector-edge-contract'",
+    )
+    expect(preloadSource).not.toContain(
+      "from '@sparxie/valedictorian-local-runtime/connectors'",
+    )
+    expect(closure).toContain(connectorEdgeContractEntry)
+    expect(closure).not.toContain(hostConnectorSurface)
+  })
+})
+
+describe('connector sandbox edge contract', () => {
+  it.each([
+    ['the package edge entrypoint', connectorEdgeContractEntry],
+    ['the renderer connector facade', connectorRendererEntry],
+  ])('%s has no Node, PGlite, Drizzle, schema, repository, or persistence closure', (
+    _label,
+    entry,
+  ) => {
+    const { closure, reaches } = rendererImportGraph(entry)
+    const relativeClosure = [...closure]
+      .map((file) => path.relative(repositoryRoot, file).split(path.sep).join('/'))
+      .sort()
+
+    expect(relativeClosure.length).toBeGreaterThan(1)
+    expect([...new Set(reaches)].sort()).toEqual([])
+    expect(closure).not.toContain(hostConnectorSurface)
+    expect(relativeClosure).not.toContain(
+      'packages/local-runtime/src/modules/connectors/module.ts',
+    )
+    expect(relativeClosure).toEqual(expect.not.arrayContaining([
+      expect.stringMatching(/(?:^|\/)(?:adapters|core|ports)\//),
+      expect.stringMatching(/(?:^|\/)(?:schema|pglite)\.ts$/),
+      expect.stringMatching(/\.(?:schema|persistence|repository)\.ts$/),
+    ]))
+  })
+})
+
+describe('renderer bundle import safety', () => {
+  it('keeps the renderer entry free of Node and persistence value closures', () => {
+    const { closure, reaches } = rendererImportGraph(rendererEntry)
+
+    expect(closure.size).toBeGreaterThan(50)
+    expect([...new Set(reaches)].sort()).toEqual([])
+    expect(closure).not.toContain(hostConnectorSurface)
   })
 })
 

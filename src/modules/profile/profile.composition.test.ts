@@ -3,13 +3,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { profileDocumentSchemaVersion } from '@sparxie/sdk'
-import { resolveWorkspaceLayout } from '../../workspace/workspace.paths'
-import type { SecretCodec } from '../secrets/secret.codec'
+import {
+  computeProfileRevision,
+  serializeProfileJsonDocument,
+} from '@sparxie/valedictorian-local-runtime/profile-files'
+import type { SecretCodec } from '@sparxie/valedictorian-local-runtime/protected-secrets'
+import { resolveWorkspaceLayout } from '@sparxie/valedictorian-local-runtime/workspace-files'
 import {
   prepareWorkspaceProfileCapabilities,
-} from './profile.composition'
-import { serializeProfileJsonDocument } from './profile.json.document'
-import { computeProfileRevision } from './profile.revision'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/profile/profile.composition'
 
 const codec: SecretCodec = {
   decrypt: (value) => value,

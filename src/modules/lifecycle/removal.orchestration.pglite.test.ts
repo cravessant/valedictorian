@@ -13,15 +13,15 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { createPgliteCaptureService } from '../capture/capture.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { createPgliteCaptureService } from '@sparxie/valedictorian-local-runtime/capture'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
-import { createPgliteApplicationAggregateService } from '../applications/application.aggregate.service'
-import { createPgliteJobPromotion } from './capture-to-job.promotion'
-import { createPgliteOpportunityToApplicationPromotion } from './opportunity-to-application.promotion'
-import { jobCaptureEvidenceReferences } from '../job/job.schema'
-import { createLifecycleRemovalOrchestration } from './removal.orchestration'
+import { createPgliteOpportunityService } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.service'
+import { createPgliteApplicationAggregateService } from '@sparxie/valedictorian-local-runtime/testing/modules/applications/application.aggregate.service'
+import { createPgliteJobPromotion } from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/capture-to-job.promotion'
+import { createPgliteOpportunityToApplicationPromotion } from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/opportunity-to-application.promotion'
+import { jobCaptureEvidenceReferences } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import { createLifecycleRemovalOrchestration } from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/removal.orchestration'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const ACTOR = { type: 'user', id: 'u' } as const

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { IsolatedValidationManifest } from '../src/runtime/isolated-validation'
+import type { IsolatedValidationManifest } from '@sparxie/valedictorian-local-runtime/isolated-validation'
 
 export const cliUiDevProofCompanyName = 'Validation Company CLI Proof'
 export const expectedCliCommit = 'd576ebfa84119e809666faac668ccd33b5fa3946'

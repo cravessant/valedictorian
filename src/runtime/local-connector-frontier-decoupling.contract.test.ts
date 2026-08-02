@@ -14,10 +14,10 @@
  * idempotent: re-observation reuses identical content on the same aggregate.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
-import { captureOccurrences, captureRevisions, captures } from '../db/schema'
-import { normalizationWork } from '../modules/scheduling/scheduling.schema'
-import type { AppConnectorRuntime, AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import { captureOccurrences, captureRevisions, captures } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import { normalizationWork } from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/scheduling.schema'
+import type { AppConnectorRuntime, AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
 import {
   getTestLocalValedictorianDatabase,
   useResettablePgliteTestLocalValedictorianClient,

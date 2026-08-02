@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { AppJobConnector } from '../ports/connector.runner-contracts'
-import { createConnectorRunner } from './connector.runner'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
+import { createConnectorRunner } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/connector.runner'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './persistence/connector.repository.pglite-test-helpers'

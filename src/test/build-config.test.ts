@@ -139,7 +139,6 @@ describe('build configuration', () => {
     expect(packageJson.dependencies?.['@electric-sql/pglite']).toBe('0.5.4')
     expect(config.files).toEqual(
       expect.arrayContaining([
-        'drizzle/**/*',
         'dist',
         'dist-electron',
         'node_modules/@electric-sql/pglite/**/*',
@@ -152,6 +151,10 @@ describe('build configuration', () => {
           from: 'node_modules/@electric-sql/pglite/dist',
           to: 'pglite-runtime',
           filter: expect.arrayContaining(['pglite.wasm', 'initdb.wasm', 'pglite.data']),
+        }),
+        expect.objectContaining({
+          from: 'packages/local-runtime/drizzle',
+          to: 'drizzle',
         }),
       ]),
     )

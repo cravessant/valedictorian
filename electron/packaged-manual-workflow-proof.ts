@@ -3,22 +3,22 @@ import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobri
 import {
   createPgliteClient,
   migratePgliteDatabase,
-} from '../src/db/pglite'
+} from '@sparxie/valedictorian-local-runtime/database'
 import {
   captureResolutionStageResults,
   captureRevisions,
-} from '../src/modules/capture/capture.schema'
-import { jobCompanyAssignments } from '../src/modules/company/company.schema'
-import { jobs } from '../src/modules/job/job.schema'
-import { jobFactsTiming } from '../src/modules/job/job.timing'
-import type { LocalScheduledWorkSource } from '@/modules/scheduling/public'
-import { createLocalValedictorianClient } from '../src/runtime/local-valedictorian-client'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.schema'
+import { jobCompanyAssignments } from '@sparxie/valedictorian-local-runtime/testing/modules/company/company.schema'
+import { jobs } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import { jobFactsTiming } from '@sparxie/valedictorian-local-runtime/job'
+import type { LocalScheduledWorkSource } from '@sparxie/valedictorian-local-runtime/scheduling'
+import { createLocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 import {
   type AppConnectorRuntime,
   type AppJobConnector,
   JOBRIGHT_CONNECTOR_VERSION,
   createStaticConnectorRegistry,
-} from '../src/modules/connectors/public'
+} from '@sparxie/valedictorian-local-runtime/connectors'
 
 const BUILD_IDENTITY = process.env.VALEDICTORIAN_PACKAGE_MANUAL_WORKFLOW_BUILD_IDENTITY
   ?? 'unspecified-build'

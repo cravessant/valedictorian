@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CaptureCompletionDetailV2, Job, JobId } from '@sparxie/sdk'
-import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
+import type { LocalWorkspaceClientV2 } from '@sparxie/valedictorian-local-runtime/local-client'
 
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
 vi.mock('@/components/ui/use-toast', () => ({ toast }))

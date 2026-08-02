@@ -4,6 +4,14 @@ import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import {
+  createApplicationFileSecretStore,
+} from '@sparxie/valedictorian-local-runtime/protected-secrets'
+import {
+  createFileWorkspaceRegistryStore,
+  getDefaultWorkspaceRegistryPath,
+  workspaceAppSecretsFileName,
+} from '@sparxie/valedictorian-local-runtime/workspace-files'
 import { runPackagedManualWorkflowProof } from './packaged-manual-workflow-proof'
 import { runPackagedPgliteSmoke } from './pglite-packaged-smoke'
 import {
@@ -19,6 +27,7 @@ import {
   runCliUiDevProof,
 } from './cli-ui-dev-proof'
 import { createElectronSecretCodec } from './profile-secret-codec'
+import { resolveElectronPgliteMigrationsFolder } from './pglite-migrations'
 import { removeRuntimeIpcHandlers } from './runtime-ipc'
 import { createRuntimeQuitBarrier, stopRuntimeLifecycle } from './runtime-lifecycle'
 import { registerPolicyIpc } from '../src/ipc/policy.ipc'
@@ -36,38 +45,32 @@ import {
   VALEDICTORIAN_BACKEND_STATE_CHANGED_CHANNEL,
 } from '../src/ipc/valedictorian-http.preload'
 import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
-import { createLocalWorkspaceManager, type LocalWorkspaceManager } from '../src/server/local-workspaces'
+import { createLocalWorkspaceManager, type LocalWorkspaceManager } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import {
   createValedictorianRuntime,
   resolveValedictorianRuntimeConfig,
   type ValedictorianRuntime,
-} from '../src/runtime/valedictorian-runtime'
-import { resolveStartupSettingsAndApiToken } from '../src/runtime/startup-settings-resolution'
+} from '@sparxie/valedictorian-local-runtime/runtime'
+import { resolveStartupSettingsAndApiToken } from '@sparxie/valedictorian-local-runtime/runtime'
 import {
   createLocalBackendSupervisor,
   type LocalBackendState,
   type LocalBackendSupervisor,
   type SupervisedBackendListener,
-} from '../src/runtime/local-backend-supervisor'
+} from '@sparxie/valedictorian-local-runtime/runtime'
 import { createFileAppSettingsStore } from '../src/settings/app-settings.store'
-import { createApplicationFileSecretStore } from '../src/settings/app-secret.composition'
 import { defaultAppSettings } from '../src/settings/app-settings'
 import { serializeResolvedTheme } from '../src/theme/theme-bootstrap'
 import { resolveTheme, type ResolvedTheme } from '../src/theme/theme-registry'
-import { type WorkspaceSummary } from '../src/workspace/workspace.initializer'
+import { type WorkspaceSummary } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import { createWorkspaceMenuTemplate } from '../src/workspace/workspace.menu'
 import { createWorkspaceWindowTitle } from '../src/workspace/workspace.window'
-import {
-  getDefaultWorkspaceRegistryPath,
-  workspaceAppSecretsFileName,
-} from '../src/workspace/workspace.paths'
-import { createFileWorkspaceRegistryStore } from '../src/workspace/workspace.registry'
 import {
   createWorkspaceService,
   resolveWorkspaceLaunchState,
   type WorkspaceActivationOptions,
   type WorkspaceService,
-} from '../src/workspace/workspace.service'
+} from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import {
   createWorkspaceFolderPicker,
   type WorkspaceFolderDialogOptions,
@@ -79,7 +82,7 @@ import {
   readIsolatedValidationEnvironment,
   type IsolatedValidationManifest,
   writeIsolatedValidationTerminalState,
-} from '../src/runtime/isolated-validation'
+} from '@sparxie/valedictorian-local-runtime/isolated-validation'
 import { createIsolatedValidationReadinessGate } from './isolated-validation-readiness'
 import {
   createFileMainWindowStateStore,
@@ -237,6 +240,11 @@ async function registerRuntimeServices(
       seedDataMode: options?.seedData ?? config.seedDataMode,
     },
     deferServerStart: config.mode !== 'remote',
+    migrationsFolder: resolveElectronPgliteMigrationsFolder({
+      appPath: app.getAppPath(),
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
     secretCodec,
     workspaceManager: workspaceManager ?? undefined,
   })
@@ -753,6 +761,11 @@ app.whenReady().then(async () => {
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
   )
   workspaceManager = createLocalWorkspaceManager({
+    migrationsFolder: resolveElectronPgliteMigrationsFolder({
+      appPath: app.getAppPath(),
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
     referenceTrackerPath: process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH,
     registryStore,
     secretCodec: createElectronSecretCodec(safeStorage),

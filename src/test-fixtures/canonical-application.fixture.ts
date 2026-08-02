@@ -5,8 +5,8 @@ import {
   jobs,
   opportunities,
   workspaces,
-} from '../db/schema'
-import type { PgliteDatabase } from '../db/pglite'
+} from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import type { PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
 
 export interface CanonicalApplicationFixtureInput {
   id: string

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createPgliteTestDatabase, createPgliteTestOwner } from '../../test/pglite-test-owner'
-import { createApplicationFileSecretStore } from '../../settings/app-secret.composition'
 import {
+  createApplicationFileSecretStore,
   createApplicationSecretScope,
   createWorkspaceSecretScope,
-} from './secret.scope'
-import type { SecretCodec } from './secret.codec'
-import { createPgliteSecretService } from './secret.composition'
+  type SecretCodec,
+} from '@sparxie/valedictorian-local-runtime/protected-secrets'
+import { createPgliteSecretService } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.composition'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'

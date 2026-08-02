@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "decision": {
+    "issue": "https://github.com/cravessant/valedictorian-app/issues/553"
+  },
+  "package": {
+    "name": "@sparxie/valedictorian-local-runtime",
+    "path": "packages/local-runtime",
+    "private": true,
+    "independentlyBuildable": true
+  },
+  "ownedSource": [
+    "pglite.ts",
+    "pglite-runtime-assets.ts",
+    "project-config.ts",
+    "workspace.paths.ts",
+    "workspace.registry.ts",
+    "atomic-document.ts",
+    "app-secret.ts",
+    "app-secret.store.ts",
+    "app-secret.composition.ts",
+    "secret.codec.ts",
+    "secret.scope.ts",
+    "profile.store.ts",
+    "profile.document.capability.ts",
+    "profile.errors.ts",
+    "profile.normalize.ts",
+    "profile.revision.ts",
+    "profile.json.paths.ts",
+    "profile.json.watch.ts",
+    "profile.json.atomic.ts",
+    "profile.json.lock.ts",
+    "profile.json.document.ts",
+    "profile.json.store.ts"
+  ],
+  "ownedBackendRoots": [
+    "src/db",
+    "src/modules/action-queue",
+    "src/modules/application",
+    "src/modules/applications",
+    "src/modules/capture",
+    "src/modules/company",
+    "src/modules/connectors",
+    "src/modules/job",
+    "src/modules/lifecycle",
+    "src/modules/opportunity",
+    "src/modules/policy",
+    "src/modules/profile",
+    "src/modules/scheduling",
+    "src/modules/scoring",
+    "src/modules/secrets",
+    "src/modules/source-execution",
+    "src/modules/workflow-runs",
+    "src/server",
+    "src/workspace"
+  ],
+  "ownedRuntimeComposition": [
+    "src/runtime/api-token-resolution.ts",
+    "src/runtime/isolated-validation.ts",
+    "src/runtime/local-backend-supervisor.ts",
+    "src/runtime/local-connector-client.contract.ts",
+    "src/runtime/local-connector-public-status.ts",
+    "src/runtime/local-lifecycle-methods.ts",
+    "src/runtime/local-profile-secret-client.ts",
+    "src/runtime/local-scheduler.ts",
+    "src/runtime/local-valedictorian-client.ts",
+    "src/runtime/local-valedictorian-runtime-options.ts",
+    "src/runtime/local-valedictorian-seeding.ts",
+    "src/runtime/runtime-settings.ts",
+    "src/runtime/startup-settings-resolution.ts",
+    "src/runtime/valedictorian-runtime.ts",
+    "src/runtime/workspace-authority-admission.ts"
+  ],
+  "ownedMigrationAssets": "drizzle",
+  "retainedApplicationOwnership": [
+    "src/app",
+    "src/ipc",
+    "src/settings",
+    "src/theme",
+    "src/workspace/workspace.dialog.ts",
+    "src/workspace/workspace.menu.ts",
+    "src/workspace/workspace.window.ts",
+    "src/App.tsx",
+    "src/AppRoot.tsx",
+    "src/main.tsx",
+    "electron"
+  ],
+  "constraints": {
+    "forbiddenPackageImports": [
+      "@/",
+      "src",
+      "electron"
+    ],
+    "normalExportSurfacesAreExplicit": true,
+    "testingExportSurfacesAreExplicit": true,
+    "safeStorageOwnership": "electron/profile-secret-codec.ts",
+    "safeStorageBoundary": "injected-secret-codec-port",
+    "schemaAndMigrationOwnership": "local-runtime-package"
+  }
+}

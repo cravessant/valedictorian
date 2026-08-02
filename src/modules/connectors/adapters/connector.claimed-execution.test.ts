@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createStaticConnectorRegistry } from '../core/connector.registry'
-import { createConnectorRunner } from './connector.runner'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import { createConnectorRunner } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/connector.runner'
 import { createConnectorRepositoryTestContext } from './persistence/connector.repository.pglite-test-helpers'
-import { executeClaimedConnectorRun } from '../core/connector.claimed-execution'
+import { executeClaimedConnectorRun } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.claimed-execution'
 
 describe('shared claimed connector run executor', () => {
   it('rejects a claimed run whose stored connector version drifted, without mutating anything', async () => {

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createDefaultLocalConnectorPorts,
   createJitterDelayRuntime,
-} from './connector.runtime-ports'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/runtime/connector.runtime-ports'
 
 describe('connector runtime ports', () => {
   it('waits for a jittered duration without hard-coding wall-clock sleeps', async () => {

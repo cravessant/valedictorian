@@ -4,10 +4,10 @@ import {
   createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
 } from './local-valedictorian-client.test-harness'
-import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
-import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
-import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
-import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
+import { completedConnectorRefreshContract } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.refresh-result.test-helpers'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
 
 function createCoverageFixtureConnector(refresh: AppJobConnector['refresh']): AppJobConnector {
   return {

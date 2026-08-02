@@ -1,0 +1,16 @@
+import type { ProfileDocument, ProfileDocumentUpdateInput, UserProfile } from '@sparxie/sdk'
+
+/** Storage contract shared by package-owned profile file adapters. */
+export type ProfileStoreUpdateResult =
+  | { ok: true; document: ProfileDocument }
+  | { ok: false; code: 'profile_revision_conflict'; document: ProfileDocument }
+
+export interface ProfileStore {
+  get(): Promise<ProfileDocument>
+  update(input: {
+    expectedRevision: string
+    profile: UserProfile
+  }): Promise<ProfileStoreUpdateResult>
+}
+
+export type { ProfileDocument, ProfileDocumentUpdateInput, UserProfile }

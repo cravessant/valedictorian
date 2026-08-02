@@ -15,7 +15,7 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { typography } from '@/components/ui/typography'
-import type { CreateWorkspaceInput, WorkspaceLaunchState } from './workspace.service'
+import type { CreateWorkspaceInput, WorkspaceLaunchState } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 interface WorkspaceLauncherPageProps {
   launchState: Extract<WorkspaceLaunchState, { status: 'needs-workspace' }>

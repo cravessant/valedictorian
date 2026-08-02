@@ -4,7 +4,7 @@ import {
   computeNextNominalAfter,
   resolveMissedNominals,
   resolveZonedLocalInstant,
-} from './connector-schedule.eligibility'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector-schedule.eligibility'
 
 /** Ordinary valid resolution must stay far below a day-long minute scan (~1440 formats). */
 const MAX_ORDINARY_ZONED_RESOLUTION_FORMATS = 48

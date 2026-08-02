@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { sourceExecutionSessions } from '../../db/schema'
+import { sourceExecutionSessions } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
-import { createSourceExecutionGovernor, deriveSourceExecutionScopeId } from './source-execution-governor'
-import { createSourceSessionExecutor } from './source-session-executor'
+import { createSourceExecutionGovernor, deriveSourceExecutionScopeId } from '@sparxie/valedictorian-local-runtime/testing/modules/source-execution/source-execution-governor'
+import { createSourceSessionExecutor } from '@sparxie/valedictorian-local-runtime/testing/modules/source-execution/source-session-executor'
 
 const resettableDatabase = useResettablePgliteTestDatabase()
 

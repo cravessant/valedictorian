@@ -1,10 +1,10 @@
-import { createPgliteClient, migratePgliteDatabase } from '../db/pglite'
-import type { PgliteDatabase } from '../db/pglite'
+import { createPgliteClient, migratePgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
+import type { PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
 import {
   createPgliteCaptureService,
   seedResolvedCaptureDestination,
-} from '../modules/capture/public'
-import { createLocalValedictorianClient } from './local-valedictorian-client'
+} from '@sparxie/valedictorian-local-runtime/capture'
+import { createLocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 export { isolatedValidationFixture } from './isolated-validation.fixture-contract'
 import {
   captureCompletionLongContentFixture,

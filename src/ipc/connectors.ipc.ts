@@ -1,4 +1,4 @@
-import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import type { LocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 import {
   removeConnectorInstanceInputSchema,
   triggerConnectorRunInputSchema,
@@ -9,8 +9,8 @@ import {
   publicConnectorRunsListResult,
   publicConnectorRunSummary,
   publicConnectorSkipActionResult,
-} from '../modules/connectors/public'
-import { publicConnectorStatusSummary } from '../runtime/local-connector-public-status'
+} from '@sparxie/valedictorian-local-runtime/connectors'
+import { publicConnectorStatusSummary } from '@sparxie/valedictorian-local-runtime/runtime'
 interface IpcMainLike {
   handle: (channel: string, handler: (_event: unknown, input?: unknown) => Promise<unknown>) => void
 }

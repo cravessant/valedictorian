@@ -145,6 +145,7 @@ describe('maintained test type-check coverage', () => {
       'electron',
       'packages/connector-api',
       'packages/connector-testkit',
+      'packages/local-runtime',
       'packages/workspace',
       'scripts',
       'src',

@@ -10,9 +10,9 @@ import {
   companyDuplicateIndexState,
   companyDuplicateMaintenanceWork,
   workspaceCompanies,
-} from './company.schema'
-import { COMPANY_DUPLICATE_MATCHER_VERSION } from './company.duplicate-scorer'
-import { enqueueCompanyDuplicateReconsideration } from './company.duplicate-maintenance'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/company/company.schema'
+import { COMPANY_DUPLICATE_MATCHER_VERSION } from '@sparxie/valedictorian-local-runtime/testing/modules/company/company.duplicate-scorer'
+import { enqueueCompanyDuplicateReconsideration } from '@sparxie/valedictorian-local-runtime/testing/modules/company/company.duplicate-maintenance'
 
 const createClient = useResettablePgliteTestLocalValedictorianClient()
 const WORKSPACE = 'company-duplicates-workspace'

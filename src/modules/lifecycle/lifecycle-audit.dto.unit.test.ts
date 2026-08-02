@@ -12,7 +12,7 @@ import {
   toLifecycleAudit,
   toLifecycleAuditFromJson,
   toLifecycleBlocker,
-} from './lifecycle-audit.dto'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/lifecycle-audit.dto'
 
 describe('toContractActor', () => {
   it('surfaces the actor type as the id when none was recorded (ratified convention)', () => {

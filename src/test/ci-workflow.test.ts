@@ -55,7 +55,8 @@ describe('CI workflow', () => {
     expect(workflow).not.toContain('eval ')
     expect(workflow).not.toContain('--print-env')
     expect(runTestsStep).toContain('scripts/allocate-test-temp.mjs --print-root')
-    expect(runTestsStep).toContain('pnpm run build:workspace-packages')
+    expect(runTestsStep).toContain('pnpm run build:dependency-packages')
+    expect(runTestsStep).not.toContain('pnpm run build:workspace-packages')
     expect(runTestsStep).toContain('TEST_TEMP_ROOT="$(node scripts/allocate-test-temp.mjs --print-root)"')
     expect(runTestsStep).toContain('[ -n "$TEST_TEMP_ROOT" ] || exit 1')
     expect(runTestsStep).toContain('local status=$?')
@@ -88,8 +89,9 @@ describe('CI workflow', () => {
 
     expect(workflow).toMatch(/package-smoke:[\s\S]*?timeout-minutes: 5/)
     expect(workflow).toContain('name: Run macOS package checks')
-    expect(packageSmoke).toContain('- name: Build workspace packages')
-    expect(packageSmoke).toContain('run: pnpm run build:workspace-packages')
+    expect(packageSmoke).toContain('- name: Build dependency packages')
+    expect(packageSmoke).toContain('run: pnpm run build:dependency-packages')
+    expect(packageSmoke).not.toContain('run: pnpm run build:workspace-packages')
     expect(devProof).toContain('run: pnpm lint')
     expect(packageSmoke).not.toContain('pnpm lint')
     expect(workflow).toMatch(

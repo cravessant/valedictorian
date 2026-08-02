@@ -8,7 +8,7 @@ import type {
   LifecyclePageInfo,
   Opportunity,
 } from '@sparxie/sdk'
-import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
+import type { LocalWorkspaceClientV2 } from '@sparxie/valedictorian-local-runtime/local-client'
 
 import { WorkspaceClientUnavailableError, scopedLoadFailure } from '@/app/app-load-failure'
 import type { WorkspaceCursorDirection } from '@/app/workspace-location'

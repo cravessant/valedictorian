@@ -11,17 +11,17 @@ import {
   connectorSchedules,
   sourceExecutionScopes,
   sourceExecutionSessions,
-} from '../../../../db/schema'
+} from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import {
   createPgliteClient,
   createPgliteDatabase,
   type PgliteClient,
   type PgliteDatabase,
-} from '../../../../db/pglite'
-import { DEFAULT_WORKSPACE_ID } from '../../../../db/workspaces.schema'
+} from '@sparxie/valedictorian-local-runtime/database'
+import { DEFAULT_WORKSPACE_ID } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { prepareConfiguredPgliteDataPath } from '../../../../test/pglite-template'
 import { createPgliteTestOwner } from '../../../../test/pglite-test-owner'
-import { retireConnectorInstance } from './connector-retirement.persistence'
+import { retireConnectorInstance } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector-retirement.persistence'
 
 const clients = new Set<PgliteClient>()
 const dataDirectories = new Set<string>()

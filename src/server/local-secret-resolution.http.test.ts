@@ -2,13 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createPgliteSecretService } from '../modules/secrets/secret.composition'
-import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
-import { identitySsnLast4SecretKey } from '../modules/secrets/secret.identity'
-import type { SecretCodec } from '../modules/secrets/secret.codec'
-import { initializeWorkspace } from '../workspace/workspace.initializer'
-import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
-import { createLocalWorkspaceManager } from './local-workspaces'
+import { createPgliteSecretService } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.composition'
+import {
+  createWorkspaceSecretScope,
+  type SecretCodec,
+} from '@sparxie/valedictorian-local-runtime/protected-secrets'
+import { identitySsnLast4SecretKey } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.identity'
+import { initializeWorkspace } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
+import { createFileWorkspaceRegistryStore } from '@sparxie/valedictorian-local-runtime/workspace-files'
+import { createLocalWorkspaceManager } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import {
   getTestLocalValedictorianDatabase,
   useResettablePgliteTestLocalValedictorianClient,

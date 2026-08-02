@@ -7,8 +7,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { jobrightProviderFieldResolverDeclaration } from '@sparxie/valedictorian-connectors-jobright'
-import { createDefaultLocalConnectorRegistry } from '../adapters/provider/connector.default-registry'
-import { JOBRIGHT_CONNECTOR_ID } from '../public/jobright.constants'
+import { createDefaultLocalConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/provider/connector.default-registry'
+import { JOBRIGHT_CONNECTOR_ID } from '@sparxie/valedictorian-local-runtime/connectors'
 
 describe('Jobright provider-field resolver registration (#325)', () => {
   it('exposes the provider-field resolver through the connector registry', () => {

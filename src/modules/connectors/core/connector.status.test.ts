@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ConnectorStatusSummaryRecord, ConnectorWarning } from '../ports/connector.repository.port'
-import { mapConnectorStatusSummary } from './connector.status'
+import type { ConnectorStatusSummaryRecord, ConnectorWarning } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.repository.port'
+import { mapConnectorStatusSummary } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.status'
 
 describe('connector status mapping', () => {
   it('shows an advancing newest frontier as checking newest', () => {

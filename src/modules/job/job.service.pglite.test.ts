@@ -7,9 +7,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { UUID_V7_PATTERN } from '../../db/lifecycle-vocabulary'
-import type { CreateJobInput, JobService } from './job.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { UUID_V7_PATTERN } from '@sparxie/valedictorian-local-runtime/testing/db/lifecycle-vocabulary'
+import type { CreateJobInput, JobService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
 
 const resettableOwner = useResettablePgliteTestOwner()

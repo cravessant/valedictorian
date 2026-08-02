@@ -9,20 +9,20 @@ import {
 import { createTestLocalValedictorianClient } from '../runtime/local-valedictorian-client.test-harness'
 import { getTestLocalValedictorianDatabase } from '../runtime/local-valedictorian-client.test-harness'
 import { createLocalServerHttpTestFixture } from './local-server.http-test-harness'
-import { createPgliteCaptureService } from '../modules/capture/capture.service'
-import { createCaptureMaterializationService } from '../modules/capture/capture.materialization'
+import { createPgliteCaptureService } from '@sparxie/valedictorian-local-runtime/capture'
+import { createCaptureMaterializationService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.materialization'
 import {
   captureResolutionCommandReceipts,
   captureResolutionGenerations,
   captureResolutionStageResults,
-} from '../modules/capture/capture.schema'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.schema'
 import { and, eq } from 'drizzle-orm'
 import {
   jobCaptureEvidenceReferences,
   jobExternalIdentities,
   jobs,
-} from '../modules/job/job.schema'
-import { jobCompanyAssignments, workspaceCompanies } from '../modules/company/company.schema'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import { jobCompanyAssignments, workspaceCompanies } from '@sparxie/valedictorian-local-runtime/testing/modules/company/company.schema'
 
 const WORKSPACE = 'capture-resolution-http-workspace'
 

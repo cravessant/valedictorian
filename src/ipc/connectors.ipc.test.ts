@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { unexpectedConnectorExecutionError } from '../modules/connectors/public/connector.execution-errors'
-import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { unexpectedConnectorExecutionError } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.execution-errors'
+import type { LocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 import { registerConnectorsIpc } from './connectors.ipc'
 
 describe('connectors IPC registration', () => {

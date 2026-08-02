@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { sources, workflowRuns, workflowRunSteps } from '../../db/schema'
+import { sources, workflowRuns, workflowRunSteps } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import {
   type PgliteDatabase,
-} from '../../db/pglite'
+} from '@sparxie/valedictorian-local-runtime/database'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { createPgliteWorkflowRunRepository } from './workflow-run.repository'
+import { createPgliteWorkflowRunRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/workflow-runs/workflow-run.repository'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

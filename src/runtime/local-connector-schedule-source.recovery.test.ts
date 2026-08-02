@@ -3,7 +3,7 @@ import type {
   ConnectorScheduleSummary,
   DispatchConnectorScheduleDueResult,
 } from '@sparxie/sdk'
-import { createConnectorScheduleWorkSource } from '../modules/connectors/adapters/scheduling/connector-schedule.source'
+import { createConnectorScheduleWorkSource } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/scheduling/connector-schedule.source'
 
 describe('local connector schedule source recovery', () => {
   it('immediately resumes an admitted queued run after the schedule cadence advanced', async () => {

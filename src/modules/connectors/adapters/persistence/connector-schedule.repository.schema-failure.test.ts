@@ -1,14 +1,14 @@
 import { sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { sourceExecutionScopes } from '../../../../db/schema'
+import { sourceExecutionScopes } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import {
   connectorInstances,
   connectorScheduleRevisions,
   connectorSchedules,
-} from './connector.schema'
-import type { PgliteDatabase } from '../../../../db/pglite'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.schema'
+import type { PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
 import { createPgliteTestDatabase } from '../../../../test/pglite-test-owner'
-import { createConnectorScheduleRepository } from './connector-schedule.repository'
+import { createConnectorScheduleRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector-schedule.repository'
 
 const NOW = '2026-07-18T10:00:00.000Z'
 const CADENCE = { kind: 'interval' as const, everyMinutes: 60 }

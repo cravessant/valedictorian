@@ -1,7 +1,7 @@
 import type {
   WorkspaceFolderPickerOptions,
   WorkspaceService,
-} from '../workspace/workspace.service'
+} from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 interface IpcMainLike {
   handle(channel: string, handler: (event: unknown, payload?: unknown) => unknown): void

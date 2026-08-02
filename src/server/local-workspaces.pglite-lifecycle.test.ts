@@ -2,9 +2,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { initializeWorkspace } from '../workspace/workspace.initializer'
-import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
-import { createLocalWorkspaceManager } from './local-workspaces'
+import { initializeWorkspace } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
+import { createFileWorkspaceRegistryStore } from '@sparxie/valedictorian-local-runtime/workspace-files'
+import { createLocalWorkspaceManager } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 describe('local workspace PGlite owner lifecycle', () => {
   const cleanupPaths: string[] = []

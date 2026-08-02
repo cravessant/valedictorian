@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { defaultAppSettings } from '../settings/app-settings'
-import { resolveStartupApiToken } from './api-token-resolution'
-import { resolveValedictorianRuntimeConfig } from './valedictorian-runtime'
+import { resolveStartupApiToken } from '@sparxie/valedictorian-local-runtime/runtime'
+import { resolveValedictorianRuntimeConfig } from '@sparxie/valedictorian-local-runtime/runtime'
 
 const ENV_CANARY = 'env-canary-token-7a1b'
 const SAVED_CANARY = 'saved-canary-token-3c9d'

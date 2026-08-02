@@ -10,13 +10,13 @@
 import { describe, expect, it } from 'vitest'
 import { captureHistoryResultSchema, captureListResultSchema, captureSchema } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import {
   createPgliteCaptureService,
   type AcceptCaptureInput,
   type CaptureService,
-} from './capture.service'
-import { createPgliteCaptureReadModel } from './capture.read-model'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.service'
+import { createPgliteCaptureReadModel } from '@sparxie/valedictorian-local-runtime/capture'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

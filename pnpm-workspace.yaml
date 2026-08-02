@@ -1,6 +1,7 @@
 packages:
   - "packages/connector-api"
   - "packages/connector-testkit"
+  - "packages/local-runtime"
   - "packages/workspace/server"
   - "packages/workspace/client"
   - "packages/workspace/conformance"

@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { applications } from '../db/schema'
+import { applications } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import { createPgliteTestOwner } from './pglite-test-owner'
 
 describe('PGlite test owner', () => {

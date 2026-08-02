@@ -25,7 +25,7 @@ afterEach(() => {
 
 describe('module public surfaces', () => {
   const bypass = (source, target, specifier) =>
-    `[module-public-surface-bypass] ${source} reaches ${target} through ${JSON.stringify(specifier)}; production server and runtime code imports a capability only through src/modules/job/public.ts\n`
+    `[module-public-surface-bypass] ${source} reaches ${target} through ${JSON.stringify(specifier)}; production server and runtime code imports a capability only through packages/local-runtime/src/modules/job/public.ts\n`
 
   it('accepts a named value and type import from the exact public surface', () => {
     const result = check(passingFixture())
@@ -89,7 +89,7 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      bypass('src/runtime/runtime.ts', 'src/modules/job/job.service.ts', specifier),
+      bypass('src/runtime/runtime.ts', 'packages/local-runtime/src/modules/job/job.service.ts', specifier),
     )
   })
 
@@ -102,7 +102,7 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      bypass('src/server/server.http-fixture.ts', 'src/modules/job/job.service.ts', '../modules/job/job.service'),
+      bypass('src/server/server.http-fixture.ts', 'packages/local-runtime/src/modules/job/job.service.ts', '../modules/job/job.service'),
     )
   })
 
@@ -115,12 +115,12 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      bypass('src/runtime/runtime.test-harness.mts', 'src/modules/job/job.service.ts', '../modules/job/job.service'),
+      bypass('src/runtime/runtime.test-harness.mts', 'packages/local-runtime/src/modules/job/job.service.ts', '../modules/job/job.service'),
     )
   })
 
   it.each([
-    ['an extension spelling', '../modules/job/public.js'],
+    ['an extension spelling', '../modules/job/public.ts'],
     ['a redundant-segment spelling', '../modules/job/../job/public'],
   ])('rejects the public surface reached by %s', (_label, specifier) => {
     const result = check({
@@ -130,20 +130,20 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[module-public-surface-bypass] src/runtime/runtime.ts reaches src/modules/job/public.ts through ${JSON.stringify(specifier)}; the surface is imported by its exact path with no extension, index, or redundant segment\n`,
+      `[module-public-surface-bypass] src/runtime/runtime.ts reaches packages/local-runtime/src/modules/job/public.ts through ${JSON.stringify(specifier)}; the surface is imported by its exact path with no extension, index, or redundant segment\n`,
     )
   })
 
   it('rejects an index spelling standing in for the public surface', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/index.ts': "export { runJob } from './job.service'\n",
+      'packages/local-runtime/src/modules/job/index.ts': "export { runJob } from './job.service'\n",
       'src/runtime/runtime.ts': "import { runJob } from '../modules/job'\n\nexport const columns = runJob\n",
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      bypass('src/runtime/runtime.ts', 'src/modules/job/index.ts', '../modules/job'),
+      bypass('src/runtime/runtime.ts', 'packages/local-runtime/src/modules/job/index.ts', '../modules/job'),
     )
   })
 
@@ -155,14 +155,14 @@ describe('module public surfaces', () => {
       'src/runtime/runtime.ts': "import { runJob } from './job-alias'\n\nexport const columns = runJob\n",
     }, fixtureRoots)
     fs.symlinkSync(
-      path.join(root, 'src/modules/job/job.service.ts'),
+      path.join(root, 'packages/local-runtime/src/modules/job/job.service.ts'),
       path.join(root, 'src/runtime/job-alias.ts'),
     )
     const result = runArchitectureCheck(root)
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      bypass('src/runtime/runtime.ts', 'src/modules/job/job.service.ts', './job-alias'),
+      bypass('src/runtime/runtime.ts', 'packages/local-runtime/src/modules/job/job.service.ts', './job-alias'),
     )
   })
 
@@ -181,7 +181,7 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[module-public-surface-bypass] src/runtime/runtime.ts reaches src/modules/job/job.service.ts through the barrel src/shared/job-barrel.ts; a re-export carries a module internal across the boundary that src/modules/job/public.ts exists to hold\n',
+      '[module-public-surface-bypass] src/runtime/runtime.ts reaches packages/local-runtime/src/modules/job/job.service.ts through the barrel src/shared/job-barrel.ts; a re-export carries a module internal across the boundary that packages/local-runtime/src/modules/job/public.ts exists to hold\n',
     )
   })
 
@@ -197,7 +197,7 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[module-public-surface-bypass] src/runtime/runtime.ts reaches src/modules/job/job.service.ts through the barrel src/shared/job-barrel.ts; a re-export carries a module internal across the boundary that src/modules/job/public.ts exists to hold\n',
+      '[module-public-surface-bypass] src/runtime/runtime.ts reaches packages/local-runtime/src/modules/job/job.service.ts through the barrel src/shared/job-barrel.ts; a re-export carries a module internal across the boundary that packages/local-runtime/src/modules/job/public.ts exists to hold\n',
     )
   })
 
@@ -234,7 +234,7 @@ describe('module public surfaces', () => {
     const result = check({
       ...passingFixture(),
       [edgePath]: 'export const columns = 1\n',
-      'src/modules/job/public.ts': [
+      'packages/local-runtime/src/modules/job/public.ts': [
         "export { runJob, type JobRun } from './job.service'",
         `export { columns } from '${specifier}'`,
         '',
@@ -243,14 +243,14 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[module-public-surface-bypass] src/modules/job/public.ts depends on ${edge} through src/modules/job/public.ts -> ${edgePath}; no file in a public surface's closure reaches its own consumer\n`,
+      `[module-public-surface-bypass] packages/local-runtime/src/modules/job/public.ts depends on ${edge} through packages/local-runtime/src/modules/job/public.ts -> ${edgePath}; no file in a public surface's closure reaches its own consumer\n`,
     )
   })
 
   it('rejects a public surface reaching Electron', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/public.ts': [
+      'packages/local-runtime/src/modules/job/public.ts': [
         "import { app } from 'electron'",
         "export { runJob, type JobRun } from './job.service'",
         '',
@@ -261,7 +261,7 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[module-public-surface-bypass] src/modules/job/public.ts depends on Electron through src/modules/job/public.ts -> "electron"; a public surface carries no Electron edge anywhere in its closure\n',
+      '[module-public-surface-bypass] packages/local-runtime/src/modules/job/public.ts depends on Electron through packages/local-runtime/src/modules/job/public.ts -> "electron"; a public surface carries no Electron edge anywhere in its closure\n',
     )
   })
 
@@ -279,12 +279,12 @@ describe('module public surfaces', () => {
   it('accepts a surface that publishes only its own module', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/public.ts': [
+      'packages/local-runtime/src/modules/job/public.ts': [
         "export { runJob, type JobRun } from './job.service'",
         "export { jobLabel } from './job.labels'",
         '',
       ].join('\n'),
-      'src/modules/job/job.labels.ts': "export const jobLabel = 'job'\n",
+      'packages/local-runtime/src/modules/job/job.labels.ts': "export const jobLabel = 'job'\n",
       'src/runtime/runtime.ts': [
         "import { jobLabel, runJob, type JobRun } from '../modules/job/public'",
         '',
@@ -304,7 +304,7 @@ describe('module public surfaces', () => {
   ])('rejects a public surface laundering another module through %s', (_label, statement) => {
     const result = check({
       ...passingFixture(),
-      'src/modules/capture/capture.service.ts': [
+      'packages/local-runtime/src/modules/capture/capture.service.ts': [
         "import { jobs } from '../job/job.schema'",
         '',
         'void jobs',
@@ -312,7 +312,7 @@ describe('module public surfaces', () => {
         'export interface CaptureRow { readonly id: string }',
         '',
       ].join('\n'),
-      'src/modules/job/public.ts': [
+      'packages/local-runtime/src/modules/job/public.ts': [
         "export { runJob, type JobRun } from './job.service'",
         statement,
         '',
@@ -321,14 +321,14 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[module-public-surface-bypass] src/modules/job/public.ts transports src/modules/capture/capture.service.ts; a public surface publishes its own module only, and src/modules/capture/public.ts owns that contract\n',
+      '[module-public-surface-bypass] packages/local-runtime/src/modules/job/public.ts transports packages/local-runtime/src/modules/capture/capture.service.ts; a public surface publishes its own module only, and packages/local-runtime/src/modules/capture/public.ts owns that contract\n',
     )
   })
 
   it('rejects a consumer reaching a foreign internal laundered through a public surface', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/public.ts': [
+      'packages/local-runtime/src/modules/job/public.ts': [
         "export { runJob, type JobRun } from './job.service'",
         "export { columns as captureColumns } from '../capture/capture.service'",
         '',
@@ -343,7 +343,7 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[module-public-surface-bypass] src/runtime/runtime.ts reaches src/modules/capture/capture.service.ts through the barrel src/modules/job/public.ts; a re-export carries a module internal across the boundary that src/modules/capture/public.ts exists to hold\n',
+      '[module-public-surface-bypass] src/runtime/runtime.ts reaches packages/local-runtime/src/modules/capture/capture.service.ts through the barrel packages/local-runtime/src/modules/job/public.ts; a re-export carries a module internal across the boundary that packages/local-runtime/src/modules/capture/public.ts exists to hold\n',
     )
   })
 
@@ -353,12 +353,12 @@ describe('module public surfaces', () => {
   ])('rejects the %s public export form', (_label, statement, shape) => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/public.ts': `export { runJob, type JobRun } from './job.service'\n${statement}\n`,
+      'packages/local-runtime/src/modules/job/public.ts': `export { runJob, type JobRun } from './job.service'\n${statement}\n`,
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[module-public-surface-bypass] src/modules/job/public.ts re-exports "./job.service" as ${shape}; a public surface names every export explicitly\n`,
+      `[module-public-surface-bypass] packages/local-runtime/src/modules/job/public.ts re-exports "./job.service" as ${shape}; a public surface names every export explicitly\n`,
     )
   })
 
@@ -369,48 +369,48 @@ describe('module public surfaces', () => {
   ])('rejects %s on a public surface', (_label, statement) => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.service.ts': [
+      'packages/local-runtime/src/modules/job/job.service.ts': [
         'export interface JobRun { readonly id: string }',
         '',
         'export const runJob = (run: JobRun) => run.id',
         'export default runJob',
         '',
       ].join('\n'),
-      'src/modules/job/public.ts': `export { runJob, type JobRun } from './job.service'\n${statement}\n`,
+      'packages/local-runtime/src/modules/job/public.ts': `export { runJob, type JobRun } from './job.service'\n${statement}\n`,
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[module-public-surface-bypass] src/modules/job/public.ts exports a default binding; a public surface names every export explicitly\n',
+      '[module-public-surface-bypass] packages/local-runtime/src/modules/job/public.ts exports a default binding; a public surface names every export explicitly\n',
     )
   })
 
   it.each([
     [
       'the connectors shape: a status projection reading a runtime run summary',
-      'src/modules/job/job.status.ts',
+      'packages/local-runtime/src/modules/job/job.status.ts',
       "import { runOutcome } from '../../runtime/runtime-run-summary'\n\nexport const status = runOutcome\n",
       'src/runtime/runtime-run-summary.ts',
       'export const runOutcome = 1\n',
-      'src/modules/job/public.ts -> src/modules/job/job.status.ts -> src/runtime/runtime-run-summary.ts',
+      'packages/local-runtime/src/modules/job/public.ts -> packages/local-runtime/src/modules/job/job.status.ts -> src/runtime/runtime-run-summary.ts',
       "export { status } from './job.status'",
     ],
     [
       'the capture shape: a resolution throwing a runtime transport error',
-      'src/modules/job/job.resolution.ts',
+      'packages/local-runtime/src/modules/job/job.resolution.ts',
       "import { HttpError } from '../../runtime/runtime-lifecycle'\n\nexport const resolve = () => new HttpError()\n",
       'src/runtime/runtime-lifecycle.ts',
       'export class HttpError extends Error {}\n',
-      'src/modules/job/public.ts -> src/modules/job/job.resolution.ts -> src/runtime/runtime-lifecycle.ts',
+      'packages/local-runtime/src/modules/job/public.ts -> packages/local-runtime/src/modules/job/job.resolution.ts -> src/runtime/runtime-lifecycle.ts',
       "export { resolve } from './job.resolution'",
     ],
     [
       'the scheduling shape: a work source typed by the runtime scheduler',
-      'src/modules/job/job.work-source.ts',
+      'packages/local-runtime/src/modules/job/job.work-source.ts',
       "import type { WorkSource } from '../../runtime/runtime-scheduler'\n\nexport const source: WorkSource = { id: 'job' }\n",
       'src/runtime/runtime-scheduler.ts',
       'export interface WorkSource { id: string }\n',
-      'src/modules/job/public.ts -> src/modules/job/job.work-source.ts -> src/runtime/runtime-scheduler.ts',
+      'packages/local-runtime/src/modules/job/public.ts -> packages/local-runtime/src/modules/job/job.work-source.ts -> src/runtime/runtime-scheduler.ts',
       "export { source } from './job.work-source'",
     ],
   ])('rejects %s', (_label, modulePath, moduleSource, edgePath, edgeSource, trail, surfaceLine) => {
@@ -418,13 +418,13 @@ describe('module public surfaces', () => {
       ...passingFixture(),
       [edgePath]: edgeSource,
       [modulePath]: moduleSource,
-      'src/modules/job/public.ts':
+      'packages/local-runtime/src/modules/job/public.ts':
         `export { runJob, type JobRun } from './job.service'\n${surfaceLine}\n`,
     })
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[module-public-surface-bypass] src/modules/job/public.ts depends on src/runtime through ${trail}; no file in a public surface's closure reaches its own consumer\n`,
+      `[module-public-surface-bypass] packages/local-runtime/src/modules/job/public.ts depends on src/runtime through ${trail}; no file in a public surface's closure reaches its own consumer\n`,
     )
   })
 
@@ -432,10 +432,10 @@ describe('module public surfaces', () => {
     const result = check({
       ...passingFixture(),
       'src/runtime/runtime-edge.ts': 'export const edge = 1\n',
-      'src/modules/job/job.third.ts': "export { edge } from '../../runtime/runtime-edge'\n",
-      'src/modules/job/job.second.ts': "export { edge } from './job.third'\n",
-      'src/modules/job/job.first.ts': "export { edge } from './job.second'\n",
-      'src/modules/job/public.ts': [
+      'packages/local-runtime/src/modules/job/job.third.ts': "export { edge } from '../../runtime/runtime-edge'\n",
+      'packages/local-runtime/src/modules/job/job.second.ts': "export { edge } from './job.third'\n",
+      'packages/local-runtime/src/modules/job/job.first.ts': "export { edge } from './job.second'\n",
+      'packages/local-runtime/src/modules/job/public.ts': [
         "export { runJob, type JobRun } from './job.service'",
         "export { edge } from './job.first'",
         '',
@@ -444,7 +444,7 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      "[module-public-surface-bypass] src/modules/job/public.ts depends on src/runtime through src/modules/job/public.ts -> src/modules/job/job.first.ts -> src/modules/job/job.second.ts -> src/modules/job/job.third.ts -> src/runtime/runtime-edge.ts; no file in a public surface's closure reaches its own consumer\n",
+      "[module-public-surface-bypass] packages/local-runtime/src/modules/job/public.ts depends on src/runtime through packages/local-runtime/src/modules/job/public.ts -> packages/local-runtime/src/modules/job/job.first.ts -> packages/local-runtime/src/modules/job/job.second.ts -> packages/local-runtime/src/modules/job/job.third.ts -> src/runtime/runtime-edge.ts; no file in a public surface's closure reaches its own consumer\n",
     )
   })
 
@@ -455,9 +455,9 @@ describe('module public surfaces', () => {
     const result = check({
       ...passingFixture(),
       [edgePath]: 'export const edge = 1\n',
-      'src/modules/job/job.bridge.ts':
+      'packages/local-runtime/src/modules/job/job.bridge.ts':
         `import { edge } from '../../${edgePath.replace(/^src\//, '').replace(/\.ts$/, '')}'\n\nexport const bridge = edge\n`,
-      'src/modules/job/public.ts': [
+      'packages/local-runtime/src/modules/job/public.ts': [
         "export { runJob, type JobRun } from './job.service'",
         "export { bridge } from './job.bridge'",
         '',
@@ -466,15 +466,15 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      `[module-public-surface-bypass] src/modules/job/public.ts depends on ${edge} through src/modules/job/public.ts -> src/modules/job/job.bridge.ts -> ${edgePath}; no file in a public surface's closure reaches its own consumer\n`,
+      `[module-public-surface-bypass] packages/local-runtime/src/modules/job/public.ts depends on ${edge} through packages/local-runtime/src/modules/job/public.ts -> packages/local-runtime/src/modules/job/job.bridge.ts -> ${edgePath}; no file in a public surface's closure reaches its own consumer\n`,
     )
   })
 
   it('rejects Electron reached two hops inside a public surface closure', () => {
     const result = check({
       ...passingFixture(),
-      'src/modules/job/job.host.ts': "import { app } from 'electron'\n\nexport const host = app\n",
-      'src/modules/job/public.ts': [
+      'packages/local-runtime/src/modules/job/job.host.ts': "import { app } from 'electron'\n\nexport const host = app\n",
+      'packages/local-runtime/src/modules/job/public.ts': [
         "export { runJob, type JobRun } from './job.service'",
         "export { host } from './job.host'",
         '',
@@ -483,7 +483,7 @@ describe('module public surfaces', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[module-public-surface-bypass] src/modules/job/public.ts depends on Electron through src/modules/job/public.ts -> src/modules/job/job.host.ts -> "electron"; a public surface carries no Electron edge anywhere in its closure\n',
+      '[module-public-surface-bypass] packages/local-runtime/src/modules/job/public.ts depends on Electron through packages/local-runtime/src/modules/job/public.ts -> packages/local-runtime/src/modules/job/job.host.ts -> "electron"; a public surface carries no Electron edge anywhere in its closure\n',
     )
   })
 })

@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { createPgliteSecretService } from './secret.composition'
-import type { SecretCodec } from './secret.codec'
-import { createWorkspaceSecretScope } from './secret.scope'
+import { createPgliteSecretService } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.composition'
+import {
+  createWorkspaceSecretScope,
+  type SecretCodec,
+} from '@sparxie/valedictorian-local-runtime/protected-secrets'
 import {
   identitySecretKind,
   identitySsnLast4SecretKey,
   identitySsnLast4SecretReference,
   identitySsnLast4SecretReferenceUri,
-} from './secret.identity'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.identity'
 
 const IDENTITY_CANARY = 'identity-ssn-canary-5125'
 const resettableOwner = useResettablePgliteTestOwner()

@@ -11,6 +11,7 @@ export const maintainedTestIncludes = [
   'electron/**/*.test.{ts,tsx}',
   'packages/connector-api/**/*.test.{ts,tsx}',
   'packages/connector-testkit/**/*.test.{ts,tsx}',
+  'packages/local-runtime/**/*.test.{ts,tsx}',
   'packages/workspace/**/*.test.{ts,tsx}',
   'scripts/**/*.test.{ts,mjs}',
   'src/**/*.test.{ts,tsx}',

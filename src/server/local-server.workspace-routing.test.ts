@@ -4,18 +4,18 @@ import path from 'node:path'
 import { createHttpValedictorianClient } from '@sparxie/sdk'
 import { emptyPageInfo } from '../modules/lifecycle-table/lifecycle.test-helpers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
-import { prepareWorkspaceProfileCapabilities } from '../modules/profile/profile.composition'
-import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
-import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import { prepareWorkspaceProfileCapabilities } from '@sparxie/valedictorian-local-runtime/testing/modules/profile/profile.composition'
+import { completedConnectorRefreshContract } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.refresh-result.test-helpers'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
 import {
   createLocalValedictorianClient as createRuntimeLocalValedictorianClient,
   type LocalValedictorianClient,
-} from '../runtime/local-valedictorian-client'
-import { createValedictorianRuntime } from '../runtime/valedictorian-runtime'
-import { initializeWorkspace } from '../workspace/workspace.initializer'
-import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
-import { createLocalWorkspaceManager } from './local-workspaces'
+} from '@sparxie/valedictorian-local-runtime/local-client'
+import { createValedictorianRuntime } from '@sparxie/valedictorian-local-runtime/runtime'
+import { initializeWorkspace } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
+import { createFileWorkspaceRegistryStore } from '@sparxie/valedictorian-local-runtime/workspace-files'
+import { createLocalWorkspaceManager } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import {
   createBoundaryWorkspaceClient as createBoundaryTestClient,
   createLocalServerHttpTestFixture,

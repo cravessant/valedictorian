@@ -1,4 +1,4 @@
-import type { WorkspaceLaunchRecord } from './workspace.service'
+import type { WorkspaceLaunchRecord } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 export interface WorkspaceMenuItem {
   accelerator?: string

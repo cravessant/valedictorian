@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
 import {
   CONNECTOR_INSTANCE_ID,
   admitScheduleDueOnly,

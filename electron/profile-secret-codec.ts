@@ -1,4 +1,4 @@
-import type { SecretCodec } from '../src/modules/secrets/secret.codec'
+import type { SecretCodec } from '@sparxie/valedictorian-local-runtime/protected-secrets'
 
 const safeStoragePrefix = 'electron-safe-storage:'
 const safeStorageVersionPrefix = `${safeStoragePrefix}v1:`

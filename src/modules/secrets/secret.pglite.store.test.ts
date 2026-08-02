@@ -3,11 +3,13 @@ import {
   createPgliteTestOwner,
   useResettablePgliteTestOwner,
 } from '../../test/pglite-test-owner'
-import type { SecretCodec } from './secret.codec'
-import { createWorkspaceSecretScope } from './secret.scope'
+import {
+  createWorkspaceSecretScope,
+  type SecretCodec,
+} from '@sparxie/valedictorian-local-runtime/protected-secrets'
 import { defineSecretStoreContract } from './secret.store.contract'
-import type { NormalizedSecretKey, ValidatedUpsertSecretInput } from './secret.store'
-import { createPgliteSecretStore } from './secret.pglite.store'
+import type { NormalizedSecretKey, ValidatedUpsertSecretInput } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.store'
+import { createPgliteSecretStore } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.pglite.store'
 
 const testWorkspaceScope = createWorkspaceSecretScope('test-workspace')
 const resettableOwner = useResettablePgliteTestOwner()

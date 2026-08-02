@@ -6,8 +6,8 @@ import {
   createLocalValedictorianClient,
   createOwnedPgliteTestDataPath,
 } from './local-valedictorian-client.test-harness'
-import { createStaticConnectorRegistry } from '../modules/connectors/public'
-import type { AppJobConnector } from '../modules/connectors/public'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/connectors'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/connectors'
 import {
   createLocalServerHttpTestFixture,
   workspaceHttpClient,
@@ -17,8 +17,8 @@ import {
   type CreateValedictorianHttpServerOptions,
   type StartedValedictorianHttpServer,
   type WorkspaceClientResolver,
-} from './local-server'
-import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
+} from '@sparxie/valedictorian-local-runtime/http-server'
+import type { LocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 
 const SCHEDULE_PGLITE_PATH_PREFIX = 'valedictorian-schedule-http-'
 

@@ -2,7 +2,7 @@ import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CaptureListPresentation, Job, JobId, RemovalResult } from '@sparxie/sdk'
-import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
+import type { LocalWorkspaceClientV2 } from '@sparxie/valedictorian-local-runtime/local-client'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
 import { renderWithQueryClient, testQueryClient } from '@/test/query-client'

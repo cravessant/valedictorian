@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { connectorDescriptorMaxSources } from '@sparxie/sdk'
-import type { AppJobConnector } from '../ports/connector.runner-contracts'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
 import {
   ConnectorAdmissionError,
   admitInstalledConnectorDescriptor,
-} from './connector.installed-descriptor'
-import { createStaticConnectorRegistry } from './connector.registry'
-import { listInstalledConnectorDescriptors } from './connector.capabilities'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.installed-descriptor'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import { listInstalledConnectorDescriptors } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.capabilities'
 import {
   admitConnectorSettings,
   revalidatePersistedConnectorSettings,
-} from './connector.settings-validation'
-import { sanitizeConnectorRefreshResult } from './connector.refresh-result-sanitizer'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.settings-validation'
+import { sanitizeConnectorRefreshResult } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.refresh-result-sanitizer'
 
 const CONNECTOR_ID = 'fixture.boundaries'
 

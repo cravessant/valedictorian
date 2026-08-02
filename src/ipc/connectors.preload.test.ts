@@ -4,7 +4,7 @@ import {
   type CreateConnectorInstanceInput,
 } from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
-import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import type { LocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 import { registerConnectorsIpc } from './connectors.ipc'
 import { createConnectorsPreloadApi } from './connectors.preload'
 

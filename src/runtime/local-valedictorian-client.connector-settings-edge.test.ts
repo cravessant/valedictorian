@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
-import type { LocalConnectorRegistry } from '../modules/connectors/core/connector.registry'
-import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
-import { admitInstalledConnectorDescriptor } from '../modules/connectors/core/connector.installed-descriptor'
-import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
+import type { LocalConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import { admitInstalledConnectorDescriptor } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.installed-descriptor'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
 import {
   createOwnedTestPgliteDataPath,
   createTestLocalValedictorianClient as createLocalValedictorianClient,

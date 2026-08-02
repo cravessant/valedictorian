@@ -1,4 +1,4 @@
-import type { WorkspaceFolderPickerOptions } from './workspace.service'
+import type { WorkspaceFolderPickerOptions } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 type WorkspaceFolderDialogProperty = 'openDirectory' | 'createDirectory'
 

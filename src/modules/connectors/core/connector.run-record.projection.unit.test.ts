@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ConnectorRunRecord } from '../ports/connector.repository.port'
-import { pendingResolutionCount, publicRunStatus, runFrontiers, runOutcome } from './connector.run-record.projection'
+import type { ConnectorRunRecord } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.repository.port'
+import { pendingResolutionCount, publicRunStatus, runFrontiers, runOutcome } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.run-record.projection'
 
 describe('local connector run synchronization persistence boundary', () => {
   it('rejects hostile or malformed snapshots instead of publishing invented progress', () => {

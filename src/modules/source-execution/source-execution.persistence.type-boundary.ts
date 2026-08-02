@@ -5,11 +5,11 @@
  * compiles if the stated assignability holds, and `pnpm typecheck` fails if the unit
  * of work is ever widened back to something a root database satisfies.
  */
-import type { PgliteDatabase } from '../../db/pglite'
+import type { PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
 import type {
   SourceExecutionTransaction,
   SourceExecutionUnitOfWork,
-} from './source-execution.persistence'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/source-execution/source-execution.persistence'
 
 type Assignable<From, To> = [From] extends [To] ? true : false
 type HasKey<Of, Key extends string> = Key extends keyof Of ? true : false

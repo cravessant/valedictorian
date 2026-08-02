@@ -45,7 +45,7 @@ function emitDeclarations() {
       outDir: declarationRoot,
       rootDir: repositoryRoot,
     },
-    include: [path.join(repositoryRoot, `src/modules/${MODULE}/public.ts`)],
+    include: [path.join(repositoryRoot, `packages/local-runtime/src/modules/${MODULE}/public.ts`)],
   }))
   // Declaration emit reports diagnostics for files outside the narrowed include;
   // the emitted output is what this proof reads, so a non-zero status is expected.
@@ -56,7 +56,7 @@ function emitDeclarations() {
       { cwd: repositoryRoot, encoding: 'utf8', stdio: 'pipe' },
     )
   } catch { /* diagnostics are not the artifact under proof */ }
-  return path.join(declarationRoot, 'src', 'modules', MODULE)
+  return path.join(declarationRoot, 'packages', 'local-runtime', 'src', 'modules', MODULE)
 }
 
 /**
@@ -110,7 +110,7 @@ function declaredNames(declaration) {
  */
 function resolveDeclaration(directory, specifier) {
   if (!specifier.startsWith('.')) return null
-  const target = path.resolve(directory, `${specifier}.d.ts`)
+  const target = path.resolve(directory, `${specifier.replace(/\.js$/, '')}.d.ts`)
   return fs.existsSync(target) ? target : null
 }
 

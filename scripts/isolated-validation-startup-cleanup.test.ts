@@ -54,7 +54,7 @@ describe.skipIf(process.platform === 'win32')('isolated validation startup clean
 })
 
 function runValidationWithFailure(stage: 'evidence' | 'ownership', temporaryDirectory: string) {
-  const validation = spawn('pnpm', ['exec', 'tsx', 'scripts/run-isolated-validation.ts'], {
+  const validation = spawn(process.execPath, ['--import', 'tsx', 'scripts/run-isolated-validation.ts'], {
     cwd: process.cwd(),
     env: {
       ...process.env,

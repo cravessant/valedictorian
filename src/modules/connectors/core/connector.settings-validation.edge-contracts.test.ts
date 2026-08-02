@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { AppJobConnector } from '../ports/connector.runner-contracts'
-import { admitInstalledConnectorDescriptor } from './connector.installed-descriptor'
-import { admitConnectorSettings } from './connector.settings-validation'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
+import { admitInstalledConnectorDescriptor } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.installed-descriptor'
+import { admitConnectorSettings } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.settings-validation'
 
 describe('connector settings host boundary', () => {
   it('rejects undeclared persisted config even when a connector schema permits additional properties', () => {

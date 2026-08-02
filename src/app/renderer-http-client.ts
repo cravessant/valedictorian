@@ -2,7 +2,7 @@ import {
   createHttpValedictorianClient,
   type ValedictorianClientV2,
 } from '@sparxie/sdk'
-import type { LocalWorkspaceClientV2 } from '../runtime/local-connector-client.contract'
+import type { LocalWorkspaceClientV2 } from '@sparxie/valedictorian-local-runtime/local-client'
 
 interface RendererHttpConfig {
   apiBaseUrl: string

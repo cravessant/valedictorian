@@ -22,7 +22,7 @@ import { listMaintainedCodeFiles, toRepositoryPath } from './architecture-source
  */
 
 export const RULE = 'source-execution-write-ownership'
-export const CONNECTORS_ROOT = 'src/modules/connectors/'
+export const CONNECTORS_ROOT = 'packages/local-runtime/src/modules/connectors/'
 
 /** The owner's tables, by physical name and by the export that hands each one out. */
 const OWNER_TABLES = new Map([
@@ -40,8 +40,8 @@ export const OWNER_MODULE = 'source-execution/source-execution.persistence'
  * exactly, so a new access cannot arrive unnoticed and a retired one cannot linger.
  */
 export const RETAINED_TABLE_READS = new Map([
-  ['src/modules/connectors/adapters/persistence/connector-schedule.repository.ts', ['sourceExecutionScopes']],
-  ['src/modules/connectors/adapters/persistence/connector.schema.ts', ['sourceExecutionScopes']],
+  ['packages/local-runtime/src/modules/connectors/adapters/persistence/connector-schedule.repository.ts', ['sourceExecutionScopes']],
+  ['packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts', ['sourceExecutionScopes']],
 ])
 
 /**
@@ -53,13 +53,13 @@ export const RETAINED_TABLE_READS = new Map([
  * call is the regression the second admission exists to prevent, so one call fails.
  */
 export const REQUIRED_OWNER_CALLS = new Map([
-  ['src/modules/connectors/adapters/persistence/connector-instance.persistence.ts',
+  ['packages/local-runtime/src/modules/connectors/adapters/persistence/connector-instance.persistence.ts',
     new Map([['ensureSourceExecutionScope', 1]])],
-  ['src/modules/connectors/adapters/persistence/connector-instance.repository.ts',
+  ['packages/local-runtime/src/modules/connectors/adapters/persistence/connector-instance.repository.ts',
     new Map([['ensureSourceExecutionScope', 1]])],
-  ['src/modules/connectors/adapters/persistence/connector-retirement.persistence.ts',
+  ['packages/local-runtime/src/modules/connectors/adapters/persistence/connector-retirement.persistence.ts',
     new Map([['retireSourceExecutionScope', 1]])],
-  ['src/modules/connectors/adapters/persistence/connector-run-request.repository.ts',
+  ['packages/local-runtime/src/modules/connectors/adapters/persistence/connector-run-request.repository.ts',
     new Map([['admitSourceExecutionScope', 2]])],
 ])
 
@@ -117,7 +117,7 @@ export function readFileFacts(filePath, source) {
         tableBindings.set(imported, specifier)
       }
       // A namespace import hands out every export, so its members are read below.
-      if (imported !== null && specifier.endsWith(OWNER_MODULE)) {
+      if (imported !== null && specifier.replace(/\.js$/, '').endsWith(OWNER_MODULE)) {
         ownerLocals.set(entry.local?.name ?? '', imported)
       }
     }

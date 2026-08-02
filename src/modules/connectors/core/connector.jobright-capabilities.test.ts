@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ConnectorRendererSchema } from '@sparxie/sdk'
-import { createDefaultLocalConnectorRegistry } from '../adapters/provider/connector.default-registry'
+import { createDefaultLocalConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/provider/connector.default-registry'
 
 function objectSchema(schema: ConnectorRendererSchema) {
   if (!('type' in schema) || schema.type !== 'object') {

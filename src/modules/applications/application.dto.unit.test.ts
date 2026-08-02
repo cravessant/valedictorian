@@ -28,7 +28,7 @@ import {
   type ApplicationHeadRow,
   type ApplicationHistoryRow,
   type ApplicationLinkRow,
-} from './application.dto'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/applications/application.dto'
 
 const firstPage = (limit: number) => ({ limit, cursor: null, backward: false })
 

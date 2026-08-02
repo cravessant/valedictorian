@@ -25,11 +25,11 @@ import {
   admitLifecycleId,
   containsSensitiveJsonKey,
   owning,
-} from './lifecycle-representation'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/lifecycle-representation'
 import * as typeBoundary from './lifecycle-representation.type-boundary'
-import * as jobSeam from '../job/job.validation'
-import * as opportunitySeam from '../opportunity/opportunity.validation'
-import * as applicationSeam from '../applications/application.aggregate.validation'
+import * as jobSeam from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.validation'
+import * as opportunitySeam from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.validation'
+import * as applicationSeam from '@sparxie/valedictorian-local-runtime/testing/modules/applications/application.aggregate.validation'
 
 const seams = [
   { name: 'job', seam: jobSeam, errorName: 'JobInputError', error: jobSeam.JobInputError },

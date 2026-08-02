@@ -1,6 +1,6 @@
 import { count, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { workspaces } from '../../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import {
   captureEffectiveRevisionInputs,
@@ -10,14 +10,14 @@ import {
   captureResolutionStageResults,
   captureRevisions,
   captures as captureHeads,
-} from './capture.schema'
-import { createCaptureMaterializationService } from './capture.materialization'
-import { createCaptureResolutionService } from './capture.resolution'
-import { jobCaptureEvidenceReferences, jobs } from '../job/job.schema'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.schema'
+import { createCaptureMaterializationService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.materialization'
+import { createCaptureResolutionService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.resolution'
+import { jobCaptureEvidenceReferences, jobs } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
 import {
   createPgliteCaptureService,
   type AcceptCaptureInput,
-} from './capture.service'
+} from '@sparxie/valedictorian-local-runtime/capture'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const WORKSPACE = 'capture-resolution-workspace'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reconcileProviderLifecycleCounts } from './connector.lifecycle-counts'
+import { reconcileProviderLifecycleCounts } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.lifecycle-counts'
 
 const oneCapturedOccurrence = {
   capturedRecords: 1,

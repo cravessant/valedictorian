@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { drizzle } from 'drizzle-orm/pglite'
-import { schema, sourceExecutionScopes } from '../../../../db/schema'
-import { connectorInstances } from './connector.schema'
+import { schema, sourceExecutionScopes } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import { connectorInstances } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.schema'
 import {
   type PgliteDatabase,
-} from '../../../../db/pglite'
+} from '@sparxie/valedictorian-local-runtime/database'
 import { useResettablePgliteTestOwner } from '../../../../test/pglite-test-owner'
-import { createConnectorScheduleRepository } from './connector-schedule.repository'
+import { createConnectorScheduleRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector-schedule.repository'
 
 const NOW = '2026-07-18T10:00:00.000Z'
 const CADENCE = { kind: 'interval' as const, everyMinutes: 60 }

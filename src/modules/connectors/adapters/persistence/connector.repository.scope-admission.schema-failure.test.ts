@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { sourceExecutionScopes } from '../../../../db/schema'
+import { sourceExecutionScopes } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import { createPgliteTestOwner } from '../../../../test/pglite-test-owner'
-import { createPgliteConnectorRepository } from './connector.repository'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
 
 type ConnectorRepository = ReturnType<typeof createPgliteConnectorRepository>
 

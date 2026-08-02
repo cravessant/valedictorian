@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { defaultUserProfile, profileDocumentSchemaVersion } from '@sparxie/sdk'
 import {
   prepareWorkspaceProfileCapabilities,
-} from '../src/modules/profile/profile.composition'
-import type { SecretCodec } from '../src/modules/secrets/secret.codec'
-import { resolveWorkspaceLayout } from '../src/workspace/workspace.paths'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/profile/profile.composition'
+import type { SecretCodec } from '@sparxie/valedictorian-local-runtime/protected-secrets'
+import { resolveWorkspaceLayout } from '@sparxie/valedictorian-local-runtime/workspace-files'
 
 const codec: SecretCodec = {
   decrypt: (value) => value,

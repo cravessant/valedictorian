@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { normalizeProfileAnswerKey } from '@sparxie/sdk'
-import { createConnectorSecretResolver } from './connector-secret-resolver'
-import { identitySsnLast4SecretKey } from './secret.identity'
+import { createConnectorSecretResolver } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/connector-secret-resolver'
+import { identitySsnLast4SecretKey } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.identity'
 
 describe('createConnectorSecretResolver', () => {
   it('exposes only revealSecret and never returns store shapes', async () => {

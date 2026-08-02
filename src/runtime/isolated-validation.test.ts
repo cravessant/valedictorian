@@ -8,7 +8,7 @@ import {
   publishIsolatedValidationReadiness,
   readIsolatedValidationEnvironment,
   writeIsolatedValidationDiagnostic,
-} from './isolated-validation'
+} from '@sparxie/valedictorian-local-runtime/isolated-validation'
 
 const validationWorkspace = { id: 'isolated-validation-test-workspace', path: '/tmp/workspace' }
 

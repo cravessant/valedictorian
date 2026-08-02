@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { workspaces } from '../../../../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { useResettablePgliteTestOwner } from '../../../../test/pglite-test-owner'
-import { createPgliteCaptureReadModel } from '../../../capture/capture.read-model'
-import { createPgliteCaptureService } from '../../../capture/capture.service'
-import { createConnectorCaptureHost } from './connector.capture-host'
+import { createPgliteCaptureReadModel } from '@sparxie/valedictorian-local-runtime/capture'
+import { createPgliteCaptureService } from '@sparxie/valedictorian-local-runtime/capture'
+import { createConnectorCaptureHost } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/capture/connector.capture-host'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

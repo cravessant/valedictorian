@@ -9,11 +9,11 @@
 import { describe, expect, it } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
-import { applicationHistory, applications as applicationRows } from '../application/application.schema'
-import { createPgliteApplicationAggregateService } from './application.aggregate.service'
+import { createPgliteOpportunityService } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.service'
+import { applicationHistory, applications as applicationRows } from '@sparxie/valedictorian-local-runtime/testing/modules/application/application.schema'
+import { createPgliteApplicationAggregateService } from '@sparxie/valedictorian-local-runtime/testing/modules/applications/application.aggregate.service'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const ACTOR = { type: 'user', id: 'user-1' } as const

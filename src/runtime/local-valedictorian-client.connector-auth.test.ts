@@ -4,10 +4,10 @@ import {
   useResettablePgliteTestLocalValedictorianClient,
   useTestMissingReferenceTrackerPath,
 } from './local-valedictorian-client.test-harness'
-import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
-import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
-import { createPgliteSecretService } from '../modules/secrets/secret.composition'
-import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
+import { completedConnectorRefreshContract } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.refresh-result.test-helpers'
+import { createPgliteSecretService } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.composition'
+import { createWorkspaceSecretScope } from '@sparxie/valedictorian-local-runtime/protected-secrets'
 
 describe.sequential('runtime local Valedictorian client', () => {
   const createRuntimeLocalValedictorianClient
@@ -203,7 +203,7 @@ describe.sequential('runtime local Valedictorian client', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }) as typeof fetch
     const { createJobrightConnector } = await import('@sparxie/valedictorian-connectors-jobright')
-    const { createStaticConnectorRegistry } = await import('../modules/connectors/core/connector.registry')
+    const { createStaticConnectorRegistry } = await import('@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry')
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         createJobrightConnector({ fetch: fetchImpl }),

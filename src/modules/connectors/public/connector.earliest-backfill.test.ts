@@ -8,7 +8,7 @@ import {
   subtractUtcCalendarDays,
   utcCalendarDateFromInstant,
   validateSelectableEarliestBackfillDate,
-} from './connector.earliest-backfill'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.earliest-backfill'
 
 const originalTz = process.env.TZ
 

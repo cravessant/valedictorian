@@ -9,9 +9,9 @@ import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type {
   LocalConnectorReconnectActionResult,
   LocalConnectorStatusActionInput,
-} from './runtime/local-valedictorian-client'
-import type { WorkspaceSummary } from './workspace/workspace.initializer'
-import type { ActionQueueListItem, ActionQueueListResult } from './modules/action-queue/action-queue.repository'
+} from '@sparxie/valedictorian-local-runtime/local-client'
+import type { WorkspaceSummary } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
+import type { ActionQueueListItem, ActionQueueListResult } from '@sparxie/valedictorian-local-runtime/testing/modules/action-queue/action-queue.repository'
 import {
   ValedictorianHttpError,
   defaultPolicyConfig,
@@ -36,7 +36,7 @@ import {
   type ConnectorStatusView,
   createDefaultLocalConnectorRegistry,
   defaultEarliestBackfillDate,
-} from './modules/connectors/public'
+} from '@sparxie/valedictorian-local-runtime/connectors'
 
 export function createActionQueueItem(overrides: Partial<ActionQueueListItem> = {}): ActionQueueListItem {
   return {

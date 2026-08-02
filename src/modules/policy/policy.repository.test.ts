@@ -7,13 +7,13 @@ import {
   policyEvidence,
   workflowRuns,
   workflowRunSteps,
-} from '../../db/schema'
+} from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import {
   type PgliteDatabase,
-} from '../../db/pglite'
+} from '@sparxie/valedictorian-local-runtime/database'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { seedCanonicalApplication } from '../../test-fixtures/canonical-application.fixture'
-import { createPglitePolicyRepository } from './policy.repository'
+import { createPglitePolicyRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/policy/policy.repository'
 
 const passedVerificationReceiptPayload = {
   version: 1,

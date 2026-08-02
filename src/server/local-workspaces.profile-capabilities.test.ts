@@ -3,9 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
-import { initializeWorkspace } from '../workspace/workspace.initializer'
-import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
-import { createLocalWorkspaceManager } from './local-workspaces'
+import { initializeWorkspace } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
+import { createFileWorkspaceRegistryStore } from '@sparxie/valedictorian-local-runtime/workspace-files'
+import { createLocalWorkspaceManager } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 describe('local workspace profile capability lifecycle', () => {
   const cleanupPaths: string[] = []
@@ -45,6 +45,7 @@ describe('local workspace profile capability lifecycle', () => {
     }) as unknown as ValedictorianWorkspaceClient)
     const manager = createLocalWorkspaceManager({
       createClient: createClient as never,
+      migrationsFolder: '/tmp/package-owned-drizzle',
       prepareWorkspaceCapabilities: prepareWorkspaceCapabilities as never,
       registryStore,
     })
@@ -60,6 +61,9 @@ describe('local workspace profile capability lifecycle', () => {
     expect(await manager.resolveClient(first.id)).toBe(firstClient)
     expect(secondClient).not.toBe(firstClient)
     expect(prepareWorkspaceCapabilities).toHaveBeenCalledTimes(2)
+    expect(prepareWorkspaceCapabilities).toHaveBeenCalledWith(expect.objectContaining({
+      migrationsFolder: '/tmp/package-owned-drizzle',
+    }))
     expect(createClient).toHaveBeenCalledTimes(2)
 
     await manager.close()

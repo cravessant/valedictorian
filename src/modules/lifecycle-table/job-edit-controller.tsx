@@ -5,13 +5,13 @@ import type {
   JobCompanyAssignmentPresentation,
   ReassignJobCompanyInput,
 } from '@sparxie/sdk'
-import type { LocalWorkspaceClientV2 } from '@/runtime/local-connector-client.contract'
+import type { LocalWorkspaceClientV2 } from '@sparxie/valedictorian-local-runtime/local-client'
 
 import {
   CompanyAssignmentField,
   type CompanySelection,
 } from '@/modules/workspace-resources/CompanyAssignmentField'
-import { jobFactsTiming } from '../job/job.timing'
+import { jobFactsTiming } from '@sparxie/valedictorian-local-runtime/job-edge-contract'
 import { WorkspaceClientUnavailableError } from '../../app/app-load-failure'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from './lifecycle-actor'
 import { FormModal, type FieldErrors, type FieldSpec } from './form-modal'

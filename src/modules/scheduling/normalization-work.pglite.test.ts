@@ -10,18 +10,18 @@
 import { describe, expect, it } from 'vitest'
 import { createJobrightProviderFieldResolver } from '@sparxie/valedictorian-connectors-jobright'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { createPgliteCaptureService } from '../capture/capture.service'
-import { createCaptureFieldOutcomeStore } from '../capture/capture.field-outcomes'
-import { captureFieldOutcomes } from '../capture/capture.schema'
-import { normalizationWork } from './scheduling.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { createPgliteCaptureService } from '@sparxie/valedictorian-local-runtime/capture'
+import { createCaptureFieldOutcomeStore } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.field-outcomes'
+import { captureFieldOutcomes } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.schema'
+import { normalizationWork } from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/scheduling.schema'
 import {
   createNormalizationExecutor,
   createNormalizationWorkRepository,
   cancelObsoleteActiveNormalizationWork,
   enqueueNormalizationWork,
   reconcileNormalizationWork,
-} from './normalization-work'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/normalization-work'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const WS = 'ws-norm'

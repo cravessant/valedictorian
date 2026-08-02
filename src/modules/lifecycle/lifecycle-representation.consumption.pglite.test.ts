@@ -10,15 +10,15 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { jobExternalIdentities, jobHistory } from '../job/job.schema'
-import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { jobExternalIdentities, jobHistory } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import { createPgliteCaptureService, type CaptureService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
-import { createPgliteApplicationAggregateService } from '../applications/application.aggregate.service'
-import { createPgliteJobPromotion } from './capture-to-job.promotion'
-import { requireActor } from '../job/job.validation'
-import { LIFECYCLE_ID_MAX } from './lifecycle-representation'
+import { createPgliteOpportunityService } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.service'
+import { createPgliteApplicationAggregateService } from '@sparxie/valedictorian-local-runtime/testing/modules/applications/application.aggregate.service'
+import { createPgliteJobPromotion } from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/capture-to-job.promotion'
+import { requireActor } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.validation'
+import { LIFECYCLE_ID_MAX } from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/lifecycle-representation'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const ACTOR = { type: 'user', id: 'u' } as const

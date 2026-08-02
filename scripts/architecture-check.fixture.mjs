@@ -11,7 +11,7 @@ const REASON = 'Recorded exactly for this fixture so the entry explains itself.'
 /**
  * A minimal repository the check accepts: four capability modules, one owned table
  * each where state is modelled, two declared edges, platform files outside
- * `src/modules`, and a runtime file reaching a capability the one way that is
+ * `packages/local-runtime/src/modules`, and a runtime file reaching a capability the one way that is
  * allowed — a named value and type import from that module's exact public surface.
  * Every mutation starts from this tree and changes one thing, so a failure names one
  * cause.
@@ -31,76 +31,76 @@ export function passingFixture() {
       '',
     ].join('\n'),
     'architecture/module-graph.json': JSON.stringify({
-      canonicalSchemaAggregate: 'src/db/schema.ts',
+      canonicalSchemaAggregate: 'packages/local-runtime/src/db/schema.ts',
       edges: [
         { from: 'capture', recordedIn: '#326', to: 'job' },
         { from: 'connectors', recordedIn: '#326', to: 'source-execution' },
       ],
       exceptions: [],
-      moduleRoot: 'src/modules',
+      moduleRoot: 'packages/local-runtime/src/modules',
       permissions: [captureAccessesJobs()],
       retiringIssues: [],
-      schemaRegistrar: 'src/db/pglite.ts',
+      schemaRegistrar: 'packages/local-runtime/src/db/pglite.ts',
       stamps: ['#326'],
     }),
     'architecture/state-ownership.json': JSON.stringify({
       owners: {
-        capture: { kind: 'capability', module: 'src/modules/capture' },
-        connectors: { kind: 'capability', module: 'src/modules/connectors' },
-        job: { kind: 'capability', module: 'src/modules/job' },
-        'source-execution': { kind: 'capability', module: 'src/modules/source-execution' },
+        capture: { kind: 'capability', module: 'packages/local-runtime/src/modules/capture' },
+        connectors: { kind: 'capability', module: 'packages/local-runtime/src/modules/connectors' },
+        job: { kind: 'capability', module: 'packages/local-runtime/src/modules/job' },
+        'source-execution': { kind: 'capability', module: 'packages/local-runtime/src/modules/source-execution' },
       },
       schemaModules: [
-        'src/modules/capture/capture.schema.ts',
-        'src/modules/job/job.schema.ts',
-        'src/modules/source-execution/source-execution.schema.ts',
+        'packages/local-runtime/src/modules/capture/capture.schema.ts',
+        'packages/local-runtime/src/modules/job/job.schema.ts',
+        'packages/local-runtime/src/modules/source-execution/source-execution.schema.ts',
       ],
       tables: {
         captures: {
           owner: 'capture',
           schemaExport: 'captures',
-          schemaModule: 'src/modules/capture/capture.schema.ts',
+          schemaModule: 'packages/local-runtime/src/modules/capture/capture.schema.ts',
         },
         jobs: {
           owner: 'job',
           schemaExport: 'jobs',
-          schemaModule: 'src/modules/job/job.schema.ts',
+          schemaModule: 'packages/local-runtime/src/modules/job/job.schema.ts',
         },
         source_execution_scopes: {
           owner: 'source-execution',
           schemaExport: 'sourceExecutionScopes',
-          schemaModule: 'src/modules/source-execution/source-execution.schema.ts',
+          schemaModule: 'packages/local-runtime/src/modules/source-execution/source-execution.schema.ts',
         },
       },
     }),
-    'src/db/pglite.ts': 'export const database = () => undefined\n',
-    'src/db/schema.ts': "export const version = 'fixture'\n",
-    'src/modules/capture/capture.schema.ts':
+    'packages/local-runtime/src/db/pglite.ts': 'export const database = () => undefined\n',
+    'packages/local-runtime/src/db/schema.ts': "export const version = 'fixture'\n",
+    'packages/local-runtime/src/modules/capture/capture.schema.ts':
       "import { pgTable } from 'drizzle-orm/pg-core'\n\nexport const captures = pgTable('captures', {})\n",
-    'src/modules/capture/capture.service.ts':
+    'packages/local-runtime/src/modules/capture/capture.service.ts':
       "import { jobs } from '../job/job.schema'\n\nvoid jobs\nexport const columns = 1\n",
-    'src/modules/connectors/connector.repository.ts': [
+    'packages/local-runtime/src/modules/connectors/connector.repository.ts': [
       "import { ensureScope } from '../source-execution/source-execution.persistence'",
       '',
       'export const repository = ensureScope',
       '',
     ].join('\n'),
-    'src/modules/job/job.schema.ts':
+    'packages/local-runtime/src/modules/job/job.schema.ts':
       "import { pgTable } from 'drizzle-orm/pg-core'\n\nexport const jobs = pgTable('jobs', {})\n",
-    'src/modules/job/job.service.ts': [
+    'packages/local-runtime/src/modules/job/job.service.ts': [
       'export interface JobRun { readonly id: string }',
       '',
       'export const runJob = (run: JobRun) => run.id',
       '',
     ].join('\n'),
-    'src/modules/job/public.ts': "export { runJob, type JobRun } from './job.service'\n",
-    'src/modules/source-execution/source-execution.persistence.ts': [
+    'packages/local-runtime/src/modules/job/public.ts': "export { runJob, type JobRun } from './job.service'\n",
+    'packages/local-runtime/src/modules/source-execution/source-execution.persistence.ts': [
       "import { sourceExecutionScopes } from './source-execution.schema'",
       '',
       'export const ensureScope = () => sourceExecutionScopes',
       '',
     ].join('\n'),
-    'src/modules/source-execution/source-execution.schema.ts': [
+    'packages/local-runtime/src/modules/source-execution/source-execution.schema.ts': [
       "import { pgTable } from 'drizzle-orm/pg-core'",
       '',
       "export const sourceExecutionScopes = pgTable('source_execution_scopes', {})",
@@ -123,9 +123,9 @@ export function transitionalException() {
     recordedIn: '#326',
     retiredBy: '#999',
     rule: 'foreign-owner-table-access',
-    source: 'src/modules/connectors/connector.repository.ts',
+    source: 'packages/local-runtime/src/modules/connectors/connector.repository.ts',
     table: 'source_execution_scopes',
-    target: 'src/modules/source-execution/source-execution.schema.ts',
+    target: 'packages/local-runtime/src/modules/source-execution/source-execution.schema.ts',
   }
 }
 
@@ -136,9 +136,9 @@ export function captureAccessesJobs() {
     purpose: 'cross-capability-state-access',
     reason: 'Recorded: capture reaches the job table across the capability boundary.',
     recordedIn: '#326',
-    source: 'src/modules/capture/capture.service.ts',
+    source: 'packages/local-runtime/src/modules/capture/capture.service.ts',
     table: 'jobs',
-    target: 'src/modules/job/job.schema.ts',
+    target: 'packages/local-runtime/src/modules/job/job.schema.ts',
   }
 }
 
@@ -152,9 +152,9 @@ export function permission(overrides) {
     purpose: 'schema-composition',
     reason: REASON,
     recordedIn: '#326',
-    source: 'src/db/schema.ts',
+    source: 'packages/local-runtime/src/db/schema.ts',
     table: 'jobs',
-    target: 'src/modules/job/job.schema.ts',
+    target: 'packages/local-runtime/src/modules/job/job.schema.ts',
     ...overrides,
   }
 }
@@ -162,7 +162,7 @@ export function permission(overrides) {
 /**
  * The base tree plus the canonical aggregate composing both tables and the
  * registrar handing that aggregate to the database client, mirroring
- * `src/db/schema.ts` and `src/db/pglite.ts`.
+ * `packages/local-runtime/src/db/schema.ts` and `packages/local-runtime/src/db/pglite.ts`.
  *
  * @returns {Record<string, string>}
  */
@@ -171,42 +171,42 @@ export function aggregateFixture() {
   return {
     ...files,
     'architecture/module-graph.json': JSON.stringify({
-      canonicalSchemaAggregate: 'src/db/schema.ts',
+      canonicalSchemaAggregate: 'packages/local-runtime/src/db/schema.ts',
       edges: [
         { from: 'capture', recordedIn: '#326', to: 'job' },
         { from: 'connectors', recordedIn: '#326', to: 'source-execution' },
       ],
       exceptions: [],
-      moduleRoot: 'src/modules',
+      moduleRoot: 'packages/local-runtime/src/modules',
       permissions: [
         captureAccessesJobs(),
         permission({}),
         permission({
           owner: 'capture',
           table: 'captures',
-          target: 'src/modules/capture/capture.schema.ts',
+          target: 'packages/local-runtime/src/modules/capture/capture.schema.ts',
         }),
-        permission({ purpose: 'schema-registration', source: 'src/db/pglite.ts', target: 'src/db/schema.ts' }),
+        permission({ purpose: 'schema-registration', source: 'packages/local-runtime/src/db/pglite.ts', target: 'packages/local-runtime/src/db/schema.ts' }),
         permission({
           owner: 'capture',
           purpose: 'schema-registration',
-          source: 'src/db/pglite.ts',
+          source: 'packages/local-runtime/src/db/pglite.ts',
           table: 'captures',
-          target: 'src/db/schema.ts',
+          target: 'packages/local-runtime/src/db/schema.ts',
         }),
       ],
       retiringIssues: [],
-      schemaRegistrar: 'src/db/pglite.ts',
+      schemaRegistrar: 'packages/local-runtime/src/db/pglite.ts',
       stamps: ['#326'],
     }),
-    'src/db/schema.ts': [
+    'packages/local-runtime/src/db/schema.ts': [
       "import { captures } from '../modules/capture/capture.schema'",
       "import { jobs } from '../modules/job/job.schema'",
       '',
       'export const schema = { captures, jobs }',
       '',
     ].join('\n'),
-    'src/db/pglite.ts': [
+    'packages/local-runtime/src/db/pglite.ts': [
       "import { schema } from './schema'",
       '',
       'void schema',

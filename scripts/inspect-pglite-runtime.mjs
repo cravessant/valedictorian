@@ -11,6 +11,8 @@ export const PGLITE_RUNTIME_BINARY_ASSETS = Object.freeze([
   'initdb.wasm',
   'pglite.data',
 ])
+export const PGLITE_MIGRATIONS_DIRECTORY_NAME = 'drizzle'
+export const PGLITE_BASELINE_NAME = '0000_pglite_operational_baseline.sql'
 
 const OTHER_DATABASE_ENGINE_PACKAGES = Object.freeze([
   '@sqlite.org/sqlite-wasm',
@@ -66,6 +68,12 @@ export function inspectPgliteRuntimeArtifactLayout(root) {
     )
   }
 
+  if (!fs.existsSync(path.join(root, PGLITE_MIGRATIONS_DIRECTORY_NAME, PGLITE_BASELINE_NAME))) {
+    problems.push(
+      `missing ${PGLITE_MIGRATIONS_DIRECTORY_NAME}/${PGLITE_BASELINE_NAME}`,
+    )
+  }
+
   return problems
 }
 
@@ -105,6 +113,19 @@ export function inspectPgliteRuntimeBuilderConfig(config) {
         problems.push(`electron-builder extraResources.filter must include ${asset}`)
       }
     }
+  }
+
+  const migrationsResource = (config.extraResources ?? []).find(
+    (entry) => entry.to === PGLITE_MIGRATIONS_DIRECTORY_NAME,
+  )
+  if (!migrationsResource) {
+    problems.push(
+      `electron-builder extraResources must copy migrations to ${PGLITE_MIGRATIONS_DIRECTORY_NAME}`,
+    )
+  } else if (migrationsResource.from !== 'packages/local-runtime/drizzle') {
+    problems.push(
+      'electron-builder migration resources must come from packages/local-runtime/drizzle',
+    )
   }
 
   return problems

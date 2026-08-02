@@ -1,0 +1,570 @@
+{
+  "name": "@sparxie/valedictorian-local-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local persistence and filesystem primitives for Valedictorian workspace authorities.",
+  "type": "module",
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./pglite": {
+      "types": "./dist/pglite.d.ts",
+      "import": "./dist/pglite.js"
+    },
+    "./database": {
+      "types": "./dist/db/pglite.d.ts",
+      "import": "./dist/db/pglite.js"
+    },
+    "./local-client": {
+      "types": "./dist/runtime/local-valedictorian-client.d.ts",
+      "import": "./dist/runtime/local-valedictorian-client.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js"
+    },
+    "./runtime-settings": {
+      "types": "./dist/runtime/runtime-settings.d.ts",
+      "import": "./dist/runtime/runtime-settings.js"
+    },
+    "./http-server": {
+      "types": "./dist/server/local-server.d.ts",
+      "import": "./dist/server/local-server.js"
+    },
+    "./isolated-validation": {
+      "types": "./dist/runtime/isolated-validation.d.ts",
+      "import": "./dist/runtime/isolated-validation.js"
+    },
+    "./workspace-runtime": {
+      "types": "./dist/workspace-runtime.d.ts",
+      "import": "./dist/workspace-runtime.js"
+    },
+    "./connectors": {
+      "types": "./dist/modules/connectors/public.d.ts",
+      "import": "./dist/modules/connectors/public.js"
+    },
+    "./connector-edge-contract": {
+      "types": "./dist/connector-edge-contract.d.ts",
+      "import": "./dist/connector-edge-contract.js"
+    },
+    "./capture": {
+      "types": "./dist/modules/capture/public.d.ts",
+      "import": "./dist/modules/capture/public.js"
+    },
+    "./capture-edge-contract": {
+      "types": "./dist/modules/capture/destination-url-safety.d.ts",
+      "import": "./dist/modules/capture/destination-url-safety.js"
+    },
+    "./company": {
+      "types": "./dist/modules/company/public.d.ts",
+      "import": "./dist/modules/company/public.js"
+    },
+    "./job": {
+      "types": "./dist/modules/job/public.d.ts",
+      "import": "./dist/modules/job/public.js"
+    },
+    "./job-edge-contract": {
+      "types": "./dist/modules/job/job.timing.d.ts",
+      "import": "./dist/modules/job/job.timing.js"
+    },
+    "./lifecycle": {
+      "types": "./dist/modules/lifecycle/public.d.ts",
+      "import": "./dist/modules/lifecycle/public.js"
+    },
+    "./policy": {
+      "types": "./dist/modules/policy/public.d.ts",
+      "import": "./dist/modules/policy/public.js"
+    },
+    "./profile": {
+      "types": "./dist/modules/profile/public.d.ts",
+      "import": "./dist/modules/profile/public.js"
+    },
+    "./scheduling": {
+      "types": "./dist/modules/scheduling/public.d.ts",
+      "import": "./dist/modules/scheduling/public.js"
+    },
+    "./secrets": {
+      "types": "./dist/modules/secrets/public.d.ts",
+      "import": "./dist/modules/secrets/public.js"
+    },
+    "./profile-files": {
+      "types": "./dist/profile-files.d.ts",
+      "import": "./dist/profile-files.js"
+    },
+    "./protected-secrets": {
+      "types": "./dist/protected-secrets.d.ts",
+      "import": "./dist/protected-secrets.js"
+    },
+    "./workspace-files": {
+      "types": "./dist/workspace-files.d.ts",
+      "import": "./dist/workspace-files.js"
+    },
+    "./testing/db/lifecycle-vocabulary": {
+      "types": "./dist/db/lifecycle-vocabulary.d.ts",
+      "import": "./dist/db/lifecycle-vocabulary.js"
+    },
+    "./testing/db/schema": {
+      "types": "./dist/db/schema.d.ts",
+      "import": "./dist/db/schema.js"
+    },
+    "./testing/db/uuidv7": {
+      "types": "./dist/db/uuidv7.d.ts",
+      "import": "./dist/db/uuidv7.js"
+    },
+    "./testing/db/workspaces.schema": {
+      "types": "./dist/db/workspaces.schema.d.ts",
+      "import": "./dist/db/workspaces.schema.js"
+    },
+    "./testing/modules/action-queue/action-queue.repository": {
+      "types": "./dist/modules/action-queue/action-queue.repository.d.ts",
+      "import": "./dist/modules/action-queue/action-queue.repository.js"
+    },
+    "./testing/modules/application/application.schema": {
+      "types": "./dist/modules/application/application.schema.d.ts",
+      "import": "./dist/modules/application/application.schema.js"
+    },
+    "./testing/modules/applications/application.aggregate.service": {
+      "types": "./dist/modules/applications/application.aggregate.service.d.ts",
+      "import": "./dist/modules/applications/application.aggregate.service.js"
+    },
+    "./testing/modules/applications/application.aggregate.validation": {
+      "types": "./dist/modules/applications/application.aggregate.validation.d.ts",
+      "import": "./dist/modules/applications/application.aggregate.validation.js"
+    },
+    "./testing/modules/applications/application.dto": {
+      "types": "./dist/modules/applications/application.dto.d.ts",
+      "import": "./dist/modules/applications/application.dto.js"
+    },
+    "./testing/modules/applications/application.read-model": {
+      "types": "./dist/modules/applications/application.read-model.d.ts",
+      "import": "./dist/modules/applications/application.read-model.js"
+    },
+    "./testing/modules/capture/capture.destination-resolution": {
+      "types": "./dist/modules/capture/capture.destination-resolution.d.ts",
+      "import": "./dist/modules/capture/capture.destination-resolution.js"
+    },
+    "./testing/modules/capture/capture.dto": {
+      "types": "./dist/modules/capture/capture.dto.d.ts",
+      "import": "./dist/modules/capture/capture.dto.js"
+    },
+    "./testing/modules/capture/capture.field-outcomes": {
+      "types": "./dist/modules/capture/capture.field-outcomes.d.ts",
+      "import": "./dist/modules/capture/capture.field-outcomes.js"
+    },
+    "./testing/modules/capture/capture.manual-completion": {
+      "types": "./dist/modules/capture/capture.manual-completion.d.ts",
+      "import": "./dist/modules/capture/capture.manual-completion.js"
+    },
+    "./testing/modules/capture/capture.materialization": {
+      "types": "./dist/modules/capture/capture.materialization.d.ts",
+      "import": "./dist/modules/capture/capture.materialization.js"
+    },
+    "./testing/modules/capture/capture.resolution": {
+      "types": "./dist/modules/capture/capture.resolution.d.ts",
+      "import": "./dist/modules/capture/capture.resolution.js"
+    },
+    "./testing/modules/capture/capture.schema": {
+      "types": "./dist/modules/capture/capture.schema.d.ts",
+      "import": "./dist/modules/capture/capture.schema.js"
+    },
+    "./testing/modules/capture/capture.service": {
+      "types": "./dist/modules/capture/capture.service.d.ts",
+      "import": "./dist/modules/capture/capture.service.js"
+    },
+    "./testing/modules/company/company.duplicate-maintenance": {
+      "types": "./dist/modules/company/company.duplicate-maintenance.d.ts",
+      "import": "./dist/modules/company/company.duplicate-maintenance.js"
+    },
+    "./testing/modules/company/company.duplicate-scorer": {
+      "types": "./dist/modules/company/company.duplicate-scorer.d.ts",
+      "import": "./dist/modules/company/company.duplicate-scorer.js"
+    },
+    "./testing/modules/company/company.schema": {
+      "types": "./dist/modules/company/company.schema.d.ts",
+      "import": "./dist/modules/company/company.schema.js"
+    },
+    "./testing/modules/connectors/adapters/capture/connector.capture-host": {
+      "types": "./dist/modules/connectors/adapters/capture/connector.capture-host.d.ts",
+      "import": "./dist/modules/connectors/adapters/capture/connector.capture-host.js"
+    },
+    "./testing/modules/connectors/adapters/connector.runner": {
+      "types": "./dist/modules/connectors/adapters/connector.runner.d.ts",
+      "import": "./dist/modules/connectors/adapters/connector.runner.js"
+    },
+    "./testing/modules/connectors/adapters/persistence/connector-retirement.persistence": {
+      "types": "./dist/modules/connectors/adapters/persistence/connector-retirement.persistence.d.ts",
+      "import": "./dist/modules/connectors/adapters/persistence/connector-retirement.persistence.js"
+    },
+    "./testing/modules/connectors/adapters/persistence/connector-schedule.dispatch": {
+      "types": "./dist/modules/connectors/adapters/persistence/connector-schedule.dispatch.d.ts",
+      "import": "./dist/modules/connectors/adapters/persistence/connector-schedule.dispatch.js"
+    },
+    "./testing/modules/connectors/adapters/persistence/connector-schedule.repository": {
+      "types": "./dist/modules/connectors/adapters/persistence/connector-schedule.repository.d.ts",
+      "import": "./dist/modules/connectors/adapters/persistence/connector-schedule.repository.js"
+    },
+    "./testing/modules/connectors/adapters/persistence/connector.lifecycle-counts": {
+      "types": "./dist/modules/connectors/adapters/persistence/connector.lifecycle-counts.d.ts",
+      "import": "./dist/modules/connectors/adapters/persistence/connector.lifecycle-counts.js"
+    },
+    "./testing/modules/connectors/adapters/persistence/connector.repository": {
+      "types": "./dist/modules/connectors/adapters/persistence/connector.repository.d.ts",
+      "import": "./dist/modules/connectors/adapters/persistence/connector.repository.js"
+    },
+    "./testing/modules/connectors/adapters/persistence/connector.schema": {
+      "types": "./dist/modules/connectors/adapters/persistence/connector.schema.d.ts",
+      "import": "./dist/modules/connectors/adapters/persistence/connector.schema.js"
+    },
+    "./testing/modules/connectors/adapters/provider/connector.default-registry": {
+      "types": "./dist/modules/connectors/adapters/provider/connector.default-registry.d.ts",
+      "import": "./dist/modules/connectors/adapters/provider/connector.default-registry.js"
+    },
+    "./testing/modules/connectors/adapters/runtime/connector.runtime-ports": {
+      "types": "./dist/modules/connectors/adapters/runtime/connector.runtime-ports.d.ts",
+      "import": "./dist/modules/connectors/adapters/runtime/connector.runtime-ports.js"
+    },
+    "./testing/modules/connectors/adapters/scheduling/connector-schedule.source": {
+      "types": "./dist/modules/connectors/adapters/scheduling/connector-schedule.source.d.ts",
+      "import": "./dist/modules/connectors/adapters/scheduling/connector-schedule.source.js"
+    },
+    "./testing/modules/connectors/core/connector-schedule.eligibility": {
+      "types": "./dist/modules/connectors/core/connector-schedule.eligibility.d.ts",
+      "import": "./dist/modules/connectors/core/connector-schedule.eligibility.js"
+    },
+    "./testing/modules/connectors/core/connector-schedule.execution": {
+      "types": "./dist/modules/connectors/core/connector-schedule.execution.d.ts",
+      "import": "./dist/modules/connectors/core/connector-schedule.execution.js"
+    },
+    "./testing/modules/connectors/core/connector-schedule.occurrence-outcome": {
+      "types": "./dist/modules/connectors/core/connector-schedule.occurrence-outcome.d.ts",
+      "import": "./dist/modules/connectors/core/connector-schedule.occurrence-outcome.js"
+    },
+    "./testing/modules/connectors/core/connector.capabilities": {
+      "types": "./dist/modules/connectors/core/connector.capabilities.d.ts",
+      "import": "./dist/modules/connectors/core/connector.capabilities.js"
+    },
+    "./testing/modules/connectors/core/connector.claimed-execution": {
+      "types": "./dist/modules/connectors/core/connector.claimed-execution.d.ts",
+      "import": "./dist/modules/connectors/core/connector.claimed-execution.js"
+    },
+    "./testing/modules/connectors/core/connector.installed-descriptor": {
+      "types": "./dist/modules/connectors/core/connector.installed-descriptor.d.ts",
+      "import": "./dist/modules/connectors/core/connector.installed-descriptor.js"
+    },
+    "./testing/modules/connectors/core/connector.option-query.contract": {
+      "types": "./dist/modules/connectors/core/connector.option-query.contract.d.ts",
+      "import": "./dist/modules/connectors/core/connector.option-query.contract.js"
+    },
+    "./testing/modules/connectors/core/connector.overview-projection": {
+      "types": "./dist/modules/connectors/core/connector.overview-projection.d.ts",
+      "import": "./dist/modules/connectors/core/connector.overview-projection.js"
+    },
+    "./testing/modules/connectors/core/connector.refresh-contract": {
+      "types": "./dist/modules/connectors/core/connector.refresh-contract.d.ts",
+      "import": "./dist/modules/connectors/core/connector.refresh-contract.js"
+    },
+    "./testing/modules/connectors/core/connector.refresh-result-sanitizer": {
+      "types": "./dist/modules/connectors/core/connector.refresh-result-sanitizer.d.ts",
+      "import": "./dist/modules/connectors/core/connector.refresh-result-sanitizer.js"
+    },
+    "./testing/modules/connectors/core/connector.registry": {
+      "types": "./dist/modules/connectors/core/connector.registry.d.ts",
+      "import": "./dist/modules/connectors/core/connector.registry.js"
+    },
+    "./testing/modules/connectors/core/connector.run-record.projection": {
+      "types": "./dist/modules/connectors/core/connector.run-record.projection.d.ts",
+      "import": "./dist/modules/connectors/core/connector.run-record.projection.js"
+    },
+    "./testing/modules/connectors/core/connector.settings-validation": {
+      "types": "./dist/modules/connectors/core/connector.settings-validation.d.ts",
+      "import": "./dist/modules/connectors/core/connector.settings-validation.js"
+    },
+    "./testing/modules/connectors/core/connector.status": {
+      "types": "./dist/modules/connectors/core/connector.status.d.ts",
+      "import": "./dist/modules/connectors/core/connector.status.js"
+    },
+    "./testing/modules/connectors/ports/connector.repository.port": {
+      "types": "./dist/modules/connectors/ports/connector.repository.port.d.ts",
+      "import": "./dist/modules/connectors/ports/connector.repository.port.js"
+    },
+    "./testing/modules/connectors/ports/connector.runner-contracts": {
+      "types": "./dist/modules/connectors/ports/connector.runner-contracts.d.ts",
+      "import": "./dist/modules/connectors/ports/connector.runner-contracts.js"
+    },
+    "./testing/modules/connectors/public/connector.refresh-result.test-helpers": {
+      "types": "./dist/modules/connectors/public/connector.refresh-result.test-helpers.d.ts",
+      "import": "./dist/modules/connectors/public/connector.refresh-result.test-helpers.js"
+    },
+    "./testing/modules/job/job.dto": {
+      "types": "./dist/modules/job/job.dto.d.ts",
+      "import": "./dist/modules/job/job.dto.js"
+    },
+    "./testing/modules/job/job.identity": {
+      "types": "./dist/modules/job/job.identity.d.ts",
+      "import": "./dist/modules/job/job.identity.js"
+    },
+    "./testing/modules/job/job.read-model": {
+      "types": "./dist/modules/job/job.read-model.d.ts",
+      "import": "./dist/modules/job/job.read-model.js"
+    },
+    "./testing/modules/job/job.repository": {
+      "types": "./dist/modules/job/job.repository.d.ts",
+      "import": "./dist/modules/job/job.repository.js"
+    },
+    "./testing/modules/job/job.schema": {
+      "types": "./dist/modules/job/job.schema.d.ts",
+      "import": "./dist/modules/job/job.schema.js"
+    },
+    "./testing/modules/job/job.service": {
+      "types": "./dist/modules/job/job.service.d.ts",
+      "import": "./dist/modules/job/job.service.js"
+    },
+    "./testing/modules/job/job.validation": {
+      "types": "./dist/modules/job/job.validation.d.ts",
+      "import": "./dist/modules/job/job.validation.js"
+    },
+    "./testing/modules/lifecycle/capture-to-job.promotion": {
+      "types": "./dist/modules/lifecycle/capture-to-job.promotion.d.ts",
+      "import": "./dist/modules/lifecycle/capture-to-job.promotion.js"
+    },
+    "./testing/modules/lifecycle/job-to-opportunity.promotion": {
+      "types": "./dist/modules/lifecycle/job-to-opportunity.promotion.d.ts",
+      "import": "./dist/modules/lifecycle/job-to-opportunity.promotion.js"
+    },
+    "./testing/modules/lifecycle/job.orchestration": {
+      "types": "./dist/modules/lifecycle/job.orchestration.d.ts",
+      "import": "./dist/modules/lifecycle/job.orchestration.js"
+    },
+    "./testing/modules/lifecycle/lifecycle-audit.dto": {
+      "types": "./dist/modules/lifecycle/lifecycle-audit.dto.d.ts",
+      "import": "./dist/modules/lifecycle/lifecycle-audit.dto.js"
+    },
+    "./testing/modules/lifecycle/lifecycle-page.dto": {
+      "types": "./dist/modules/lifecycle/lifecycle-page.dto.d.ts",
+      "import": "./dist/modules/lifecycle/lifecycle-page.dto.js"
+    },
+    "./testing/modules/lifecycle/lifecycle-representation": {
+      "types": "./dist/modules/lifecycle/lifecycle-representation.d.ts",
+      "import": "./dist/modules/lifecycle/lifecycle-representation.js"
+    },
+    "./testing/modules/lifecycle/mutation.dto": {
+      "types": "./dist/modules/lifecycle/mutation.dto.d.ts",
+      "import": "./dist/modules/lifecycle/mutation.dto.js"
+    },
+    "./testing/modules/lifecycle/opportunity-to-application.promotion": {
+      "types": "./dist/modules/lifecycle/opportunity-to-application.promotion.d.ts",
+      "import": "./dist/modules/lifecycle/opportunity-to-application.promotion.js"
+    },
+    "./testing/modules/lifecycle/promotion.dto": {
+      "types": "./dist/modules/lifecycle/promotion.dto.d.ts",
+      "import": "./dist/modules/lifecycle/promotion.dto.js"
+    },
+    "./testing/modules/lifecycle/public": {
+      "types": "./dist/modules/lifecycle/public.d.ts",
+      "import": "./dist/modules/lifecycle/public.js"
+    },
+    "./testing/modules/lifecycle/removal.dto": {
+      "types": "./dist/modules/lifecycle/removal.dto.d.ts",
+      "import": "./dist/modules/lifecycle/removal.dto.js"
+    },
+    "./testing/modules/lifecycle/removal.orchestration": {
+      "types": "./dist/modules/lifecycle/removal.orchestration.d.ts",
+      "import": "./dist/modules/lifecycle/removal.orchestration.js"
+    },
+    "./testing/modules/opportunity/opportunity.dto": {
+      "types": "./dist/modules/opportunity/opportunity.dto.d.ts",
+      "import": "./dist/modules/opportunity/opportunity.dto.js"
+    },
+    "./testing/modules/opportunity/opportunity.read-model": {
+      "types": "./dist/modules/opportunity/opportunity.read-model.d.ts",
+      "import": "./dist/modules/opportunity/opportunity.read-model.js"
+    },
+    "./testing/modules/opportunity/opportunity.schema": {
+      "types": "./dist/modules/opportunity/opportunity.schema.d.ts",
+      "import": "./dist/modules/opportunity/opportunity.schema.js"
+    },
+    "./testing/modules/opportunity/opportunity.service": {
+      "types": "./dist/modules/opportunity/opportunity.service.d.ts",
+      "import": "./dist/modules/opportunity/opportunity.service.js"
+    },
+    "./testing/modules/opportunity/opportunity.validation": {
+      "types": "./dist/modules/opportunity/opportunity.validation.d.ts",
+      "import": "./dist/modules/opportunity/opportunity.validation.js"
+    },
+    "./testing/modules/policy/policy.patch": {
+      "types": "./dist/modules/policy/policy.patch.d.ts",
+      "import": "./dist/modules/policy/policy.patch.js"
+    },
+    "./testing/modules/policy/policy.repository": {
+      "types": "./dist/modules/policy/policy.repository.d.ts",
+      "import": "./dist/modules/policy/policy.repository.js"
+    },
+    "./testing/modules/profile/profile.composition": {
+      "types": "./dist/modules/profile/profile.composition.d.ts",
+      "import": "./dist/modules/profile/profile.composition.js"
+    },
+    "./testing/modules/scheduling/capture-destination-work": {
+      "types": "./dist/modules/scheduling/capture-destination-work.d.ts",
+      "import": "./dist/modules/scheduling/capture-destination-work.js"
+    },
+    "./testing/modules/scheduling/normalization-work": {
+      "types": "./dist/modules/scheduling/normalization-work.d.ts",
+      "import": "./dist/modules/scheduling/normalization-work.js"
+    },
+    "./testing/modules/scheduling/provider-url-resolution-retirement": {
+      "types": "./dist/modules/scheduling/provider-url-resolution-retirement.d.ts",
+      "import": "./dist/modules/scheduling/provider-url-resolution-retirement.js"
+    },
+    "./testing/modules/scheduling/scheduled-work": {
+      "types": "./dist/modules/scheduling/scheduled-work.d.ts",
+      "import": "./dist/modules/scheduling/scheduled-work.js"
+    },
+    "./testing/modules/scheduling/scheduled-work.source": {
+      "types": "./dist/modules/scheduling/scheduled-work.source.d.ts",
+      "import": "./dist/modules/scheduling/scheduled-work.source.js"
+    },
+    "./testing/modules/scheduling/scheduling.schema": {
+      "types": "./dist/modules/scheduling/scheduling.schema.d.ts",
+      "import": "./dist/modules/scheduling/scheduling.schema.js"
+    },
+    "./testing/modules/scoring/scoring.repository": {
+      "types": "./dist/modules/scoring/scoring.repository.d.ts",
+      "import": "./dist/modules/scoring/scoring.repository.js"
+    },
+    "./testing/modules/secrets/connector-secret-resolver": {
+      "types": "./dist/modules/secrets/connector-secret-resolver.d.ts",
+      "import": "./dist/modules/secrets/connector-secret-resolver.js"
+    },
+    "./testing/modules/secrets/local-secret-resolution": {
+      "types": "./dist/modules/secrets/local-secret-resolution.d.ts",
+      "import": "./dist/modules/secrets/local-secret-resolution.js"
+    },
+    "./testing/modules/secrets/secret.composition": {
+      "types": "./dist/modules/secrets/secret.composition.d.ts",
+      "import": "./dist/modules/secrets/secret.composition.js"
+    },
+    "./testing/modules/secrets/secret.identity": {
+      "types": "./dist/modules/secrets/secret.identity.d.ts",
+      "import": "./dist/modules/secrets/secret.identity.js"
+    },
+    "./testing/modules/secrets/secret.pglite.store": {
+      "types": "./dist/modules/secrets/secret.pglite.store.d.ts",
+      "import": "./dist/modules/secrets/secret.pglite.store.js"
+    },
+    "./testing/modules/secrets/secret.store": {
+      "types": "./dist/modules/secrets/secret.store.d.ts",
+      "import": "./dist/modules/secrets/secret.store.js"
+    },
+    "./testing/modules/source-execution/source-execution-governor": {
+      "types": "./dist/modules/source-execution/source-execution-governor.d.ts",
+      "import": "./dist/modules/source-execution/source-execution-governor.js"
+    },
+    "./testing/modules/source-execution/source-execution.persistence": {
+      "types": "./dist/modules/source-execution/source-execution.persistence.d.ts",
+      "import": "./dist/modules/source-execution/source-execution.persistence.js"
+    },
+    "./testing/modules/source-execution/source-session-executor": {
+      "types": "./dist/modules/source-execution/source-session-executor.d.ts",
+      "import": "./dist/modules/source-execution/source-session-executor.js"
+    },
+    "./testing/modules/workflow-runs/workflow-run.repository": {
+      "types": "./dist/modules/workflow-runs/workflow-run.repository.d.ts",
+      "import": "./dist/modules/workflow-runs/workflow-run.repository.js"
+    },
+    "./testing/runtime/local-lifecycle-methods": {
+      "types": "./dist/runtime/local-lifecycle-methods.d.ts",
+      "import": "./dist/runtime/local-lifecycle-methods.js"
+    },
+    "./testing/runtime/local-profile-secret-client": {
+      "types": "./dist/runtime/local-profile-secret-client.d.ts",
+      "import": "./dist/runtime/local-profile-secret-client.js"
+    },
+    "./testing/runtime/local-valedictorian-runtime-options": {
+      "types": "./dist/runtime/local-valedictorian-runtime-options.d.ts",
+      "import": "./dist/runtime/local-valedictorian-runtime-options.js"
+    },
+    "./testing/modules/capture/capture.lineage": {
+      "types": "./dist/modules/capture/capture.lineage.d.ts",
+      "import": "./dist/modules/capture/capture.lineage.js"
+    },
+    "./testing/modules/capture/destination-url-safety": {
+      "types": "./dist/modules/capture/destination-url-safety.d.ts",
+      "import": "./dist/modules/capture/destination-url-safety.js"
+    },
+    "./testing/modules/company/company.assignment.service": {
+      "types": "./dist/modules/company/company.assignment.service.d.ts",
+      "import": "./dist/modules/company/company.assignment.service.js"
+    },
+    "./testing/modules/connectors/public/connector.earliest-backfill": {
+      "types": "./dist/modules/connectors/public/connector.earliest-backfill.d.ts",
+      "import": "./dist/modules/connectors/public/connector.earliest-backfill.js"
+    },
+    "./testing/modules/connectors/public/connector.execution-errors": {
+      "types": "./dist/modules/connectors/public/connector.execution-errors.d.ts",
+      "import": "./dist/modules/connectors/public/connector.execution-errors.js"
+    },
+    "./testing/modules/connectors/public/connector.run-presentation": {
+      "types": "./dist/modules/connectors/public/connector.run-presentation.d.ts",
+      "import": "./dist/modules/connectors/public/connector.run-presentation.js"
+    },
+    "./testing/modules/connectors/public/connector.run-projection": {
+      "types": "./dist/modules/connectors/public/connector.run-projection.d.ts",
+      "import": "./dist/modules/connectors/public/connector.run-projection.js"
+    },
+    "./testing/modules/job/job.timing": {
+      "types": "./dist/modules/job/job.timing.d.ts",
+      "import": "./dist/modules/job/job.timing.js"
+    },
+    "./testing/modules/profile/profile.service": {
+      "types": "./dist/modules/profile/profile.service.d.ts",
+      "import": "./dist/modules/profile/profile.service.js"
+    },
+    "./testing/modules/secrets/secret.service": {
+      "types": "./dist/modules/secrets/secret.service.d.ts",
+      "import": "./dist/modules/secrets/secret.service.js"
+    },
+    "./testing/server/local-server.error-boundary": {
+      "types": "./dist/server/local-server.error-boundary.d.ts",
+      "import": "./dist/server/local-server.error-boundary.js"
+    },
+    "./testing/server/local-server.http": {
+      "types": "./dist/server/local-server.http.d.ts",
+      "import": "./dist/server/local-server.http.js"
+    },
+    "./testing/server/local-server.parsers.connectors-policy": {
+      "types": "./dist/server/local-server.parsers.connectors-policy.d.ts",
+      "import": "./dist/server/local-server.parsers.connectors-policy.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @sparxie/valedictorian-workspace-server run build && pnpm run build:package",
+    "build:package": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.4",
+    "@sparxie/sdk": "0.36.0",
+    "@sparxie/valedictorian-connectors-core": "0.19.0",
+    "@sparxie/valedictorian-connectors-jobright": "0.19.0",
+    "@sparxie/valedictorian-workspace-server": "workspace:0.1.0",
+    "cosmiconfig": "9.0.2",
+    "drizzle-orm": "^0.45.2",
+    "env-paths": "4.0.0",
+    "jsonc-parser": "3.3.1",
+    "pathe": "2.0.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.7"
+  }
+}

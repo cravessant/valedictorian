@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assertConnectorRefreshResult } from './connector.refresh-contract'
+import { assertConnectorRefreshResult } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.refresh-contract'
 
 const executionScopeId = 'scope_contract'
 const coverage = {

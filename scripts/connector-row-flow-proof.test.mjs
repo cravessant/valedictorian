@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 const proofScript = path.join(repositoryRoot, 'scripts/connector-row-flow-proof.mjs')
-const surfacePath = path.join(repositoryRoot, 'src/modules/connectors/public.ts')
+const surfacePath = path.join(repositoryRoot, 'packages/local-runtime/src/modules/connectors/public.ts')
 const original = fs.readFileSync(surfacePath, 'utf8')
 
 /** @returns {{ status: number, stdout: string, stderr: string }} */

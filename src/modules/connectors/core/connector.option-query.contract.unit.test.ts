@@ -7,7 +7,7 @@ import { connectorOptionQueryResultSchema } from '@sparxie/sdk'
 import {
   sanitizeConnectorOptionCoreResult,
   validateConnectorOptionQueryContract,
-} from './connector.option-query.contract'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.option-query.contract'
 
 describe('connector option query contract', () => {
   it.each([

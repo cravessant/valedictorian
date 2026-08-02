@@ -1,4 +1,4 @@
-import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import type { LocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createBoundaryWorkspaceClient,

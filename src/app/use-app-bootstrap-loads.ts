@@ -10,7 +10,7 @@ import {
 } from '../settings/app-settings'
 import type { SettingsPreloadApi } from '../ipc/settings.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
-import type { WorkspaceSummary } from '../workspace/workspace.initializer'
+import type { WorkspaceSummary } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 function presentSettingsLoadFailure(
   error: unknown,

@@ -2,14 +2,14 @@ export {
   maximumSelectableEarliestBackfillDate,
   minimumSelectableEarliestBackfillDate,
   validateSelectableEarliestBackfillDate,
-} from './public/connector.earliest-backfill'
+} from '@sparxie/valedictorian-local-runtime/connector-edge-contract'
 export {
   validateConnectorConfigPersistenceValue,
   validateConnectorSchemaValue,
   type ConnectorSchemaValidationIssue,
-} from './public/connector.renderer-schema-validation'
-export { connectorRunSynchronizationCopy } from './public/connector.run-presentation'
+} from '@sparxie/valedictorian-local-runtime/connector-edge-contract'
+export { connectorRunSynchronizationCopy } from '@sparxie/valedictorian-local-runtime/connector-edge-contract'
 export {
   JOBRIGHT_CONNECTOR_ID,
   JOBRIGHT_CONNECTOR_VERSION,
-} from './public/jobright.constants'
+} from '@sparxie/valedictorian-local-runtime/connector-edge-contract'

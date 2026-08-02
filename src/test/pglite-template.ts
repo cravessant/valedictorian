@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { createPgliteClient, migratePgliteDatabase } from '../db/pglite'
+import { createPgliteClient, migratePgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
 
 export const PGLITE_TEST_TEMPLATE_PATH_ENV = 'VALEDICTORIAN_PGLITE_TEST_TEMPLATE_PATH'
 

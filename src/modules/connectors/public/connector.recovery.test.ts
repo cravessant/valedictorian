@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { createConnectorRunRecoveryLifecycle } from './connector.recovery'
+import { createConnectorRunRecoveryLifecycle } from '@sparxie/valedictorian-local-runtime/connectors'
 
 function createTempDirectory() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-recovery-'))

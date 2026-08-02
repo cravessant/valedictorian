@@ -10,18 +10,18 @@ import { describe, expect, it, vi } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import { jobFactsSchema } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { captureEvidenceItems, captures as captureRows } from '../capture/capture.schema'
-import { jobCaptureEvidenceReferences, jobExternalIdentities, jobs as jobRows } from '../job/job.schema'
-import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { captureEvidenceItems, captures as captureRows } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.schema'
+import { jobCaptureEvidenceReferences, jobExternalIdentities, jobs as jobRows } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import { createPgliteCaptureService, type CaptureService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { createPgliteJobIdentityService } from '../job/job.identity'
-import { admitCommandActor } from './lifecycle-representation'
+import { createPgliteJobIdentityService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.identity'
+import { admitCommandActor } from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/lifecycle-representation'
 import {
   createPgliteJobPromotion,
   type DestinationResolution,
   type JobResolutionPort,
-} from './capture-to-job.promotion'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/capture-to-job.promotion'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

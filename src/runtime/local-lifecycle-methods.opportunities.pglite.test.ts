@@ -22,7 +22,7 @@ import {
   type JobId,
 } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
-import { workspaces } from '../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { createLocalLifecycleMethodsWithCompanies } from '../test/lifecycle-methods-with-companies'
 
 const resettableOwner = useResettablePgliteTestOwner()

@@ -4,7 +4,7 @@ import {
   getTestLocalValedictorianDatabase,
   useResettablePgliteTestLocalValedictorianClient,
 } from '../../runtime/local-valedictorian-client.test-harness'
-import { workspaceCompanies } from './company.schema'
+import { workspaceCompanies } from '@sparxie/valedictorian-local-runtime/testing/modules/company/company.schema'
 
 const createClient = useResettablePgliteTestLocalValedictorianClient()
 const WORKSPACE = 'company-assignment-workspace'

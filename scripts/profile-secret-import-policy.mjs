@@ -141,10 +141,14 @@ function jsonConcreteModuleImportsAreAllowed(source) {
 function isApprovedImporter(filePath, source) {
   const normalized = filePath.replaceAll('\\', '/')
   if (
-    normalized === 'src/modules/profile/profile.composition.ts' ||
+    normalized === 'packages/local-runtime/src/modules/profile/profile.composition.ts' ||
     normalized === 'src/modules/profile/profile.composition.test.ts' ||
-    normalized === 'src/modules/secrets/secret.composition.ts' ||
-    normalized === 'src/settings/app-secret.composition.ts'
+    normalized === 'src/modules/profile/profile.json.store.test.ts' ||
+    normalized === 'packages/local-runtime/src/modules/secrets/secret.composition.ts' ||
+    normalized === 'packages/local-runtime/src/app-secret.composition.ts' ||
+    normalized === 'packages/local-runtime/src/index.ts' ||
+    normalized === 'packages/local-runtime/src/profile-files.ts' ||
+    normalized === 'packages/local-runtime/src/protected-secrets.ts'
   ) {
     return true
   }
@@ -244,7 +248,11 @@ export function readStagedPolicyFiles() {
 export function findProfileSecretImportPolicyViolations(files) {
   return files.flatMap((file) => {
     const normalized = file.path.replaceAll('\\', '/')
-    if (!normalized.startsWith('src/') && !normalized.startsWith('electron/')) return []
+    if (
+      !normalized.startsWith('src/')
+      && !normalized.startsWith('electron/')
+      && !normalized.startsWith('packages/local-runtime/')
+    ) return []
     if (isApprovedImporter(normalized, file.source)) return []
     if (!importsConcreteAdapter(file.source)) return []
     return [

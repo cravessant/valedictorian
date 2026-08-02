@@ -11,11 +11,11 @@
 import { describe, expect, it } from 'vitest'
 import { opportunityHistoryResultSchema, opportunityListResultSchema, opportunitySchema } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import type { JobService } from '../job/job.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import type { JobService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { createPgliteOpportunityService, type OpportunityService } from './opportunity.service'
-import { createPgliteOpportunityReadModel } from './opportunity.read-model'
+import { createPgliteOpportunityService, type OpportunityService } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.service'
+import { createPgliteOpportunityReadModel } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.read-model'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const ACTOR = { type: 'user', id: 'user-1' } as const

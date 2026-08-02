@@ -10,7 +10,7 @@ import type {
   LifecycleId,
   LIFECYCLE_AUDIT_MAX,
   LIFECYCLE_SNAPSHOT_MAX,
-} from './lifecycle-representation'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/lifecycle-representation'
 
 type Assignable<From, To> = [From] extends [To] ? true : false
 

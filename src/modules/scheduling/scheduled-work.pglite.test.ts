@@ -11,24 +11,24 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { connectorCaptureWork, connectorInstances } from '../connectors/adapters/persistence/connector.schema'
-import { sourceExecutionScopes } from '../../db/schema'
-import { createPgliteCaptureService } from '../capture/capture.service'
-import { createLocalScheduler } from '../../runtime/local-scheduler'
-import { createScheduledWorkSource } from './scheduled-work.source'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { connectorCaptureWork, connectorInstances } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.schema'
+import { sourceExecutionScopes } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import { createPgliteCaptureService } from '@sparxie/valedictorian-local-runtime/capture'
+import { createLocalScheduler } from '@sparxie/valedictorian-local-runtime/runtime'
+import { createScheduledWorkSource } from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/scheduled-work.source'
 import {
   hostedResultPollingWork,
   hostedSubmissionWork,
   providerUrlResolutionWork,
-} from './scheduling.schema'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/scheduling.schema'
 import {
   connectorCaptureOperation,
   normalizationOperation,
   providerUrlResolutionOperation,
   createScheduledWorkRepository,
   type ScheduledWorkRepositoryOptions,
-} from './scheduled-work'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/scheduled-work'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const WS = 'ws-a'

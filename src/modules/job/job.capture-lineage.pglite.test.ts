@@ -9,11 +9,11 @@
 import { describe, expect, it } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { jobCaptureEvidenceReferences, jobs } from '../../db/schema'
-import { createPgliteCaptureService } from '../capture/capture.service'
-import { readCaptureEvidenceReference } from '../capture/capture.lineage'
-import { insertJobCaptureEvidenceReferences } from './job.repository'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { jobCaptureEvidenceReferences, jobs } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import { createPgliteCaptureService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.service'
+import { readCaptureEvidenceReference } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.lineage'
+import { insertJobCaptureEvidenceReferences } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.repository'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

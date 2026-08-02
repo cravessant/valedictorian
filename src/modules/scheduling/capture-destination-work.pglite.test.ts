@@ -1,27 +1,27 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { workspaces } from '../../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { createCaptureMaterializationService } from '../capture/capture.materialization'
-import { createCaptureDestinationResolutionService } from '../capture/capture.destination-resolution'
+import { createCaptureMaterializationService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.materialization'
+import { createCaptureDestinationResolutionService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.destination-resolution'
 import {
   createCaptureResolutionService,
   createCaptureResolutionV2Service,
-} from '../capture/capture.resolution'
-import { createPgliteCaptureService } from '../capture/capture.service'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.resolution'
+import { createPgliteCaptureService } from '@sparxie/valedictorian-local-runtime/capture'
 import {
   captureResolutionGenerations,
   captureResolutionStageResults,
-} from '../capture/capture.schema'
-import { captureDestinationResolutionWork } from './scheduling.schema'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.schema'
+import { captureDestinationResolutionWork } from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/scheduling.schema'
 import {
   createCaptureDestinationWorkExecutor,
   createCaptureDestinationWorkRepository,
   enqueueCaptureDestinationWork,
   reconcileCaptureDestinationWork,
-} from './capture-destination-work'
-import { providerUrlResolutionWork } from './scheduling.schema'
-import { retireProviderUrlResolutionWork } from './provider-url-resolution-retirement'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/capture-destination-work'
+import { providerUrlResolutionWork } from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/scheduling.schema'
+import { retireProviderUrlResolutionWork } from '@sparxie/valedictorian-local-runtime/testing/modules/scheduling/provider-url-resolution-retirement'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const WORKSPACE = 'destination-resolution-workspace'

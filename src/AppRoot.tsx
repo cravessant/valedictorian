@@ -2,7 +2,7 @@ import { useEffect, useState, type ComponentProps } from 'react'
 import App, { rendererWorkspaceApi } from './App'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import { WorkspaceLauncherPage } from './workspace/WorkspaceLauncherPage'
-import type { WorkspaceLaunchState } from './workspace/workspace.service'
+import type { WorkspaceLaunchState } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 interface AppRootProps {
   appProps?: ComponentProps<typeof App>

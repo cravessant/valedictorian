@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { sources, workflowRuns, workflowRunSteps } from '../../db/schema'
-import type { PgliteDatabase } from '../../db/pglite'
+import { sources, workflowRuns, workflowRunSteps } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import type { PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
 import { createPgliteTestOwner } from '../../test/pglite-test-owner'
-import { createPgliteWorkflowRunRepository } from './workflow-run.repository'
+import { createPgliteWorkflowRunRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/workflow-runs/workflow-run.repository'
 
 async function seedLinkedInSource(database: PgliteDatabase) {
   const now = '2026-06-04T16:00:00.000Z'

@@ -3,7 +3,7 @@ import {
   destinationUrlMaximumLength,
   validateDestinationUrl,
   validateResolverMethod,
-} from './destination-url-safety'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/destination-url-safety'
 
 describe('destination URL safety', () => {
   it('accepts public HTTPS URLs and retains benign query bytes exactly', () => {

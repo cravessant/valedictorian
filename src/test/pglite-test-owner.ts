@@ -8,8 +8,8 @@ import {
   createPgliteDatabase,
   type PgliteClient,
   type PgliteDatabase,
-} from '../db/pglite'
-import { schema } from '../db/schema'
+} from '@sparxie/valedictorian-local-runtime/database'
+import { schema } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import { cloneConfiguredPgliteTemplate } from './pglite-template'
 
 export interface PgliteTestOwner {

@@ -25,6 +25,7 @@ describe('test discovery configuration', () => {
       'electron/**/*.test.{ts,tsx}',
       'packages/connector-api/**/*.test.{ts,tsx}',
       'packages/connector-testkit/**/*.test.{ts,tsx}',
+      'packages/local-runtime/**/*.test.{ts,tsx}',
       'packages/workspace/**/*.test.{ts,tsx}',
       'scripts/**/*.test.{ts,mjs}',
       'src/**/*.test.{ts,tsx}',
@@ -47,6 +48,7 @@ describe('test discovery configuration', () => {
     const testsProjectSource = fs.readFileSync(path.resolve('tsconfig.tests.json'), 'utf8')
     expect(testsProjectSource).toContain('packages/connector-api')
     expect(testsProjectSource).toContain('packages/connector-testkit')
+    expect(testsProjectSource).toContain('packages/local-runtime')
     expect(testsProjectSource).toContain('packages/workspace')
     expect(testsProjectSource).not.toContain('"packages",')
     expect(testsProjectSource).not.toContain('packages/cli')
@@ -56,7 +58,7 @@ describe('test discovery configuration', () => {
     }
     const lintScript = packageJson.scripts?.lint ?? ''
     expect(lintScript).toContain(
-      'oxlint electron packages/connector-api packages/connector-testkit packages/workspace/server packages/workspace/client packages/workspace/conformance scripts src vite.config.ts',
+      'oxlint electron packages/connector-api packages/connector-testkit packages/local-runtime packages/workspace/server packages/workspace/client packages/workspace/conformance scripts src vite.config.ts',
     )
     expect(lintScript).not.toContain('oxlint .')
     expect(lintScript).not.toContain('packages/cli')
@@ -97,10 +99,16 @@ describe('test discovery configuration', () => {
     expect(workflow).toContain('VALEDICTORIAN_WINDOW_TESTS: "1"')
   })
 
-  it('builds connector declarations before every test entrypoint', () => {
+  it('builds package dependency declarations before every test entrypoint', () => {
     const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as {
       scripts?: Record<string, string>
     }
+    const localRuntimePackage = JSON.parse(
+      fs.readFileSync(path.resolve('packages/local-runtime/package.json'), 'utf8'),
+    ) as { scripts?: Record<string, string> }
+    const workspaceServerPackage = JSON.parse(
+      fs.readFileSync(path.resolve('packages/workspace/server/package.json'), 'utf8'),
+    ) as { scripts?: Record<string, string> }
     const workflow = fs.readFileSync(path.resolve('.github/workflows/ci.yml'), 'utf8')
 
     expect(packageJson.scripts?.['build:connector-packages']).toContain(
@@ -109,14 +117,25 @@ describe('test discovery configuration', () => {
     expect(packageJson.scripts?.['build:connector-packages']).toContain(
       '@sparxie/valedictorian-connectors-test-harness',
     )
-    expect(packageJson.scripts?.pretest).toBe('pnpm run build:connector-packages && pnpm run build:workspace-packages')
-    expect(packageJson.scripts?.['pretest:watch']).toBe('pnpm run build:connector-packages && pnpm run build:workspace-packages')
+    const dependencyBuild = packageJson.scripts?.['build:dependency-packages'] ?? ''
+    expect(packageJson.scripts?.pretest).toBe('pnpm run build:dependency-packages')
+    expect(packageJson.scripts?.['pretest:watch']).toBe('pnpm run build:dependency-packages')
     expect(packageJson.scripts?.['pretypecheck:tests']).toBe(
-      'pnpm run build:connector-packages && pnpm run build:workspace-packages',
+      'pnpm run build:dependency-packages',
     )
-    expect(workflow.indexOf('pnpm run build:connector-packages')).toBeGreaterThan(-1)
+    expect(dependencyBuild).toBe(
+      'pnpm run build:connector-packages && pnpm run build:workspace-server-package && pnpm --filter @sparxie/valedictorian-local-runtime run build:package && pnpm run build:workspace-dependent-packages',
+    )
+    expect(packageJson.scripts?.pretypecheck).toBe('pnpm run build:local-runtime-package')
+    expect(localRuntimePackage.scripts?.build).toBe(
+      'pnpm --filter @sparxie/valedictorian-workspace-server run build && pnpm run build:package',
+    )
+    expect(workspaceServerPackage.scripts?.build).not.toContain(
+      '@sparxie/valedictorian-local-runtime',
+    )
+    expect(workflow.indexOf('pnpm run build:dependency-packages')).toBeGreaterThan(-1)
     expect(workflow.indexOf('pnpm exec vitest run --shard')).toBeGreaterThan(
-      workflow.indexOf('pnpm run build:connector-packages'),
+      workflow.indexOf('pnpm run build:dependency-packages'),
     )
   })
 })

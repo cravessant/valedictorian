@@ -1,9 +1,9 @@
-import type { PgliteDatabase } from '../db/pglite'
-import { createInitialCompanyAssignment } from '../modules/company/company.assignment.service'
+import type { PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
+import { createInitialCompanyAssignment } from '@sparxie/valedictorian-local-runtime/company'
 import {
   createPgliteJobService,
   type JobServiceOptions,
-} from '../modules/job/job.service'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
 
 export function createPgliteJobServiceWithCompanies(
   database: PgliteDatabase,

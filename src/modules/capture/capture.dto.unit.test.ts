@@ -15,7 +15,7 @@ import {
   type CaptureEvidenceRow,
   type CaptureHeadRow,
   type CaptureRevisionRow,
-} from './capture.dto'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.dto'
 
 const firstPage = (limit: number) => ({ limit, cursor: null, backward: false })
 

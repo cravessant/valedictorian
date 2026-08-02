@@ -10,14 +10,14 @@
  */
 import { describe, expect, it } from 'vitest'
 import { removalResultSchema, restoreResultSchema } from '@sparxie/sdk'
-import type { RemoveLifecycleResult, RestoreLifecycleResult } from './removal.orchestration'
+import type { RemoveLifecycleResult, RestoreLifecycleResult } from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/removal.orchestration'
 import {
   DEPENDENT_RESOLUTION_CHOICES,
   classifyRemovalFailure,
   toBlockedRemovalResult,
   toRemovedResult,
   toRestoredResult,
-} from './removal.dto'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/removal.dto'
 
 const actor = { id: 'u-1', type: 'user' as const }
 

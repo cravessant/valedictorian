@@ -18,7 +18,7 @@ import {
   opportunityFitStates,
   opportunityHistoryKinds,
   pursuitApplicationStatuses,
-} from './lifecycle-vocabulary'
+} from '@sparxie/valedictorian-local-runtime/testing/db/lifecycle-vocabulary'
 
 /**
  * Drift guard: these expected values are the merged sparxie lifecycle contract

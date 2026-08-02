@@ -11,12 +11,12 @@
 import { describe, expect, it } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { UUID_V7_PATTERN } from '../../db/lifecycle-vocabulary'
-import type { JobService } from '../job/job.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { UUID_V7_PATTERN } from '@sparxie/valedictorian-local-runtime/testing/db/lifecycle-vocabulary'
+import type { JobService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { opportunities as opportunityRows } from './opportunity.schema'
-import { createPgliteOpportunityService, type OpportunityService } from './opportunity.service'
+import { opportunities as opportunityRows } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.schema'
+import { createPgliteOpportunityService, type OpportunityService } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.service'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const uuidV7Regex = new RegExp(UUID_V7_PATTERN, 'i')

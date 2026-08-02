@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { WorkspaceLaunchState, WorkspaceService } from '../workspace/workspace.service'
+import type { WorkspaceLaunchState, WorkspaceService } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import { registerWorkspaceIpc } from './workspace.ipc'
 
 const currentWorkspace = {

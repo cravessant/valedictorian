@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { createPgliteSecretService } from '../../secrets/secret.composition'
-import { createWorkspaceSecretScope } from '../../secrets/secret.scope'
-import { createConnectorSecretResolver } from '../../secrets/connector-secret-resolver'
-import type { SecretCodec } from '../../secrets/secret.codec'
-import { createSourceExecutionGovernor } from '../../source-execution/source-execution-governor'
-import type { ConnectorCoverageWindow } from '../ports/connector.repository.port'
-import type { AppJobConnector } from '../ports/connector.runner-contracts'
-import { createConnectorRunner } from './connector.runner'
+import { createPgliteSecretService } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.composition'
+import {
+  createWorkspaceSecretScope,
+  type SecretCodec,
+} from '@sparxie/valedictorian-local-runtime/protected-secrets'
+import { createConnectorSecretResolver } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/connector-secret-resolver'
+import { createSourceExecutionGovernor } from '@sparxie/valedictorian-local-runtime/testing/modules/source-execution/source-execution-governor'
+import type { ConnectorCoverageWindow } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.repository.port'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
+import { createConnectorRunner } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/connector.runner'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './persistence/connector.repository.pglite-test-helpers'

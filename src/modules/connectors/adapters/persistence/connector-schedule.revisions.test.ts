@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from '@sparxie/sdk'
-import { createConnectorScheduleRepository } from './connector-schedule.repository'
+import { createConnectorScheduleRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector-schedule.repository'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createScheduleHttpFixtureConnector as fixtureConnector,

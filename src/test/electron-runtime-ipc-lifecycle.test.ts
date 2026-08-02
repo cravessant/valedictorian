@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { removeRuntimeIpcHandlers, runtimeIpcChannels } from '../../electron/runtime-ipc'
 import { registerConnectorsIpc } from '../ipc/connectors.ipc'
 import { registerValedictorianHttpIpc } from '../ipc/valedictorian-http.ipc'
-import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import type { LocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 
 describe('Electron runtime IPC lifecycle', () => {
   it('contains no retired application, action-queue, or sourcing aliases', () => {

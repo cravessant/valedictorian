@@ -10,7 +10,7 @@ import { scanMaintainedSource } from './architecture-state-resolution.mjs'
  *
  * `module-public-surface-bypass` (issue #327) holds the other half of the
  * boundary: production server and runtime composition reaches a capability only
- * through its exact `src/modules/<module>/public.ts` surface; that surface's whole
+ * through its exact `packages/local-runtime/src/modules/<module>/public.ts` surface; that surface's whole
  * dependency closure reaches no runtime, server, IPC, or Electron edge; it
  * publishes its own module and no other; and it names every export explicitly. Its
  * scope, spellings, and refusals are described in

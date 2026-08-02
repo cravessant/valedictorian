@@ -10,12 +10,12 @@ import {
   connectorRunSynchronizations,
   captures,
   schema,
-} from '../../../../db/schema'
+} from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import {
   createPgliteClient,
   migratePgliteDatabase,
-} from '../../../../db/pglite'
-import { createPgliteConnectorRepository } from './connector.repository'
+} from '@sparxie/valedictorian-local-runtime/database'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './connector.repository.pglite-test-helpers'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { NormalizedSecretKey, SecretStore, ValidatedUpsertSecretInput } from './secret.store'
+import type { NormalizedSecretKey, SecretStore, ValidatedUpsertSecretInput } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.store'
 
 /** Contract fixtures supply already-canonical keys; branding is a service invariant. */
 function canonicalKey(key: string): NormalizedSecretKey {

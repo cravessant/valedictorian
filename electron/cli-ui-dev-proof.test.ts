@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { isolatedValidationFixture } from '../src/runtime/isolated-validation.fixture-contract'
-import type { IsolatedValidationManifest } from '../src/runtime/isolated-validation'
+import type { IsolatedValidationManifest } from '@sparxie/valedictorian-local-runtime/isolated-validation'
 import {
   cliUiDevProofCompanyName,
   expectedCliCommit,

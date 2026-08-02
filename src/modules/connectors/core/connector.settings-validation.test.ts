@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createDefaultLocalConnectorRegistry } from '../adapters/provider/connector.default-registry'
-import { admitConnectorSettings } from './connector.settings-validation'
+import { createDefaultLocalConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/provider/connector.default-registry'
+import { admitConnectorSettings } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.settings-validation'
 
 const JOBRIGHT_FILTERS = {
   jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],

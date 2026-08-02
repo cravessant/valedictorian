@@ -2,9 +2,11 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { getDefaultWorkspaceRegistryPath } from '../src/workspace/workspace.paths'
-import { createFileWorkspaceRegistryStore } from '../src/workspace/workspace.registry'
-import { initializeWorkspace } from '../src/workspace/workspace.initializer'
+import {
+  createFileWorkspaceRegistryStore,
+  getDefaultWorkspaceRegistryPath,
+} from '@sparxie/valedictorian-local-runtime/workspace-files'
+import { initializeWorkspace } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import {
   createProcessTreeShutdown,
   createSupervisedLaunchLifecycle,

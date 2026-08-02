@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { completedConnectorRefreshContract } from '../modules/connectors/public/connector.refresh-result.test-helpers'
-import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
+import { completedConnectorRefreshContract } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.refresh-result.test-helpers'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
 import {
   availableConnectorSchedulingCapability,
   createScheduleHttpTempDatabasePath,
   createStaticConnectorRegistry,
 } from '../server/local-server.connector-schedules.http-fixture'
 import { createTestLocalValedictorianClient as createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
-import { createLocalScheduler } from './local-scheduler'
+import { createLocalScheduler } from '@sparxie/valedictorian-local-runtime/runtime'
 
 describe('local connector scheduler shutdown', () => {
   it('propagates scheduler cancellation into an active connector runtime', async () => {

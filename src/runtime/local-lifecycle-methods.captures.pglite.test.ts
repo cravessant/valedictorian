@@ -14,10 +14,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
-import { workspaces } from '../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { createPgliteJobServiceWithCompanies } from '../test/job-service-with-companies'
-import { jobCaptureEvidenceReferences } from '../modules/job/job.schema'
-import { LifecycleHttpError } from '../modules/lifecycle/public'
+import { jobCaptureEvidenceReferences } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.schema'
+import { LifecycleHttpError } from '@sparxie/valedictorian-local-runtime/lifecycle'
 import { createLocalLifecycleMethodsWithCompanies } from '../test/lifecycle-methods-with-companies'
 
 const resettableOwner = useResettablePgliteTestOwner()

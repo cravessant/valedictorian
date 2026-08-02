@@ -15,7 +15,6 @@
   ],
   "detectUpdateChannel": false,
   "files": [
-    "drizzle/**/*",
     "dist",
     "dist-electron",
     "node_modules/@electric-sql/pglite/**/*"
@@ -29,6 +28,10 @@
         "initdb.wasm",
         "pglite.data"
       ]
+    },
+    {
+      "from": "packages/local-runtime/drizzle",
+      "to": "drizzle"
     }
   ],
   "mac": {

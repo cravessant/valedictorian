@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ProfileStore } from './profile.store'
+import type { ProfileStore } from '@sparxie/valedictorian-local-runtime/profile-files'
 
 export function defineProfileStoreContract(createStore: () => { store: ProfileStore }) {
   describe('ProfileStore contract', () => {

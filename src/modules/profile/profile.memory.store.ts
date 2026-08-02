@@ -4,8 +4,11 @@ import {
   type ProfileDocument,
   type UserProfile,
 } from '@sparxie/sdk'
-import { computeProfileRevision } from './profile.revision'
-import type { ProfileStore, ProfileStoreUpdateResult } from './profile.store'
+import {
+  computeProfileRevision,
+  type ProfileStore,
+  type ProfileStoreUpdateResult,
+} from '@sparxie/valedictorian-local-runtime/profile-files'
 
 export interface MemoryProfileStores {
   profileStore: ProfileStore

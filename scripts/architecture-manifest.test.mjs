@@ -35,7 +35,7 @@ const key = (entry) => `${entry.source}|${entry.target}|${entry.table}`
 const mirrorRoots = []
 
 /**
- * A root that shares this repository's real `src` tree but owns a private copy of
+ * A root that shares this repository's application and local-runtime source trees but owns a private copy of
  * `architecture/`, so a test can mutate the live manifests and see what the check
  * says about the live tree without touching the checked-in files.
  *
@@ -46,6 +46,12 @@ function mirrorRepository(mutate) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-manifest-'))
   mirrorRoots.push(root)
   fs.symlinkSync(path.join(repositoryRoot, 'src'), path.join(root, 'src'), 'dir')
+  fs.mkdirSync(path.join(root, 'packages'), { recursive: true })
+  fs.symlinkSync(
+    path.join(repositoryRoot, 'packages/local-runtime'),
+    path.join(root, 'packages/local-runtime'),
+    'dir',
+  )
 
   const graph = structuredClone(moduleGraph)
   const state = structuredClone(ownership)
@@ -145,7 +151,7 @@ describe('checked-in architecture manifests', () => {
 
   it('leaves no production server or runtime deep import to retire', () => {
     const productionReaches = [...observed.accesses.values()].filter(
-      (access) => isProductionConsumer(access.source) && access.target.startsWith('src/modules/'),
+      (access) => isProductionConsumer(access.source) && access.target.startsWith('packages/local-runtime/src/modules/'),
     )
 
     expect(productionReaches).toEqual([])
@@ -154,14 +160,14 @@ describe('checked-in architecture manifests', () => {
 
   it('has retired #328 and declares every table in an owning module', () => {
     const underDb = Object.entries(ownership.tables).filter(
-      ([, entry]) => entry.schemaModule.startsWith('src/db/'),
+      ([, entry]) => entry.schemaModule.startsWith('packages/local-runtime/src/db/'),
     )
 
     expect(moduleGraph.exceptions.some((entry) => entry.retiredBy === '#328')).toBe(false)
     expect(moduleGraph.retiringIssues).not.toContain('#328')
     expect(underDb.map(([table]) => table)).toEqual(['workspaces'])
     expect(ownership.owners[ownership.tables.workspaces.owner].kind).toBe('platform')
-    expect(ownership.tables.workspaces.schemaModule).toBe('src/db/workspaces.schema.ts')
+    expect(ownership.tables.workspaces.schemaModule).toBe('packages/local-runtime/src/db/workspaces.schema.ts')
     expect(declaredTables(scan).filter(
       (entry) => entry.schemaModule === moduleGraph.canonicalSchemaAggregate,
     )).toEqual([])
@@ -183,30 +189,30 @@ describe('checked-in architecture manifests', () => {
     )
 
     expect(overrides.map(([owner, entry]) => `${owner}: ${entry.declarationModule}`))
-      .toEqual(['applications: src/modules/application'])
-    expect(ownership.owners.applications.module).toBe('src/modules/applications')
-    expect(fs.existsSync(path.join(repositoryRoot, 'src/modules/applications/public.ts'))).toBe(true)
-    expect(fs.existsSync(path.join(repositoryRoot, 'src/modules/application/public.ts'))).toBe(false)
+      .toEqual(['applications: packages/local-runtime/src/modules/application'])
+    expect(ownership.owners.applications.module).toBe('packages/local-runtime/src/modules/applications')
+    expect(fs.existsSync(path.join(repositoryRoot, 'packages/local-runtime/src/modules/applications/public.ts'))).toBe(true)
+    expect(fs.existsSync(path.join(repositoryRoot, 'packages/local-runtime/src/modules/application/public.ts'))).toBe(false)
   })
 
   it('pins every capability owner to its canonical module directory', () => {
     const byKind = (kind) => Object.entries(ownership.owners).filter(([, e]) => e.kind === kind)
 
     expect(byKind('capability').map(([owner, entry]) => `${owner} ${entry.module}`))
-      .toEqual(byKind('capability').map(([owner]) => `${owner} src/modules/${owner}`))
+      .toEqual(byKind('capability').map(([owner]) => `${owner} packages/local-runtime/src/modules/${owner}`))
     expect(byKind('platform').map(([, entry]) => entry.module)).toEqual([null])
   })
 
   it('rejects the live tree when a capability module is broadened to the module root', () => {
     const root = mirrorRepository((_graph, state) => {
-      state.owners.job.module = 'src/modules'
+      state.owners.job.module = 'packages/local-runtime/src/modules'
     })
 
     const result = runArchitectureCheck(root)
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[misowned-state-location] architecture/state-ownership.json gives capability owner job module src/modules, not its canonical module src/modules/job;',
+      '[misowned-state-location] architecture/state-ownership.json gives capability owner job module packages/local-runtime/src/modules, not its canonical module packages/local-runtime/src/modules/job;',
     )
   })
 
@@ -219,24 +225,24 @@ describe('checked-in architecture manifests', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[misowned-state-location] src/modules/application/application.schema.ts declares applications, owned by capability applications, outside its declaration root src/modules/applications;',
+      '[misowned-state-location] packages/local-runtime/src/modules/application/application.schema.ts declares applications, owned by capability applications, outside its declaration root packages/local-runtime/src/modules/applications;',
     )
   })
 
   it('rejects the live tree when an owner claims a sibling capability as its root', () => {
     const root = mirrorRepository((_graph, state) => {
-      state.owners.job.declarationModule = 'src/modules/capture'
+      state.owners.job.declarationModule = 'packages/local-runtime/src/modules/capture'
     })
 
     const result = runArchitectureCheck(root)
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      "[misowned-state-location] architecture/state-ownership.json gives owner job declaration root src/modules/capture, which is capability capture's module;",
+      "[misowned-state-location] architecture/state-ownership.json gives owner job declaration root packages/local-runtime/src/modules/capture, which is capability capture's module;",
     )
   })
 
-  it('rejects the live tree when a capability claims the src/db declaration', () => {
+  it('rejects the live tree when a capability claims the packages/local-runtime/src/db declaration', () => {
     const root = mirrorRepository((_graph, state) => {
       state.tables.workspaces.owner = 'policy'
     })
@@ -245,7 +251,7 @@ describe('checked-in architecture manifests', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[misowned-state-location] src/db/workspaces.schema.ts declares workspaces, owned by capability policy, outside its declaration root src/modules/policy;',
+      '[misowned-state-location] packages/local-runtime/src/db/workspaces.schema.ts declares workspaces, owned by capability policy, outside its declaration root packages/local-runtime/src/modules/policy;',
     )
   })
 
@@ -300,13 +306,18 @@ describe('checked-in architecture manifests', () => {
   it('routes every live production server and runtime reach through a public surface', () => {
     const reaches = [...scan.files.values()]
       .filter((file) => isProductionConsumer(file.path))
-      .flatMap((file) => [...file.targets.values()])
-      .filter((target) => target.startsWith('src/modules/'))
+      .flatMap((file) => [...file.targets.entries()]
+        .filter(([specifier]) => !(
+          isMaintainedTestPath(file.path)
+          && specifier.startsWith('@sparxie/valedictorian-local-runtime/testing/')
+        ))
+        .map(([, target]) => target))
+      .filter((target) => target.startsWith('packages/local-runtime/src/modules/'))
     const surfaces = new Set(reaches)
 
     expect(reaches.length).toBeGreaterThan(0)
     expect([...surfaces].filter(
-      (target) => target !== `src/modules/${moduleOfPath(target)}/public.ts`,
+      (target) => target !== `packages/local-runtime/src/modules/${moduleOfPath(target)}/public.ts`,
     )).toEqual([])
     expect([...surfaces].every((target) => fs.existsSync(path.join(repositoryRoot, target))))
       .toBe(true)
@@ -315,7 +326,7 @@ describe('checked-in architecture manifests', () => {
   it('rejects the live registrar reach when one aggregate member is dropped', () => {
     const root = mirrorRepository((graph) => {
       graph.permissions = graph.permissions.filter(
-        (entry) => entry.source !== 'src/db/pglite.ts' || entry.table !== 'jobs',
+        (entry) => entry.source !== 'packages/local-runtime/src/db/pglite.ts' || entry.table !== 'jobs',
       )
     })
 
@@ -323,14 +334,14 @@ describe('checked-in architecture manifests', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[foreign-owner-table-access] src/db/pglite.ts imports jobs owned by job; zone src/db needs an exact entry in architecture/module-graph.json\n',
+      '[foreign-owner-table-access] packages/local-runtime/src/db/pglite.ts imports jobs owned by job; zone packages/local-runtime/src/db needs an exact entry in architecture/module-graph.json\n',
     )
   })
 
   it('rejects a live permission moved to a purpose its path does not fit', () => {
     const root = mirrorRepository((graph) => {
       graph.permissions = graph.permissions.map((entry) =>
-        entry.source === 'src/db/schema.ts' && entry.table === 'jobs'
+        entry.source === 'packages/local-runtime/src/db/schema.ts' && entry.table === 'jobs'
           ? { ...entry, purpose: 'test-state-access' }
           : entry,
       )
@@ -363,9 +374,9 @@ describe('checked-in architecture manifests', () => {
         ...graph.permissions[0],
         owner: 'job',
         purpose: 'schema-composition',
-        source: 'src/db/schema.ts',
+        source: 'packages/local-runtime/src/db/schema.ts',
         table: 'jobs',
-        target: 'src/modules/capture/capture.schema.ts',
+        target: 'packages/local-runtime/src/modules/capture/capture.schema.ts',
       })
     })
 
@@ -380,7 +391,7 @@ describe('checked-in architecture manifests', () => {
       state.tables.retired_state = {
         owner: 'policy',
         schemaExport: 'retiredState',
-        schemaModule: 'src/db/schema.ts',
+        schemaModule: 'packages/local-runtime/src/db/schema.ts',
       }
     })
 
@@ -388,7 +399,7 @@ describe('checked-in architecture manifests', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[stale-state-ownership] architecture/state-ownership.json entry retired_state claims export retiredState in src/db/schema.ts, which no longer declares it\n',
+      '[stale-state-ownership] architecture/state-ownership.json entry retired_state claims export retiredState in packages/local-runtime/src/db/schema.ts, which no longer declares it\n',
     )
   })
 
@@ -401,7 +412,7 @@ describe('checked-in architecture manifests', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(
-      '[unowned-state] src/modules/job/job.schema.ts exports jobs as jobs without a matching entry in architecture/state-ownership.json\n',
+      '[unowned-state] packages/local-runtime/src/modules/job/job.schema.ts exports jobs as jobs without a matching entry in architecture/state-ownership.json\n',
     )
   })
 
@@ -412,7 +423,7 @@ describe('checked-in architecture manifests', () => {
 
     expect(crossCapability.every((entry) =>
       observed.accesses.has(key(entry))
-        && entry.source.startsWith('src/modules/')
+        && entry.source.startsWith('packages/local-runtime/src/modules/')
         && moduleOfPath(entry.source) !== entry.owner,
     )).toBe(true)
     expect(moduleGraph.permissions.some((entry) => entry.purpose.startsWith('cross-capability-w')))

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { AppJobConnector } from '../ports/connector.runner-contracts'
-import { createConnectorRunner } from './connector.runner'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
+import { createConnectorRunner } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/connector.runner'
 import type {
   ConnectorRefreshInput,
   ConnectorRefreshResult,
 } from '@sparxie/valedictorian-connectors-core'
-import { createSourceExecutionGovernor } from '../../source-execution/source-execution-governor'
+import { createSourceExecutionGovernor } from '@sparxie/valedictorian-local-runtime/testing/modules/source-execution/source-execution-governor'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './persistence/connector.repository.pglite-test-helpers'

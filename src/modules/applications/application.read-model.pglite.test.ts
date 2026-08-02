@@ -18,13 +18,13 @@ import {
   lifecycleApplicationListResultSchema,
 } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import type { JobService } from '../job/job.service'
-import type { JsonValue } from '../capture/capture.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import type { JobService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
+import type { JsonValue } from '@sparxie/valedictorian-local-runtime/capture'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { createPgliteOpportunityService, type OpportunityService } from '../opportunity/opportunity.service'
-import { createPgliteApplicationAggregateService, type ApplicationAggregateService } from './application.aggregate.service'
-import { createPgliteApplicationReadModel } from './application.read-model'
+import { createPgliteOpportunityService, type OpportunityService } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.service'
+import { createPgliteApplicationAggregateService, type ApplicationAggregateService } from '@sparxie/valedictorian-local-runtime/testing/modules/applications/application.aggregate.service'
+import { createPgliteApplicationReadModel } from '@sparxie/valedictorian-local-runtime/testing/modules/applications/application.read-model'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const ACTOR = { type: 'user', id: 'user-1' } as const

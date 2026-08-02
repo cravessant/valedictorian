@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
-import { publicConnectorRunSummary } from '../../public/connector.run-projection'
-import { mapConnectorRunSummary } from '../../core/connector.run-record.projection'
+import { publicConnectorRunSummary } from '@sparxie/valedictorian-local-runtime/connectors'
+import { mapConnectorRunSummary } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.run-record.projection'
 
 describe('public terminal connector lifecycle projection', () => {
   it('publishes a valid terminal synchronization for a completed generic normalization retry', async () => {

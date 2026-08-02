@@ -10,16 +10,16 @@
 import { describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import type { JobService } from '../job/job.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import type { JobService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
-import { opportunities } from '../opportunity/opportunity.schema'
+import { createPgliteOpportunityService } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.service'
+import { opportunities } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.schema'
 import {
   createPgliteJobToOpportunityPromotion,
   type OpportunityEvaluation,
   type OpportunityEvaluationPort,
-} from './job-to-opportunity.promotion'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/job-to-opportunity.promotion'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const ACTOR = { type: 'user', id: 'u' } as const

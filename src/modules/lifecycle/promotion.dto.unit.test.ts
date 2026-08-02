@@ -13,16 +13,16 @@ import {
   promoteJobToOpportunityResultSchema,
   promoteOpportunityToApplicationResultSchema,
 } from '@sparxie/sdk'
-import { toJobResource, type JobHeadRow, type JobEvidenceRefRow } from '../job/job.dto'
-import { toOpportunityResource, type OpportunityHeadRow } from '../opportunity/opportunity.dto'
-import { toApplicationResource, type ApplicationHeadRow } from '../applications/application.dto'
+import { toJobResource, type JobHeadRow, type JobEvidenceRefRow } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.dto'
+import { toOpportunityResource, type OpportunityHeadRow } from '@sparxie/valedictorian-local-runtime/testing/modules/opportunity/opportunity.dto'
+import { toApplicationResource, type ApplicationHeadRow } from '@sparxie/valedictorian-local-runtime/testing/modules/applications/application.dto'
 import {
   classifyPromotionFailure,
   toBlockedPromotionResult,
   toContractWarnings,
   toPromotedResult,
   toWarningOverride,
-} from './promotion.dto'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/promotion.dto'
 
 const jobFacts = {
   companyName: 'Acme', roleTitle: 'Staff Engineer', sourceName: 'LinkedIn', roleKind: 'experienced' as const,

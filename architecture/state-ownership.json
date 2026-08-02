@@ -1,49 +1,49 @@
 {
   "owners": {
     "applications": {
-      "declarationModule": "src/modules/application",
+      "declarationModule": "packages/local-runtime/src/modules/application",
       "kind": "capability",
-      "module": "src/modules/applications"
+      "module": "packages/local-runtime/src/modules/applications"
     },
     "capture": {
       "kind": "capability",
-      "module": "src/modules/capture"
+      "module": "packages/local-runtime/src/modules/capture"
     },
     "company": {
       "kind": "capability",
-      "module": "src/modules/company"
+      "module": "packages/local-runtime/src/modules/company"
     },
     "connectors": {
       "kind": "capability",
-      "module": "src/modules/connectors"
+      "module": "packages/local-runtime/src/modules/connectors"
     },
     "job": {
       "kind": "capability",
-      "module": "src/modules/job"
+      "module": "packages/local-runtime/src/modules/job"
     },
     "opportunity": {
       "kind": "capability",
-      "module": "src/modules/opportunity"
+      "module": "packages/local-runtime/src/modules/opportunity"
     },
     "policy": {
       "kind": "capability",
-      "module": "src/modules/policy"
+      "module": "packages/local-runtime/src/modules/policy"
     },
     "scheduling": {
       "kind": "capability",
-      "module": "src/modules/scheduling"
+      "module": "packages/local-runtime/src/modules/scheduling"
     },
     "secrets": {
       "kind": "capability",
-      "module": "src/modules/secrets"
+      "module": "packages/local-runtime/src/modules/secrets"
     },
     "source-execution": {
       "kind": "capability",
-      "module": "src/modules/source-execution"
+      "module": "packages/local-runtime/src/modules/source-execution"
     },
     "workflow-runs": {
       "kind": "capability",
-      "module": "src/modules/workflow-runs"
+      "module": "packages/local-runtime/src/modules/workflow-runs"
     },
     "workspace-platform": {
       "kind": "platform",
@@ -51,309 +51,309 @@
     }
   },
   "schemaModules": [
-    "src/db/workspaces.schema.ts",
-    "src/modules/application/application.schema.ts",
-    "src/modules/capture/capture.schema.ts",
-    "src/modules/company/company.schema.ts",
-    "src/modules/connectors/adapters/persistence/connector.schema.ts",
-    "src/modules/job/job.schema.ts",
-    "src/modules/opportunity/opportunity.schema.ts",
-    "src/modules/policy/policy.schema.ts",
-    "src/modules/scheduling/scheduling.schema.ts",
-    "src/modules/secrets/secret.schema.ts",
-    "src/modules/source-execution/source-execution.schema.ts",
-    "src/modules/workflow-runs/workflow-run.schema.ts"
+    "packages/local-runtime/src/db/workspaces.schema.ts",
+    "packages/local-runtime/src/modules/application/application.schema.ts",
+    "packages/local-runtime/src/modules/capture/capture.schema.ts",
+    "packages/local-runtime/src/modules/company/company.schema.ts",
+    "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts",
+    "packages/local-runtime/src/modules/job/job.schema.ts",
+    "packages/local-runtime/src/modules/opportunity/opportunity.schema.ts",
+    "packages/local-runtime/src/modules/policy/policy.schema.ts",
+    "packages/local-runtime/src/modules/scheduling/scheduling.schema.ts",
+    "packages/local-runtime/src/modules/secrets/secret.schema.ts",
+    "packages/local-runtime/src/modules/source-execution/source-execution.schema.ts",
+    "packages/local-runtime/src/modules/workflow-runs/workflow-run.schema.ts"
   ],
   "tables": {
     "application_attempt_records": {
       "owner": "applications",
       "schemaExport": "applicationAttemptRecords",
-      "schemaModule": "src/modules/application/application.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/application/application.schema.ts"
     },
     "application_event_records": {
       "owner": "applications",
       "schemaExport": "applicationEventRecords",
-      "schemaModule": "src/modules/application/application.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/application/application.schema.ts"
     },
     "application_history": {
       "owner": "applications",
       "schemaExport": "applicationHistory",
-      "schemaModule": "src/modules/application/application.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/application/application.schema.ts"
     },
     "application_scores": {
       "owner": "applications",
       "schemaExport": "applicationScores",
-      "schemaModule": "src/modules/application/application.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/application/application.schema.ts"
     },
     "application_workflow_states": {
       "owner": "applications",
       "schemaExport": "applicationWorkflowStates",
-      "schemaModule": "src/modules/application/application.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/application/application.schema.ts"
     },
     "applications": {
       "owner": "applications",
       "schemaExport": "applications",
-      "schemaModule": "src/modules/application/application.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/application/application.schema.ts"
     },
     "capture_destination_resolution_work": {
       "owner": "scheduling",
       "schemaExport": "captureDestinationResolutionWork",
-      "schemaModule": "src/modules/scheduling/scheduling.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/scheduling/scheduling.schema.ts"
     },
     "capture_effective_revision_inputs": {
       "owner": "capture",
       "schemaExport": "captureEffectiveRevisionInputs",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "capture_evidence_items": {
       "owner": "capture",
       "schemaExport": "captureEvidenceItems",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "capture_field_outcomes": {
       "owner": "capture",
       "schemaExport": "captureFieldOutcomes",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "capture_materialization_issues": {
       "owner": "capture",
       "schemaExport": "captureMaterializationIssues",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "capture_materialization_state": {
       "owner": "capture",
       "schemaExport": "captureMaterializationState",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "capture_occurrences": {
       "owner": "capture",
       "schemaExport": "captureOccurrences",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "capture_resolution_command_receipts": {
       "owner": "capture",
       "schemaExport": "captureResolutionCommandReceipts",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "capture_resolution_generations": {
       "owner": "capture",
       "schemaExport": "captureResolutionGenerations",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "capture_resolution_stage_results": {
       "owner": "capture",
       "schemaExport": "captureResolutionStageResults",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "capture_revisions": {
       "owner": "capture",
       "schemaExport": "captureRevisions",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "captures": {
       "owner": "capture",
       "schemaExport": "captures",
-      "schemaModule": "src/modules/capture/capture.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/capture/capture.schema.ts"
     },
     "company_aliases": {
       "owner": "company",
       "schemaExport": "companyAliases",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "company_command_receipts": {
       "owner": "company",
       "schemaExport": "companyCommandReceipts",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "company_duplicate_candidate_reviews": {
       "owner": "company",
       "schemaExport": "companyDuplicateCandidateReviews",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "company_duplicate_candidates": {
       "owner": "company",
       "schemaExport": "companyDuplicateCandidates",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "company_duplicate_index_state": {
       "owner": "company",
       "schemaExport": "companyDuplicateIndexState",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "company_duplicate_maintenance_work": {
       "owner": "company",
       "schemaExport": "companyDuplicateMaintenanceWork",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "company_history": {
       "owner": "company",
       "schemaExport": "companyHistory",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "connector_capture_work": {
       "owner": "connectors",
       "schemaExport": "connectorCaptureWork",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_checkpoints": {
       "owner": "connectors",
       "schemaExport": "connectorCheckpoints",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_instances": {
       "owner": "connectors",
       "schemaExport": "connectorInstances",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_observations": {
       "owner": "connectors",
       "schemaExport": "connectorObservations",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_run_synchronizations": {
       "owner": "connectors",
       "schemaExport": "connectorRunSynchronizations",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_runs": {
       "owner": "connectors",
       "schemaExport": "connectorRuns",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_schedule_events": {
       "owner": "connectors",
       "schemaExport": "connectorScheduleEvents",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_schedule_occurrences": {
       "owner": "connectors",
       "schemaExport": "connectorScheduleOccurrences",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_schedule_revisions": {
       "owner": "connectors",
       "schemaExport": "connectorScheduleRevisions",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "connector_schedules": {
       "owner": "connectors",
       "schemaExport": "connectorSchedules",
-      "schemaModule": "src/modules/connectors/adapters/persistence/connector.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/connectors/adapters/persistence/connector.schema.ts"
     },
     "hosted_result_polling_work": {
       "owner": "scheduling",
       "schemaExport": "hostedResultPollingWork",
-      "schemaModule": "src/modules/scheduling/scheduling.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/scheduling/scheduling.schema.ts"
     },
     "hosted_submission_work": {
       "owner": "scheduling",
       "schemaExport": "hostedSubmissionWork",
-      "schemaModule": "src/modules/scheduling/scheduling.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/scheduling/scheduling.schema.ts"
     },
     "job_capture_evidence_references": {
       "owner": "job",
       "schemaExport": "jobCaptureEvidenceReferences",
-      "schemaModule": "src/modules/job/job.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/job/job.schema.ts"
     },
     "job_company_assignment_history": {
       "owner": "company",
       "schemaExport": "jobCompanyAssignmentHistory",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "job_company_assignments": {
       "owner": "company",
       "schemaExport": "jobCompanyAssignments",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "job_external_identities": {
       "owner": "job",
       "schemaExport": "jobExternalIdentities",
-      "schemaModule": "src/modules/job/job.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/job/job.schema.ts"
     },
     "job_history": {
       "owner": "job",
       "schemaExport": "jobHistory",
-      "schemaModule": "src/modules/job/job.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/job/job.schema.ts"
     },
     "jobs": {
       "owner": "job",
       "schemaExport": "jobs",
-      "schemaModule": "src/modules/job/job.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/job/job.schema.ts"
     },
     "normalization_work": {
       "owner": "scheduling",
       "schemaExport": "normalizationWork",
-      "schemaModule": "src/modules/scheduling/scheduling.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/scheduling/scheduling.schema.ts"
     },
     "opportunities": {
       "owner": "opportunity",
       "schemaExport": "opportunities",
-      "schemaModule": "src/modules/opportunity/opportunity.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/opportunity/opportunity.schema.ts"
     },
     "opportunity_history": {
       "owner": "opportunity",
       "schemaExport": "opportunityHistory",
-      "schemaModule": "src/modules/opportunity/opportunity.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/opportunity/opportunity.schema.ts"
     },
     "policy_config": {
       "owner": "policy",
       "schemaExport": "policyConfig",
-      "schemaModule": "src/modules/policy/policy.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/policy/policy.schema.ts"
     },
     "policy_evidence": {
       "owner": "policy",
       "schemaExport": "policyEvidence",
-      "schemaModule": "src/modules/policy/policy.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/policy/policy.schema.ts"
     },
     "provider_url_resolution_work": {
       "owner": "scheduling",
       "schemaExport": "providerUrlResolutionWork",
-      "schemaModule": "src/modules/scheduling/scheduling.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/scheduling/scheduling.schema.ts"
     },
     "pursuit_links": {
       "owner": "applications",
       "schemaExport": "pursuitLinks",
-      "schemaModule": "src/modules/application/application.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/application/application.schema.ts"
     },
     "source_execution_scopes": {
       "owner": "source-execution",
       "schemaExport": "sourceExecutionScopes",
-      "schemaModule": "src/modules/source-execution/source-execution.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/source-execution/source-execution.schema.ts"
     },
     "source_execution_sessions": {
       "owner": "source-execution",
       "schemaExport": "sourceExecutionSessions",
-      "schemaModule": "src/modules/source-execution/source-execution.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/source-execution/source-execution.schema.ts"
     },
     "sources": {
       "owner": "workflow-runs",
       "schemaExport": "sources",
-      "schemaModule": "src/modules/workflow-runs/workflow-run.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/workflow-runs/workflow-run.schema.ts"
     },
     "workflow_run_steps": {
       "owner": "workflow-runs",
       "schemaExport": "workflowRunSteps",
-      "schemaModule": "src/modules/workflow-runs/workflow-run.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/workflow-runs/workflow-run.schema.ts"
     },
     "workflow_runs": {
       "owner": "workflow-runs",
       "schemaExport": "workflowRuns",
-      "schemaModule": "src/modules/workflow-runs/workflow-run.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/workflow-runs/workflow-run.schema.ts"
     },
     "workspace_companies": {
       "owner": "company",
       "schemaExport": "workspaceCompanies",
-      "schemaModule": "src/modules/company/company.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/company/company.schema.ts"
     },
     "workspace_secrets": {
       "owner": "secrets",
       "schemaExport": "workspaceSecrets",
-      "schemaModule": "src/modules/secrets/secret.schema.ts"
+      "schemaModule": "packages/local-runtime/src/modules/secrets/secret.schema.ts"
     },
     "workspaces": {
       "owner": "workspace-platform",
       "schemaExport": "workspaces",
-      "schemaModule": "src/db/workspaces.schema.ts"
+      "schemaModule": "packages/local-runtime/src/db/workspaces.schema.ts"
     }
   }
 }

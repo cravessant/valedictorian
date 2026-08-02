@@ -1,7 +1,7 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase, type PgliteDatabase } from '../../db/pglite'
-import { applicationScores } from '../../db/schema'
-import { createPgliteActionQueueRepository } from './action-queue.repository'
+import { createPgliteClient, migratePgliteDatabase, type PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
+import { applicationScores } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import { createPgliteActionQueueRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/action-queue/action-queue.repository'
 
 describe('canonical Application Action Queue projection', () => {
   let close: (() => Promise<void>) | undefined

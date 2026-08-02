@@ -9,6 +9,8 @@ await init
 const codePathPattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
 const resolutionExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']
 const testPathPattern = /\.(?:test|spec)\.(?:[cm]?[jt]s|[jt]sx)$/
+const localRuntimePackageName = '@sparxie/valedictorian-local-runtime'
+const localRuntimeSourceRoot = 'packages/local-runtime/src'
 
 /**
  * @typedef {object} ModuleRecord
@@ -99,7 +101,10 @@ export function listCodeFiles(directory) {
  * @returns {string[]}
  */
 export function listMaintainedCodeFiles(root) {
-  return listCodeFiles(path.join(root, 'src'))
+  return [
+    ...listCodeFiles(path.join(root, 'src')),
+    ...listCodeFiles(path.join(root, localRuntimeSourceRoot)),
+  ].sort()
 }
 
 /**
@@ -133,18 +138,43 @@ export function isTestPath(repositoryPath) {
  * @returns {string[]} Empty when the specifier names no path at all.
  */
 export function resolutionCandidates(root, filePath, specifier) {
+  const localRuntimeTarget = localRuntimeSourceTarget(root, specifier)
   const target = specifier.startsWith('.')
     ? path.resolve(path.dirname(filePath), specifier)
     : specifier.startsWith('@/')
       ? path.join(root, 'src', specifier.slice(2))
-      : null
+      : localRuntimeTarget
   if (target === null) return []
 
-  return [
+  const applicationSourceRoot = path.join(root, 'src')
+  const localRuntimeAbsoluteRoot = path.join(root, localRuntimeSourceRoot)
+  const targets = [
     target,
-    ...resolutionExtensions.map((extension) => `${target.replace(/\.js$/, '')}${extension}`),
-    ...resolutionExtensions.map((extension) => path.join(target, `index${extension}`)),
+    ...(target.startsWith(`${applicationSourceRoot}${path.sep}`)
+      ? [
+        path.join(
+          localRuntimeAbsoluteRoot,
+          path.relative(applicationSourceRoot, target),
+        ),
+      ]
+      : []),
+    ...(target.startsWith(`${localRuntimeAbsoluteRoot}${path.sep}`)
+      ? [
+        path.join(
+          applicationSourceRoot,
+          path.relative(localRuntimeAbsoluteRoot, target),
+        ),
+      ]
+      : []),
   ]
+
+  return targets.flatMap((candidate) => [
+    candidate,
+    ...resolutionExtensions.map(
+      (extension) => `${candidate.replace(/\.js$/, '')}${extension}`,
+    ),
+    ...resolutionExtensions.map((extension) => path.join(candidate, `index${extension}`)),
+  ])
 }
 
 /**
@@ -171,7 +201,7 @@ export function resolveSpecifier(root, filePath, specifier) {
  * @returns {string | null}
  */
 export function moduleOfPath(repositoryPath) {
-  return /^src\/modules\/([^/]+)\//.exec(repositoryPath)?.[1] ?? null
+  return /^(?:packages\/local-runtime\/)?src\/modules\/([^/]+)\//.exec(repositoryPath)?.[1] ?? null
 }
 
 /**
@@ -186,7 +216,30 @@ export function zoneOfPath(repositoryPath) {
   const moduleName = moduleOfPath(repositoryPath)
   if (moduleName) return moduleName
   const segments = repositoryPath.split('/')
+  if (repositoryPath.startsWith(`${localRuntimeSourceRoot}/`)) {
+    return segments.slice(0, 4).join('/')
+  }
   return segments.length > 2 ? `${segments[0]}/${segments[1]}` : segments[0] ?? 'src'
+}
+
+function localRuntimeSourceTarget(root, specifier) {
+  if (specifier !== localRuntimePackageName && !specifier.startsWith(`${localRuntimePackageName}/`)) {
+    return null
+  }
+
+  const manifest = readManifest(root, 'packages/local-runtime/package.json')
+  const exportKey = specifier === localRuntimePackageName
+    ? '.'
+    : `.${specifier.slice(localRuntimePackageName.length)}`
+  const exported = manifest?.exports?.[exportKey]
+  const emittedTarget = typeof exported === 'string' ? exported : exported?.import
+  if (typeof emittedTarget !== 'string' || !emittedTarget.startsWith('./dist/')) return null
+
+  return path.join(
+    root,
+    localRuntimeSourceRoot,
+    emittedTarget.slice('./dist/'.length).replace(/\.js$/, ''),
+  )
 }
 
 /**

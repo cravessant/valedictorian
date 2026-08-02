@@ -33,7 +33,7 @@ Do not store API tokens, OAuth tokens, passwords, or client secrets in project c
 
 ## Database
 
-The schema ships as one generated baseline (see `drizzle/README.md`). Because this
+The schema ships as one generated baseline (see `packages/local-runtime/drizzle/README.md`). Because this
 is a pre-release schema with no installed databases, the baseline is regenerated in
 place rather than extended, so a database created before a regeneration is not
 supported: delete it and let the app recreate it.

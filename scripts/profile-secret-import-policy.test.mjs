@@ -30,7 +30,7 @@ describe('profile/secret import policy', () => {
         {
           path: 'electron/preload.forbidden.ts',
           source:
-            "export { createPgliteSecretStore } from '../src/modules/secrets/secret.pglite.store'\n",
+            "export { createPgliteSecretStore } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.pglite.store'\n",
         },
         {
           path: 'src/server/forbidden-json.ts',
@@ -115,7 +115,7 @@ describe('profile/secret import policy', () => {
     expect(
       findProfileSecretImportPolicyViolations([
         {
-          path: 'src/modules/profile/profile.composition.ts',
+          path: 'packages/local-runtime/src/modules/profile/profile.composition.ts',
           source: "import { createJsonProfileStore } from './profile.json.store'\n",
         },
         {
@@ -123,15 +123,15 @@ describe('profile/secret import policy', () => {
           source: "import { serializeProfileJsonDocument } from './profile.json.document'\n",
         },
         {
-          path: 'src/modules/secrets/secret.composition.ts',
+          path: 'packages/local-runtime/src/modules/secrets/secret.composition.ts',
           source: "import { createPgliteSecretStore } from './secret.pglite.store'\n",
         },
         {
-          path: 'src/settings/app-secret.composition.ts',
+          path: 'packages/local-runtime/src/app-secret.composition.ts',
           source: "import { createFileAppSecretStore } from './app-secret.store'\n",
         },
         {
-          path: 'src/settings/app-secret.store.test.ts',
+          path: 'packages/local-runtime/src/app-secret.store.test.ts',
           source: "import { createFileAppSecretStore } from './app-secret.store'\n",
         },
         {
@@ -139,17 +139,17 @@ describe('profile/secret import policy', () => {
           source: "import { createPgliteSecretStore } from './secret.pglite.store'\n",
         },
         {
-          path: 'src/modules/profile/profile.json.store.ts',
+          path: 'packages/local-runtime/src/profile.json.store.ts',
           source:
             "import { parseProfileJsonDocument } from './profile.json.document'\nimport { withProfileJsonLock } from './profile.json.lock'\n",
         },
         {
-          path: 'src/modules/profile/profile.json.store.test.ts',
+          path: 'packages/local-runtime/src/profile.json.store.test.ts',
           source:
             "import { createJsonProfileStore } from './profile.json.store'\nimport { serializeProfileJsonDocument } from './profile.json.document'\n",
         },
         {
-          path: 'src/modules/profile/profile.json.document.test.ts',
+          path: 'packages/local-runtime/src/profile.json.document.test.ts',
           source: "import { parseProfileJsonDocument } from './profile.json.document'\n",
         },
         {

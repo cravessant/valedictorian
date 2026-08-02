@@ -3,9 +3,9 @@ import path from 'node:path'
 import type {
   IsolatedValidationEnvironment,
   IsolatedValidationManifest,
-} from '../src/runtime/isolated-validation'
+} from '@sparxie/valedictorian-local-runtime/isolated-validation'
 import { isolatedValidationFixture } from '../src/runtime/isolated-validation.fixture-contract'
-import type { WorkspaceSummary } from '../src/workspace/workspace.initializer'
+import type { WorkspaceSummary } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import {
   cliUiDevProofCompanyName,
   createCliUiDevProofSession,

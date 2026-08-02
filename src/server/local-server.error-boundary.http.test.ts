@@ -17,7 +17,7 @@ import {
   createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,
 } from './local-server.http-test-harness'
-import { LocalWorkspaceConflictError } from './local-workspaces'
+import { LocalWorkspaceConflictError } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 
 const INTERNAL_ERROR_BODY = {
   code: 'internal_error',

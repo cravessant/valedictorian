@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   connectorRunSynchronizationCopy,
   type ConnectorSynchronizationInput,
-} from './connector.run-presentation'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.run-presentation'
 
 describe('connector synchronization presentation', () => {
   it('presents an advancing newest frontier as checking newest', () => {

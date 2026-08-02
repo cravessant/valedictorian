@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultLocalConnectorRegistry } from '../modules/connectors/adapters/provider/connector.default-registry'
+import { createDefaultLocalConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/provider/connector.default-registry'
 import {
   createFixtureApi,
   discardFixtureConnectorEditorChangesAndReopen,

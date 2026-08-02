@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from '@sparxie/sdk'
-import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
-import type { AppJobConnector } from '../modules/connectors/ports/connector.runner-contracts'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
 import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import {
   createScheduleHttpTempDatabasePath,

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createPgliteClient } from '../db/pglite'
+import { createPgliteClient } from '@sparxie/valedictorian-local-runtime/database'
 import {
   cloneMigratedPgliteTemplate,
   createMigratedPgliteTemplate,

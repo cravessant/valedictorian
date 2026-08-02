@@ -11,16 +11,25 @@ import {
 const repositoryRoot = process.cwd()
 const maintainedSourcePattern = /\.[cm]?tsx?$/
 const testSourcePattern = /\.test\.[cm]?tsx?$/
-// Scan all production source under src/, excluding test files/scaffolding and the
-// db layer itself (which defines the tables). This closes future evasions in code
-// paths outside src/{modules,runtime,server}.
-const excludedSubtrees = ['src/test/', 'src/db/', 'src/test-fixtures/']
+// Scan all application and package-owned production source, excluding test
+// scaffolding and the database declaration layer itself. This closes future
+// evasions in code paths outside either composition root.
+const productionSourceRoots = ['packages/local-runtime/src', 'src']
+const excludedSubtrees = [
+  'packages/local-runtime/src/db/',
+  'src/test/',
+  'src/db/',
+  'src/test-fixtures/',
+]
 
 function collectProductionSourceFiles(): OwnershipSourceFile[] {
-  const sourceRoot = path.join(repositoryRoot, 'src')
-  return fs
-    .readdirSync(sourceRoot, { recursive: true, encoding: 'utf8' })
-    .map((entry) => `src/${String(entry).split(path.sep).join('/')}`)
+  return productionSourceRoots
+    .flatMap((sourceRoot) => fs
+      .readdirSync(
+        path.join(repositoryRoot, sourceRoot),
+        { recursive: true, encoding: 'utf8' },
+      )
+      .map((entry) => `${sourceRoot}/${String(entry).split(path.sep).join('/')}`))
     .filter((relativePath) => maintainedSourcePattern.test(relativePath) && !testSourcePattern.test(relativePath))
     .filter((relativePath) => !excludedSubtrees.some((subtree) => relativePath.startsWith(subtree)))
     .filter((relativePath) => fs.statSync(path.join(repositoryRoot, relativePath)).isFile())
@@ -60,9 +69,9 @@ describe('lifecycle state-ownership policy', () => {
 
   it('routes every promotion through canonical transaction-owning orchestration', () => {
     const orchestrationPaths = [
-      'src/modules/lifecycle/capture-to-job.promotion.ts',
-      'src/modules/lifecycle/job-to-opportunity.promotion.ts',
-      'src/modules/lifecycle/opportunity-to-application.promotion.ts',
+      'packages/local-runtime/src/modules/lifecycle/capture-to-job.promotion.ts',
+      'packages/local-runtime/src/modules/lifecycle/job-to-opportunity.promotion.ts',
+      'packages/local-runtime/src/modules/lifecycle/opportunity-to-application.promotion.ts',
     ]
     const sources = orchestrationPaths.map((orchestrationPath) => ({
       path: orchestrationPath,

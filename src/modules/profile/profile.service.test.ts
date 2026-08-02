@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMemoryProfileStores } from './profile.memory.store'
-import { createProfileService } from './profile.service'
-import { computeProfileRevision } from './profile.revision'
+import { createProfileService } from '@sparxie/valedictorian-local-runtime/testing/modules/profile/profile.service'
+import { computeProfileRevision } from '@sparxie/valedictorian-local-runtime/profile-files'
 
 describe('ProfileService', () => {
   it('normalizes updates, projects agent context, and excludes SSN', async () => {

@@ -5,6 +5,8 @@ import { createPackage, listPackage } from '@electron/asar'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   PGLITE_RUNTIME_BINARY_ASSETS,
+  PGLITE_BASELINE_NAME,
+  PGLITE_MIGRATIONS_DIRECTORY_NAME,
   PGLITE_RUNTIME_DIRECTORY_NAME,
   inspectPgliteRuntimeArtifactLayout,
   inspectPgliteRuntimeAssets,
@@ -14,7 +16,7 @@ import {
 import {
   PGLITE_RUNTIME_BINARY_ASSETS as sourceBinaryAssets,
   PGLITE_RUNTIME_DIRECTORY_NAME as sourceDirectoryName,
-} from '../src/db/pglite-runtime-assets'
+} from '@sparxie/valedictorian-local-runtime/pglite'
 
 const tempRoots: string[] = []
 
@@ -39,6 +41,9 @@ function stageCompleteArtifact(root: string) {
   const packageDist = path.join(root, 'node_modules', '@electric-sql', 'pglite', 'dist')
   fs.mkdirSync(packageDist, { recursive: true })
   fs.writeFileSync(path.join(packageDist, 'index.js'), 'export {}\n')
+  const migrationsDirectory = path.join(root, PGLITE_MIGRATIONS_DIRECTORY_NAME)
+  fs.mkdirSync(migrationsDirectory, { recursive: true })
+  fs.writeFileSync(path.join(migrationsDirectory, PGLITE_BASELINE_NAME), '-- fixture\n')
 }
 
 describe('inspect-pglite-runtime', () => {
@@ -61,6 +66,9 @@ describe('inspect-pglite-runtime', () => {
     const packageDist = path.join(root, 'node_modules', '@electric-sql', 'pglite', 'dist')
     fs.mkdirSync(packageDist, { recursive: true })
     fs.writeFileSync(path.join(packageDist, 'index.js'), 'export {}\n')
+    const migrationsDirectory = path.join(root, PGLITE_MIGRATIONS_DIRECTORY_NAME)
+    fs.mkdirSync(migrationsDirectory, { recursive: true })
+    fs.writeFileSync(path.join(migrationsDirectory, PGLITE_BASELINE_NAME), '-- fixture\n')
 
     expect(inspectPgliteRuntimeArtifactLayout(root)).toEqual([
       `missing ${PGLITE_RUNTIME_DIRECTORY_NAME}/initdb.wasm`,
@@ -75,6 +83,9 @@ describe('inspect-pglite-runtime', () => {
     for (const asset of PGLITE_RUNTIME_BINARY_ASSETS) {
       fs.writeFileSync(path.join(runtimeDirectory, asset), `fixture:${asset}`)
     }
+    const migrationsDirectory = path.join(root, PGLITE_MIGRATIONS_DIRECTORY_NAME)
+    fs.mkdirSync(migrationsDirectory, { recursive: true })
+    fs.writeFileSync(path.join(migrationsDirectory, PGLITE_BASELINE_NAME), '-- fixture\n')
 
     expect(inspectPgliteRuntimeArtifactLayout(root)).toEqual([
       'missing PGlite JavaScript contract (expected @electric-sql/pglite package files)',
@@ -92,6 +103,9 @@ describe('inspect-pglite-runtime', () => {
     for (const asset of PGLITE_RUNTIME_BINARY_ASSETS) {
       fs.writeFileSync(path.join(runtimeDirectory, asset), `fixture:${asset}`)
     }
+    const migrationsDirectory = path.join(resourcesRoot, PGLITE_MIGRATIONS_DIRECTORY_NAME)
+    fs.mkdirSync(migrationsDirectory, { recursive: true })
+    fs.writeFileSync(path.join(migrationsDirectory, PGLITE_BASELINE_NAME), '-- fixture\n')
     fs.writeFileSync(path.join(packageDist, 'index.js'), 'export {}\n')
     fs.writeFileSync(path.join(sourceRoot, 'dist-electron', 'main.js'), 'export {}\n')
     await createPackage(sourceRoot, path.join(resourcesRoot, 'app.asar'))
@@ -128,6 +142,7 @@ describe('inspect-pglite-runtime', () => {
       expect.arrayContaining([
         'electron-builder files must include node_modules/@electric-sql/pglite/**/*',
         `electron-builder extraResources must copy assets to ${PGLITE_RUNTIME_DIRECTORY_NAME}`,
+        `electron-builder extraResources must copy migrations to ${PGLITE_MIGRATIONS_DIRECTORY_NAME}`,
       ]),
     )
   })

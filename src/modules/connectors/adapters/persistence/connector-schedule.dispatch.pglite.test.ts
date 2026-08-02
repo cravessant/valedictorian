@@ -1,15 +1,15 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { drizzle } from 'drizzle-orm/pglite'
-import { schema, sourceExecutionScopes } from '../../../../db/schema'
-import { connectorInstances, connectorRuns } from './connector.schema'
-import type { PgliteDatabase } from '../../../../db/pglite'
+import { schema, sourceExecutionScopes } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import { connectorInstances, connectorRuns } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.schema'
+import type { PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
 import {
   createPgliteTestDatabase,
   useResettablePgliteTestOwner,
 } from '../../../../test/pglite-test-owner'
-import { admitConnectorScheduleDue } from './connector-schedule.dispatch'
-import { createConnectorScheduleRepository } from './connector-schedule.repository'
+import { admitConnectorScheduleDue } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector-schedule.dispatch'
+import { createConnectorScheduleRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector-schedule.repository'
 
 const CREATED_AT = '2026-07-18T10:00:00.000Z'
 const DUE_AT = '2026-07-18T11:00:00.000Z'

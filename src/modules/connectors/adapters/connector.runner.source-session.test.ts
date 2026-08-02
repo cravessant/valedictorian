@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createSourceExecutionGovernor } from '../../source-execution/source-execution-governor'
-import type { AppJobConnector } from '../ports/connector.runner-contracts'
-import { createConnectorRunner } from './connector.runner'
+import { createSourceExecutionGovernor } from '@sparxie/valedictorian-local-runtime/testing/modules/source-execution/source-execution-governor'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/ports/connector.runner-contracts'
+import { createConnectorRunner } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/connector.runner'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './persistence/connector.repository.pglite-test-helpers'

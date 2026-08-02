@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createHttpValedictorianClient } from '@sparxie/sdk'
-import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import type { LocalValedictorianClient } from '@sparxie/valedictorian-local-runtime/local-client'
 import {
   createLocalValedictorianClient as createRuntimeLocalValedictorianClient,
   createOwnedPgliteTestDataPath,
@@ -11,7 +11,7 @@ import {
   createValedictorianHttpServer,
   type CreateValedictorianHttpServerOptions,
   type StartedValedictorianHttpServer,
-} from './local-server'
+} from '@sparxie/valedictorian-local-runtime/http-server'
 
 export function createTempDatabasePath() {
   const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-server-'))

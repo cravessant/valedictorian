@@ -1,13 +1,13 @@
 import { connectorRetirementResultSchema } from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
-import { sourceExecutionScopes, sourceExecutionSessions } from '../db/schema'
-import { createPgliteConnectorRepository } from '../modules/connectors/adapters/persistence/connector.repository'
-import { createStaticConnectorRegistry } from '../modules/connectors/core/connector.registry'
-import { createConnectorScheduleRepository } from '../modules/connectors/adapters/persistence/connector-schedule.repository'
+import { sourceExecutionScopes, sourceExecutionSessions } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
+import { createStaticConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.registry'
+import { createConnectorScheduleRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector-schedule.repository'
 import {
   createSourceExecutionGovernor,
-} from '../modules/source-execution/source-execution-governor'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/source-execution/source-execution-governor'
 import {
   closeTestLocalValedictorianClient,
   createOwnedTestPgliteDataPath,

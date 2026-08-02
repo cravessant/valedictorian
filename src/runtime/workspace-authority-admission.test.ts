@@ -5,7 +5,7 @@ import {
 } from '@sparxie/valedictorian-workspace-server'
 import { createLocalServerHttpTestFixture } from '../server/local-server.http-test-harness'
 import { createTestLocalValedictorianClient } from './local-valedictorian-client.test-harness'
-import type { LocalScheduledWorkSource } from '../modules/scheduling/public'
+import type { LocalScheduledWorkSource } from '@sparxie/valedictorian-local-runtime/scheduling'
 
 const workspaceId = 'authority-admission-workspace'
 const captureInput = {

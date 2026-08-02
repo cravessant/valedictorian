@@ -2,10 +2,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase } from '../db/pglite'
-import { createCaptureMaterializationService } from '../modules/capture/capture.materialization'
-import { createCaptureResolutionService } from '../modules/capture/capture.resolution'
-import { validateDestinationUrl } from '../modules/capture/destination-url-safety'
+import { createPgliteClient, migratePgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
+import { createCaptureMaterializationService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.materialization'
+import { createCaptureResolutionService } from '@sparxie/valedictorian-local-runtime/testing/modules/capture/capture.resolution'
+import { validateDestinationUrl } from '@sparxie/valedictorian-local-runtime/capture'
 import {
   captureCompletionLongContentFixture,
   isolatedValidationFixture,

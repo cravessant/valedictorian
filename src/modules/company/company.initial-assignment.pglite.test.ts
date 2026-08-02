@@ -1,15 +1,15 @@
 import { count, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { workspaces } from '../../db/workspaces.schema'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { createPgliteJobService } from '../job/job.service'
+import { createPgliteJobService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
 import {
   companyHistory,
   jobCompanyAssignmentHistory,
   jobCompanyAssignments,
   workspaceCompanies,
-} from './company.schema'
-import { createInitialCompanyAssignment } from './company.assignment.service'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/company/company.schema'
+import { createInitialCompanyAssignment } from '@sparxie/valedictorian-local-runtime/company'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const WORKSPACE = 'workspace-company-initial-assignment'

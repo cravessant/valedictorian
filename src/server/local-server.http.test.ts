@@ -1,7 +1,7 @@
 import type http from 'node:http'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { readJsonBody } from './local-server.http'
+import { readJsonBody } from '@sparxie/valedictorian-local-runtime/testing/server/local-server.http'
 
 describe('local server JSON body reader', () => {
   it('rejects chunked streaming overflow at a low limit while discarding later input', async () => {

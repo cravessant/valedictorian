@@ -12,7 +12,7 @@ import {
   createProfileApi,
   lastCreatedConnectorInstanceId,
 } from '../App.test-helpers'
-import { JOBRIGHT_CONNECTOR_VERSION } from '../modules/connectors/public/jobright.constants'
+import { JOBRIGHT_CONNECTOR_VERSION } from '@sparxie/valedictorian-local-runtime/connectors'
 import { unavailableScheduleApi } from './connector-schedule.test-helpers'
 import type { ConnectorSettingsInstance, ConnectorSettingsUiApi } from './connector-settings.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'

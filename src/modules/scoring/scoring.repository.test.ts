@@ -3,11 +3,11 @@ import { eq } from 'drizzle-orm'
 import {
   applicationScores,
   applications,
-} from '../../db/schema'
-import type { PgliteDatabase } from '../../db/pglite'
+} from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import type { PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
 import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { seedCanonicalApplication } from '../../test-fixtures/canonical-application.fixture'
-import { createPgliteScoringRepository } from './scoring.repository'
+import { createPgliteScoringRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/scoring/scoring.repository'
 
 const scoreInput = {
   applicationId: 'application-score-target',

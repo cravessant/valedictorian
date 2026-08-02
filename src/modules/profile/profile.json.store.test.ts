@@ -2,21 +2,23 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { defineProfileStoreContract } from './profile.store.contract'
-import { createJsonProfileStore } from './profile.json.store'
-import { createJsonProfileService } from './profile.composition'
-import { emptyProfileDocument } from './profile.revision'
-import { serializeProfileJsonDocument } from './profile.json.document'
 import {
+  ProfileCapabilityError,
+  acquireProfileJsonLock,
+  createJsonProfileStore,
   defaultProfileJsonFileOperations,
+  emptyProfileDocument,
+  profileBackupPath,
+  profileLockPath,
+  profileTempPath,
+  serializeProfileJsonDocument,
   writeProfileJsonAtomically,
   type ProfileJsonFileOperations,
-} from './profile.json.atomic'
-import { acquireProfileJsonLock } from './profile.json.lock'
-import { profileBackupPath, profileLockPath, profileTempPath } from './profile.json.paths'
-import { ProfileCapabilityError } from './profile.errors'
+} from '@sparxie/valedictorian-local-runtime/profile-files'
+import { defineProfileStoreContract } from './profile.store.contract'
+import { createJsonProfileService } from '@sparxie/valedictorian-local-runtime/testing/modules/profile/profile.composition'
 import { createMemoryProfileStores } from './profile.memory.store'
-import { createProfileService } from './profile.service'
+import { createProfileService } from '@sparxie/valedictorian-local-runtime/testing/modules/profile/profile.service'
 
 function tempProfilePath(): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-profile-json-'))

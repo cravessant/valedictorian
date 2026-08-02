@@ -4,14 +4,14 @@ import {
   applicationScores,
   applicationWorkflowStates,
   pursuitLinks,
-} from '../../db/schema'
+} from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import {
   type PgliteDatabase,
-} from '../../db/pglite'
+} from '@sparxie/valedictorian-local-runtime/database'
 import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
-import { createPglitePolicyRepository } from '../policy/policy.repository'
+import { createPglitePolicyRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/policy/policy.repository'
 import { seedCanonicalApplication } from '../../test-fixtures/canonical-application.fixture'
-import { createPgliteActionQueueRepository } from './action-queue.repository'
+import { createPgliteActionQueueRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/action-queue/action-queue.repository'
 
 const createdAt = '2026-06-04T16:00:00.000Z'
 const resettableDatabase = useResettablePgliteTestDatabase()

@@ -8,13 +8,13 @@
 import { describe, expect, it } from 'vitest'
 import { and, eq, isNull } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { workspaces } from '../../db/workspaces.schema'
-import { jobCaptureEvidenceReferences, jobExternalIdentities } from '../../db/schema'
-import { createPgliteCaptureService } from '../capture/capture.service'
-import { insertJobCaptureEvidenceReferences } from './job.repository'
-import type { JobService } from './job.service'
+import { workspaces } from '@sparxie/valedictorian-local-runtime/testing/db/workspaces.schema'
+import { jobCaptureEvidenceReferences, jobExternalIdentities } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import { createPgliteCaptureService } from '@sparxie/valedictorian-local-runtime/capture'
+import { insertJobCaptureEvidenceReferences } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.repository'
+import type { JobService } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.service'
 import { createPgliteJobServiceWithCompanies } from '../../test/job-service-with-companies'
-import { createPgliteJobIdentityService, type JobIdentityInput } from './job.identity'
+import { createPgliteJobIdentityService, type JobIdentityInput } from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.identity'
 
 const resettableOwner = useResettablePgliteTestOwner()
 

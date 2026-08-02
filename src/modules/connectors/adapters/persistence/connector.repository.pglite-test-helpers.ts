@@ -6,10 +6,10 @@ import {
   createPgliteClient,
   createPgliteDatabase,
   type PgliteClient,
-} from '../../../../db/pglite'
+} from '@sparxie/valedictorian-local-runtime/database'
 import { cloneConfiguredPgliteTemplate } from '../../../../test/pglite-template'
 import { useResettablePgliteTestOwner } from '../../../../test/pglite-test-owner'
-import { createPgliteConnectorRepository } from './connector.repository'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
 
 const clients = new Set<PgliteClient>()
 const tempPaths = new Set<string>()

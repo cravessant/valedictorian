@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sources } from '../db/schema'
+import { sources } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import { useResettablePgliteTestOwner } from './pglite-test-owner'
 
 const owner = useResettablePgliteTestOwner()

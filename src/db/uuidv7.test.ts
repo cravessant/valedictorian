@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { UUID_V7_PATTERN } from './lifecycle-vocabulary'
-import { createUuidV7Generator, uuidv7 } from './uuidv7'
+import { UUID_V7_PATTERN } from '@sparxie/valedictorian-local-runtime/testing/db/lifecycle-vocabulary'
+import { createUuidV7Generator, uuidv7 } from '@sparxie/valedictorian-local-runtime/testing/db/uuidv7'
 
 const uuidV7Regex = new RegExp(UUID_V7_PATTERN, 'i')
 const lowercaseUuidV7 = new RegExp(UUID_V7_PATTERN)

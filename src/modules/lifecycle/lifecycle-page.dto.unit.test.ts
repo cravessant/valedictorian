@@ -15,7 +15,7 @@ import {
   readPageWindow,
   sliceLifecycleHistoryPage,
   toLifecyclePage,
-} from './lifecycle-page.dto'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/lifecycle/lifecycle-page.dto'
 
 const cursorOf = (row: { id: string }) => row.id
 const rows = (...ids: string[]) => ids.map((id) => ({ id }))

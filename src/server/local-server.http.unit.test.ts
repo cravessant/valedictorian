@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
-import { handleHttpRequestError } from './local-server.error-boundary'
-import { LocalHttpBodyTooLargeError, LocalHttpValidationError, readJsonBody } from './local-server.http'
-import { parsePolicyConfigPatch } from './local-server.parsers.connectors-policy'
+import { handleHttpRequestError } from '@sparxie/valedictorian-local-runtime/testing/server/local-server.error-boundary'
+import { LocalHttpBodyTooLargeError, LocalHttpValidationError, readJsonBody } from '@sparxie/valedictorian-local-runtime/testing/server/local-server.http'
+import { parsePolicyConfigPatch } from '@sparxie/valedictorian-local-runtime/testing/server/local-server.parsers.connectors-policy'
 
 function requestWith(body: string, headers: IncomingMessage['headers'] = {}) {
   const request = Readable.from([Buffer.from(body)]) as IncomingMessage

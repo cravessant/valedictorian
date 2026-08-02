@@ -3,8 +3,12 @@ import {
   normalizeThemeSettings,
   type ThemeSettings,
 } from '../theme/theme-registry'
+import {
+  defaultInitialWorkspaceSettings,
+  type RuntimePreference,
+} from '@sparxie/valedictorian-local-runtime/runtime-settings'
 
-export type RuntimePreference = 'local-desktop' | 'local-shared' | 'remote'
+export type { RuntimePreference } from '@sparxie/valedictorian-local-runtime/runtime-settings'
 
 /** Public settings DTO: never contains token plaintext or storage references. */
 export interface AppSettings {
@@ -33,14 +37,7 @@ export interface AppSettingsStore {
 }
 
 export const defaultAppSettings: AppSettings = {
-  apiTokenConfigured: false,
-  localApiHost: '127.0.0.1',
-  localApiPort: 4317,
-  remoteApiUrl: 'http://127.0.0.1:4317',
-  runtimeMode: 'local-desktop',
-  sidebarCollapsed: false,
-  showAdvancedFilters: false,
-  showDebugData: false,
+  ...defaultInitialWorkspaceSettings,
   theme: createDefaultThemeSettings(),
 }
 

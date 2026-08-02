@@ -1,18 +1,20 @@
 import fs from 'node:fs'
 import {
+  defaultAtomicDocumentFileOperations,
+  writeAtomicDocument,
+  type AppSecretStore,
+  type AtomicDocumentFileOperations,
+} from '@sparxie/valedictorian-local-runtime/protected-secrets'
+import {
+  resolveWorkspaceLayout,
+} from '@sparxie/valedictorian-local-runtime/workspace-files'
+import {
   defaultAppSettings,
   normalizeAppSettings,
   type AppSettings,
   type AppSettingsPatch,
   type AppSettingsStore,
 } from './app-settings'
-import type { AppSecretStore } from './app-secret'
-import {
-  defaultAtomicDocumentFileOperations,
-  writeAtomicDocument,
-  type AtomicDocumentFileOperations,
-} from './atomic-document'
-import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
 
 export const apiTokenSecretReference = 'app-secret:api-token'
 

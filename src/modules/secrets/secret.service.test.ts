@@ -1,12 +1,14 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { workspaceSecrets } from '../../db/schema'
+import { workspaceSecrets } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
-import { createPgliteSecretService } from './secret.composition'
-import type { SecretCodec } from './secret.codec'
-import { createWorkspaceSecretScope } from './secret.scope'
-import { createSecretService } from './secret.service'
-import type { SecretStore } from './secret.store'
+import { createPgliteSecretService } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.composition'
+import {
+  createWorkspaceSecretScope,
+  type SecretCodec,
+} from '@sparxie/valedictorian-local-runtime/protected-secrets'
+import { createSecretService } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.service'
+import type { SecretStore } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.store'
 
 const testWorkspaceScope = createWorkspaceSecretScope('test-workspace')
 const resettableOwner = useResettablePgliteTestOwner()

@@ -10,10 +10,12 @@ import {
   writeIsolatedValidationDiagnostic,
   writeIsolatedValidationOwnershipEvidence,
   type IsolatedValidationDiagnostic,
-} from '../src/runtime/isolated-validation'
-import { getDefaultWorkspaceRegistryPath } from '../src/workspace/workspace.paths'
-import { createFileWorkspaceRegistryStore } from '../src/workspace/workspace.registry'
-import { initializeWorkspace } from '../src/workspace/workspace.initializer'
+} from '@sparxie/valedictorian-local-runtime/isolated-validation'
+import {
+  createFileWorkspaceRegistryStore,
+  getDefaultWorkspaceRegistryPath,
+} from '@sparxie/valedictorian-local-runtime/workspace-files'
+import { initializeWorkspace } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import {
   createProcessTreeShutdown,
   createSupervisedLaunchLifecycle,

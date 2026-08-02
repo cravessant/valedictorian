@@ -7,10 +7,14 @@ const productionExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs'])
 describe('Jobright API-only source guards', () => {
   it('removes Electron connector-port wiring', () => {
     const mainSource = read('electron/main.ts')
-    const runtimePortsSource = read('src/modules/connectors/adapters/runtime/connector.runtime-ports.ts')
-    const localClientSource = read('src/runtime/local-valedictorian-client.ts')
-    const runtimeSource = read('src/runtime/valedictorian-runtime.ts')
-    const workspaceSource = read('src/server/local-workspaces.ts')
+    const runtimePortsSource = read(
+      'packages/local-runtime/src/modules/connectors/adapters/runtime/connector.runtime-ports.ts',
+    )
+    const localClientSource = read(
+      'packages/local-runtime/src/runtime/local-valedictorian-client.ts',
+    )
+    const runtimeSource = read('packages/local-runtime/src/runtime/valedictorian-runtime.ts')
+    const workspaceSource = read('packages/local-runtime/src/server/local-workspaces.ts')
 
     expect(fs.existsSync(path.resolve('electron/jobright-link-resolver.ts'))).toBe(false)
     expect(fs.existsSync(path.resolve('electron/connector-ports.ts'))).toBe(false)
@@ -71,7 +75,7 @@ function read(relativePath: string) {
 
 function collectProductionSources() {
   const files: string[] = []
-  for (const root of ['electron', 'src']) {
+  for (const root of ['electron', 'packages/local-runtime/src', 'src']) {
     walk(path.resolve(root), files)
   }
   return files

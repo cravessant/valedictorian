@@ -12,7 +12,7 @@ import type {
   ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 
-import { jobFactsTiming } from '../../job/job.timing'
+import { jobFactsTiming } from '@sparxie/valedictorian-local-runtime/job-edge-contract'
 import { WorkspaceClientUnavailableError } from '../../../app/app-load-failure'
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from '../lifecycle-actor'
 import { FormModal, requireRationale, type FieldSpec, type FieldErrors } from '../form-modal'

@@ -1,9 +1,9 @@
-import type { PgliteDatabase } from '../db/pglite'
-import { createInitialCompanyAssignment } from '../modules/company/company.assignment.service'
+import type { PgliteDatabase } from '@sparxie/valedictorian-local-runtime/database'
+import { createInitialCompanyAssignment } from '@sparxie/valedictorian-local-runtime/company'
 import {
   createLocalLifecycleMethods,
   type LocalLifecycleMethodsOptions,
-} from '../runtime/local-lifecycle-methods'
+} from '@sparxie/valedictorian-local-runtime/testing/runtime/local-lifecycle-methods'
 
 export function createLocalLifecycleMethodsWithCompanies(
   database: PgliteDatabase,

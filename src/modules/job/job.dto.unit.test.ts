@@ -18,7 +18,7 @@ import {
   type JobHeadRow,
   type JobHistoryRow,
   type JobIdentityRow,
-} from './job.dto'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/job/job.dto'
 
 const firstPage = (limit: number) => ({ limit, cursor: null, backward: false })
 

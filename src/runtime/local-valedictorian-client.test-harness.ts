@@ -10,14 +10,14 @@ import {
   migratePgliteDatabase,
   type PgliteClient,
   type PgliteDatabase,
-} from '../db/pglite'
-import { completedConnectorRefreshContract } from '../modules/connectors/public'
-import type { AppJobConnector } from '../modules/connectors/public'
+} from '@sparxie/valedictorian-local-runtime/database'
+import { completedConnectorRefreshContract } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.refresh-result.test-helpers'
+import type { AppJobConnector } from '@sparxie/valedictorian-local-runtime/connectors'
 import {
   createLocalValedictorianClient,
   type LocalValedictorianClient,
   type LocalValedictorianClientOptions,
-} from './local-valedictorian-client'
+} from '@sparxie/valedictorian-local-runtime/local-client'
 
 const activePgliteClients = new Set<PgliteClient>()
 const activeTempPaths = new Set<string>()

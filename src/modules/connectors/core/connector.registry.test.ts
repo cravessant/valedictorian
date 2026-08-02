@@ -3,8 +3,8 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createTestLocalValedictorianClient as createLocalValedictorianClient } from '../../../runtime/local-valedictorian-client.test-harness'
 import { createTempDatabasePath } from '../../../server/local-server.http-test-harness'
-import { createDefaultLocalConnectorRegistry } from '../adapters/provider/connector.default-registry'
-import { JOBRIGHT_CONNECTOR_VERSION } from '../public/jobright.constants'
+import { createDefaultLocalConnectorRegistry } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/provider/connector.default-registry'
+import { JOBRIGHT_CONNECTOR_VERSION } from '@sparxie/valedictorian-local-runtime/connectors'
 
 afterEach(() => vi.unstubAllGlobals())
 

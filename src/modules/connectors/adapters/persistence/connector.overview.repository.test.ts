@@ -1,12 +1,12 @@
 import { drizzle } from 'drizzle-orm/pglite'
 import { describe, expect, it } from 'vitest'
-import { connectorRuns, connectorRunSynchronizations, schema } from '../../../../db/schema'
-import type { PgliteClient } from '../../../../db/pglite'
-import { createPgliteConnectorRepository } from './connector.repository'
+import { connectorRuns, connectorRunSynchronizations, schema } from '@sparxie/valedictorian-local-runtime/testing/db/schema'
+import type { PgliteClient } from '@sparxie/valedictorian-local-runtime/database'
+import { createPgliteConnectorRepository } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/adapters/persistence/connector.repository'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './connector.repository.pglite-test-helpers'
-import { mapLocalConnectorOverviewRecord } from '../../core/connector.overview-projection'
+import { mapLocalConnectorOverviewRecord } from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/core/connector.overview-projection'
 import type { ConnectorStatusState } from '@sparxie/sdk'
 
 describe.sequential('PGlite connector overview repository', () => {

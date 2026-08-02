@@ -4,8 +4,8 @@ import {
   LocalSecretResolutionCapabilityError,
   LocalSecretResolutionInvalidRequestError,
   rejectUnsupportedLocalSecretResolution,
-} from './local-secret-resolution'
-import type { SecretValue } from './secret.store'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/local-secret-resolution'
+import type { SecretValue } from '@sparxie/valedictorian-local-runtime/testing/modules/secrets/secret.store'
 
 const CANARY = 'plaintext-canary-value-8e2f'
 

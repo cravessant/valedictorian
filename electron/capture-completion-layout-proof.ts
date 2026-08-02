@@ -10,8 +10,8 @@ import {
   type ElectronProofWebContents,
 } from './native-ui-proof'
 import { captureCompletionLongContentFixture } from '../src/runtime/isolated-validation.fixture-contract'
-import type { IsolatedValidationManifest } from '../src/runtime/isolated-validation'
-import type { WorkspaceSummary } from '../src/workspace/workspace.initializer'
+import type { IsolatedValidationManifest } from '@sparxie/valedictorian-local-runtime/isolated-validation'
+import type { WorkspaceSummary } from '@sparxie/valedictorian-local-runtime/workspace-runtime'
 import { requireIsolatedProofSession } from './isolated-proof-session'
 
 const schemaVersion = 'valedictorian-capture-completion-dialog-layout-proof@3'

@@ -2,8 +2,8 @@ import type {
   ProfileUpdateInput,
   UpsertProfileSecretInput,
 } from '@sparxie/sdk'
-import type { ProfileService } from '../modules/profile/profile.service'
-import type { SecretService } from '../modules/secrets/secret.service'
+import type { ProfileService } from '@sparxie/valedictorian-local-runtime/profile'
+import type { SecretService } from '@sparxie/valedictorian-local-runtime/secrets'
 
 interface IpcMainLike {
   handle(

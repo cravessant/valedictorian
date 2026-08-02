@@ -1,20 +1,33 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { isMaintainedTestPath } from './architecture-policy-rules.mjs'
 import { isTestPath, moduleOfPath, resolutionCandidates } from './architecture-source-graph.mjs'
 
 /** The one convention, hard-coded: a module's whole external contract is this file. */
 export const PUBLIC_SURFACE_FILE = 'public.ts'
 
 /** Where production composition lives. Everything maintained under these is scanned. */
-export const CONSUMER_ROOTS = ['src/runtime/', 'src/server/']
+export const CONSUMER_ROOTS = [
+  'packages/local-runtime/src/runtime/',
+  'packages/local-runtime/src/server/',
+  'src/runtime/',
+  'src/server/',
+]
 
 /** Edges a public surface must not reach, so a contract cannot depend on its consumers. */
-const FORBIDDEN_SURFACE_ROOTS = ['src/ipc/', 'src/runtime/', 'src/server/']
+const FORBIDDEN_SURFACE_ROOTS = [
+  'packages/local-runtime/src/runtime/',
+  'packages/local-runtime/src/server/',
+  'packages/local-runtime/src/workspace/',
+  'src/ipc/',
+  'src/runtime/',
+  'src/server/',
+]
 
 export const PUBLIC_SURFACE_RULE = 'module-public-surface-bypass'
 
-const MODULE_ROOT = 'src/modules'
+const MODULE_ROOT = 'packages/local-runtime/src/modules'
 const electronPattern = /^electron(?:\/|$)/
 const moduleSpecifierPattern = /(?:^|\/)modules\//
 
@@ -78,11 +91,16 @@ function resolveRealTarget(realRoot, filePath, specifier) {
  * though every spelling resolves alike.
  *
  * @param {string} specifier
+ * @param {string} moduleName
  * @returns {boolean}
  */
-function isCanonicalSurfaceSpelling(specifier) {
+function isCanonicalSurfaceSpelling(specifier, moduleName) {
   const surfaceName = PUBLIC_SURFACE_FILE.replace(/\.ts$/, '')
-  return specifier.endsWith(`/${surfaceName}`)
+  return (
+    specifier === `@sparxie/valedictorian-local-runtime/${moduleName}`
+    || specifier.endsWith(`/${surfaceName}`)
+    || specifier.endsWith(`/${surfaceName}.js`)
+  )
     && path.posix.normalize(specifier) === specifier
 }
 
@@ -231,7 +249,7 @@ function surfaceExportFormViolations(file) {
 
 /**
  * Production server and runtime composition reaches a capability only through its
- * exact `src/modules/<module>/public.ts` surface (issue #327, decision 0001).
+ * exact `packages/local-runtime/src/modules/<module>/public.ts` surface (issue #327, decision 0001).
  *
  * Every maintained non-test file under `src/runtime` and `src/server` is scanned,
  * whatever it is named: a file called fixture or harness ships as readily as one
@@ -321,6 +339,12 @@ function declaredSpecifiers(file) {
  * @returns {string[]}
  */
 function consumerViolations(file, specifier, targets, transports) {
+  if (
+    isMaintainedTestPath(file.path)
+    && specifier.startsWith('@sparxie/valedictorian-local-runtime/testing/')
+  ) {
+    return []
+  }
   const target = targets.get(file.path)?.get(specifier)
   if (!target || target.kind === 'external') return []
   if (target.kind === 'unresolved') {
@@ -340,7 +364,7 @@ function consumerViolations(file, specifier, targets, transports) {
         `[${PUBLIC_SURFACE_RULE}] ${file.path} reaches ${repositoryPath} through ${JSON.stringify(specifier)}; production server and runtime code imports a capability only through ${surface}`,
       ]
     }
-    if (!isCanonicalSurfaceSpelling(specifier)) {
+    if (!isCanonicalSurfaceSpelling(specifier, moduleName)) {
       return [
         `[${PUBLIC_SURFACE_RULE}] ${file.path} reaches ${surface} through ${JSON.stringify(specifier)}; the surface is imported by its exact path with no extension, index, or redundant segment`,
       ]

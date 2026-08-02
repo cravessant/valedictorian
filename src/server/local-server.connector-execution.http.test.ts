@@ -3,7 +3,7 @@ import {
   ConnectorExecutionError,
   connectorInstalledVersionMismatchError,
   unexpectedConnectorExecutionError,
-} from '../modules/connectors/public/connector.execution-errors'
+} from '@sparxie/valedictorian-local-runtime/testing/modules/connectors/public/connector.execution-errors'
 import {
   createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,
