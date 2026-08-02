@@ -4,7 +4,7 @@ Read this when a question, site behavior, or final-submit decision may require u
 
 ## Default Rule
 
-Represent the user truthfully and minimize private disclosure. Proceed only from Valedictorian state, explicitly approved materials, or prior user instructions. The alpha.18 CLI cannot inspect submission policy; when authority or a fact is missing, ambiguous, sensitive, legal, or high impact, pause and ask.
+Represent the user truthfully and minimize private disclosure. Proceed only from Valedictorian state, explicitly approved materials, or prior user instructions. The current CLI cannot inspect submission policy; when authority or a fact is missing, ambiguous, sensitive, legal, or high impact, pause and ask.
 
 ## Pause Before
 
@@ -21,7 +21,7 @@ Represent the user truthfully and minimize private disclosure. Proceed only from
 
 ## Final Submission Policy
 
-- Require explicit user approval for final submission because alpha.18 cannot inspect recorded auto-submit policy.
+- Require explicit user approval for final submission because the current CLI cannot inspect recorded auto-submit policy.
 - If approval is absent, fill and verify the form, record a `ready_for_review` workflow-run blocker, and report that the Action Queue hold was not updated.
 - Never submit with unresolved material blanks, unsupported answers, failed uploads, stale parser values, visible validation errors, or unclear official posting identity.
 

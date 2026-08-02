@@ -1,0 +1,119 @@
+name: Publish CLI
+
+on:
+  push:
+    tags:
+      - 'cli-migration-v*.*.*'
+      - 'cli-v*.*.*'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: Publish CLI package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          version: 11.3.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 26.5.0
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Resolve release version and channel
+        id: release
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+
+          const tag = process.env.GITHUB_REF_NAME
+          const migrationPrefix = 'cli-migration-v'
+          const releasePrefix = 'cli-v'
+          const migration = tag.startsWith(migrationPrefix)
+          const prefix = migration ? migrationPrefix : releasePrefix
+
+          if (!tag.startsWith(prefix)) throw new Error(`Unsupported CLI tag ${tag}`)
+
+          const packageJson = JSON.parse(fs.readFileSync('packages/cli/package.json', 'utf8'))
+          const version = tag.slice(prefix.length)
+          if (!migration && version === '0.1.0-alpha.21') {
+            throw new Error('CLI 0.1.0-alpha.21 must publish only as a migration canary')
+          }
+          if (packageJson.version !== version) {
+            throw new Error(`CLI tag ${tag} does not match package version ${packageJson.version}`)
+          }
+
+          const prerelease = version.match(/-(alpha|beta|rc)\./)?.[1]
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `dist_tag=${migration ? 'migration' : (prerelease ?? 'latest')}\n`,
+          )
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`)
+          NODE
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint CLI
+        run: pnpm --filter @sparxie/valedictorian-cli run lint
+
+      - name: Test CLI
+        run: pnpm --filter @sparxie/valedictorian-cli run test
+
+      - name: Pack exact CLI artifact
+        run: |
+          mkdir -p .release-packs
+          pnpm --dir packages/cli pack --out "$PWD/.release-packs/valedictorian-cli.tgz"
+          node scripts/publish-package-tarball.mjs --verify-only .release-packs/valedictorian-cli.tgz migration
+
+      - name: Publish CLI
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: >-
+          node scripts/publish-package-tarball.mjs
+          .release-packs/valedictorian-cli.tgz "$NPM_DIST_TAG"
+          | tee .release-packs/valedictorian-cli-receipt.log
+
+      - name: Verify clean registry consumer
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          consumer="$(mktemp -d)"
+          cd "$consumer"
+          pnpm init
+          pnpm --registry=https://registry.npmjs.org/ \
+            --config.minimumReleaseAge=0 \
+            add "@sparxie/valedictorian-cli@0.1.0-alpha.20"
+          pnpm exec valedictorian-cli --version
+          pnpm --registry=https://registry.npmjs.org/ \
+            --config.minimumReleaseAge=0 \
+            add "@sparxie/valedictorian-cli@$RELEASE_VERSION"
+          pnpm exec valedictorian-cli --version
+          pnpm exec valedictorian-cli --help
+
+      - name: Retain CLI registry receipt
+        if: ${{ always() && hashFiles('.release-packs/*-receipt.log') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cli-registry-receipt-${{ steps.release.outputs.version }}
+          path: .release-packs/*-receipt.log
+          if-no-files-found: error
+          retention-days: 90

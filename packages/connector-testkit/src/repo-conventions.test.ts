@@ -85,7 +85,7 @@ describe("connector repository conventions", () => {
         directory: "packages/connector-api",
       },
       types: "./dist/index.d.ts",
-      version: "0.19.0",
+      version: "0.19.1",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -102,7 +102,7 @@ describe("connector repository conventions", () => {
         directory: "packages/connector-testkit",
       },
       types: "./dist/index.d.ts",
-      version: "0.19.0",
+      version: "0.19.1",
     })
     for (const packageJson of [corePackage, harnessPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -114,7 +114,7 @@ describe("connector repository conventions", () => {
     }
     expect(corePackage.dependencies).toEqual({ zod: "^4.4.3" })
     expect(harnessPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.19.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.19.1",
     })
   })
 

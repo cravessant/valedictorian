@@ -90,6 +90,19 @@ describe('repository ownership decision', () => {
     expect(targetS02Destinations).not.toContain('packages/workspace/conformance')
   })
 
+  it('records the later P25 public package boundaries separately from S02', () => {
+    const product = ownership.targetRepositories.find(
+      (entry) => entry.repository === 'cravessant/valedictorian',
+    )
+
+    expect(product.p25PublicPackageDestinations).toEqual([
+      'packages/workspace/server',
+      'packages/workspace/client',
+      'packages/workspace/conformance',
+      'packages/local-runtime',
+    ])
+  })
+
   it('forbids a replacement universal SDK or shared-types owner', () => {
     expect(ownership.packageRules.sharedTypesRepository).toBe(false)
     expect(ownership.packageRules.universalSdkReplacement).toBeNull()

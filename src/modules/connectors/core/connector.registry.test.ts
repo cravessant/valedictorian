@@ -62,19 +62,23 @@ describe('connector registry', () => {
 
     expect(appPackage.dependencies['@sparxie/sdk']).toBe('0.36.0')
     expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.19.0')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.19.0')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.19.0')
+    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-core']).toBe(
+      'workspace:*',
+    )
+    expect(
+      appPackage.devDependencies['@sparxie/valedictorian-connectors-test-harness'],
+    ).toBe('workspace:0.19.1')
     expect(appPackage.pnpm?.overrides).toBeUndefined()
     expect(appPackage.resolutions).toBeUndefined()
     expect(appPackage).not.toHaveProperty('overrides')
     expect(sdkPackage.version).toBe('0.36.0')
     expect(jobrightPackage.version).toBe(JOBRIGHT_CONNECTOR_VERSION)
     expect(jobrightPackage.dependencies?.['@sparxie/valedictorian-connectors-core']).toBe('^0.19.0')
-    expect(corePackage.version).toBe('0.19.0')
+    expect(corePackage.version).toBe('0.19.1')
     expect(corePackage.dependencies).not.toHaveProperty('@sparxie/sdk')
-    expect(harnessPackage.version).toBe('0.19.0')
+    expect(harnessPackage.version).toBe('0.19.1')
     expect(harnessPackage.dependencies?.['@sparxie/valedictorian-connectors-core']).toBe(
-      '^0.19.0',
+      'workspace:^0.19.1',
     )
     expect(harnessPackage.dependencies).not.toHaveProperty('@sparxie/sdk')
   })

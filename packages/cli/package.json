@@ -1,6 +1,6 @@
 {
   "name": "@sparxie/valedictorian-cli",
-  "version": "0.1.0-alpha.20",
+  "version": "0.1.0-alpha.21",
   "description": "Command-line client for Valedictorian.",
   "author": "Sparxie",
   "license": "MIT",
@@ -26,14 +26,16 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cravessant/valedictorian.git"
+    "url": "git+https://github.com/cravessant/valedictorian.git",
+    "directory": "packages/cli"
   },
   "bugs": {
     "url": "https://github.com/cravessant/valedictorian/issues"
   },
   "homepage": "https://github.com/cravessant/valedictorian#readme",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

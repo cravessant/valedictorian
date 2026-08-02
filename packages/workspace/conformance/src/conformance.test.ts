@@ -249,11 +249,28 @@ describe('workspace API contract', () => {
     expect(workspaceYaml).not.toContain('packages/workspace/*')
     for (const packageName of ['server', 'client', 'conformance']) {
       const packageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, `packages/workspace/${packageName}/package.json`), 'utf8')) as {
-        private?: boolean
+        bugs?: { url?: string }
         files?: string[]
+        homepage?: string
+        license?: string
+        private?: boolean
+        publishConfig?: { access?: string; registry?: string }
+        repository?: { directory?: string; type?: string; url?: string }
         exports?: Record<string, unknown>
       }
-      expect(packageJson.private).toBe(true)
+      expect(packageJson.private).not.toBe(true)
+      expect(packageJson.license).toBe('MIT')
+      expect(packageJson.homepage).toBe('https://github.com/cravessant/valedictorian#readme')
+      expect(packageJson.bugs?.url).toBe('https://github.com/cravessant/valedictorian/issues')
+      expect(packageJson.publishConfig).toEqual({
+        access: 'public',
+        registry: 'https://registry.npmjs.org/',
+      })
+      expect(packageJson.repository).toMatchObject({
+        type: 'git',
+        url: 'git+https://github.com/cravessant/valedictorian.git',
+        directory: `packages/workspace/${packageName}`,
+      })
       expect(packageJson.files).toEqual(['dist'])
       expect(packageJson.exports).toBeDefined()
       if (packageName === 'server') {

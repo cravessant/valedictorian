@@ -1,0 +1,189 @@
+name: Publish Workspace Packages
+
+on:
+  push:
+    tags:
+      - 'workspace-migration-v*.*.*'
+      - 'workspace-v*.*.*'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: Publish workspace and local runtime packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          version: 11.3.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 26.5.0
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Resolve release version and channel
+        id: release
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+
+          const tag = process.env.GITHUB_REF_NAME
+          const migrationPrefix = 'workspace-migration-v'
+          const releasePrefix = 'workspace-v'
+          const migration = tag.startsWith(migrationPrefix)
+          const prefix = migration ? migrationPrefix : releasePrefix
+
+          if (!tag.startsWith(prefix)) throw new Error(`Unsupported workspace tag ${tag}`)
+
+          const version = tag.slice(prefix.length)
+          if (!migration && version === '0.1.0') {
+            throw new Error('Workspace 0.1.0 must publish only as a migration canary')
+          }
+          const paths = [
+            'packages/workspace/server/package.json',
+            'packages/workspace/client/package.json',
+            'packages/workspace/conformance/package.json',
+            'packages/local-runtime/package.json',
+          ]
+          const packages = paths.map(path => JSON.parse(fs.readFileSync(path, 'utf8')))
+          if (packages.some(packageJson => packageJson.version !== version)) {
+            throw new Error(`Workspace tag ${tag} does not match all package versions`)
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `dist_tag=${migration ? 'migration' : 'latest'}\n`)
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`)
+          NODE
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require connector migration receipt
+        run: |
+          node --input-type=module <<'NODE'
+          import { registryReceiptViolations } from './scripts/publish-package-tarball.mjs'
+
+          const name = '@sparxie/valedictorian-connectors-core'
+          const version = '0.19.1'
+          const endpoint =
+            `https://registry.npmjs.org/${encodeURIComponent(name)}`
+          const response = await fetch(endpoint)
+          if (!response.ok) {
+            throw new Error(`Connector dependency receipt returned HTTP ${response.status}`)
+          }
+          const packument = await response.json()
+          const integrity = packument.versions?.[version]?.dist?.integrity
+          const violations = registryReceiptViolations({
+            distTag: 'migration',
+            integrity,
+            name,
+            packument,
+            version,
+          })
+          if (violations.length > 0) throw new Error(violations.join('\n'))
+          NODE
+
+      - name: Verify generated workspace contract
+        run: pnpm --filter @sparxie/valedictorian-workspace-server run check:generated
+
+      - name: Build workspace packages
+        run: pnpm run build:workspace-packages
+
+      - name: Test workspace conformance
+        run: >-
+          pnpm exec vitest run
+          --config vitest.publish.config.ts
+          packages/workspace/conformance/src/conformance.test.ts
+
+      - name: Test local runtime
+        run: pnpm --filter @sparxie/valedictorian-local-runtime run test
+
+      - name: Pack exact workspace artifacts
+        run: |
+          mkdir -p .release-packs
+          pnpm --dir packages/workspace/server pack --out "$PWD/.release-packs/workspace-server.tgz"
+          pnpm --dir packages/workspace/client pack --out "$PWD/.release-packs/workspace-client.tgz"
+          pnpm --dir packages/workspace/conformance pack --out "$PWD/.release-packs/workspace-conformance.tgz"
+          pnpm --dir packages/local-runtime pack --out "$PWD/.release-packs/local-runtime.tgz"
+          for artifact in .release-packs/*.tgz; do
+            node scripts/publish-package-tarball.mjs --verify-only "$artifact" migration
+          done
+
+      - name: Publish workspace server
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: >-
+          node scripts/publish-package-tarball.mjs
+          .release-packs/workspace-server.tgz "$NPM_DIST_TAG"
+          | tee .release-packs/workspace-server-receipt.log
+
+      - name: Publish workspace client
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: >-
+          node scripts/publish-package-tarball.mjs
+          .release-packs/workspace-client.tgz "$NPM_DIST_TAG"
+          | tee .release-packs/workspace-client-receipt.log
+
+      - name: Publish workspace conformance
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: >-
+          node scripts/publish-package-tarball.mjs
+          .release-packs/workspace-conformance.tgz "$NPM_DIST_TAG"
+          | tee .release-packs/workspace-conformance-receipt.log
+
+      - name: Publish local runtime
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: >-
+          node scripts/publish-package-tarball.mjs
+          .release-packs/local-runtime.tgz "$NPM_DIST_TAG"
+          | tee .release-packs/local-runtime-receipt.log
+
+      - name: Verify clean registry consumer
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          consumer="$(mktemp -d)"
+          cd "$consumer"
+          pnpm init
+          pnpm --registry=https://registry.npmjs.org/ \
+            --config.minimumReleaseAge=0 \
+            add \
+            "@sparxie/valedictorian-workspace-server@$RELEASE_VERSION" \
+            "@sparxie/valedictorian-workspace-client@$RELEASE_VERSION" \
+            "@sparxie/valedictorian-workspace-conformance@$RELEASE_VERSION" \
+            "@sparxie/valedictorian-local-runtime@$RELEASE_VERSION"
+          node --input-type=module <<'NODE'
+          await import('@sparxie/valedictorian-workspace-server')
+          await import('@sparxie/valedictorian-workspace-server/generator')
+          await import('@sparxie/valedictorian-workspace-client')
+          await import('@sparxie/valedictorian-workspace-conformance')
+          await import('@sparxie/valedictorian-local-runtime/database')
+          NODE
+
+      - name: Retain workspace registry receipts
+        if: ${{ always() && hashFiles('.release-packs/*-receipt.log') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: workspace-registry-receipts-${{ steps.release.outputs.version }}
+          path: .release-packs/*-receipt.log
+          if-no-files-found: error
+          retention-days: 90

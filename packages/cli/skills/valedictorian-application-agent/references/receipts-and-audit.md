@@ -69,7 +69,7 @@ For a CAPTCHA, missing fact, review hold, login/security gate, closed posting, o
 2. Complete the run with `--status completed`.
 3. Put the operational classification in `--blocker` and optionally bounded `--metadata-json`.
 4. Omit `--outcome`.
-5. Tell the user that alpha.18 could not update the Action Queue operational hold.
+5. Tell the user that the current CLI could not update the Action Queue operational hold.
 
 ```sh
 valedictorian-cli --json runs complete <run-id> \

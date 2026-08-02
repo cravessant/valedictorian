@@ -24,7 +24,7 @@ If sources disagree, pause or follow the most application-specific explicit user
 
 ## Resumes And Cover Letters
 
-- The alpha.18 Application/Profile CLI state does not select a resume. Require an explicitly approved resume path from the user or another authorized task input; otherwise pause.
+- The current Application/Profile CLI state does not select a resume. Require an explicitly approved resume path from the user or another authorized task input; otherwise pause.
 - Do not generate or attach a cover letter unless the user explicitly selects that path.
 - Do not upload transcripts, identity documents, references, writing samples, or portfolios unless they are explicitly selected or required and approved.
 - If a site rejects a file, record the rejection in the workflow run and use only approved conversion/sanitization workflows.

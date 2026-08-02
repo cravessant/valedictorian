@@ -142,6 +142,9 @@ describe('build configuration', () => {
         'dist',
         'dist-electron',
         'node_modules/@electric-sql/pglite/**/*',
+        '!node_modules/@sparxie/valedictorian-connectors-core/src{,/**/*}',
+        '!node_modules/@sparxie/valedictorian-connectors-core/tsconfig.build.json',
+        '!node_modules/@sparxie/valedictorian-local-runtime/node_modules{,/**/*}',
       ]),
     )
     expect(config.files?.join('\n')).not.toMatch(/better-sqlite3|bindings|file-uri-to-path/)

@@ -1,9 +1,23 @@
 {
   "name": "@sparxie/valedictorian-local-runtime",
   "version": "0.1.0",
-  "private": true,
   "description": "Local persistence and filesystem primitives for Valedictorian workspace authorities.",
+  "author": "Keni",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cravessant/valedictorian.git",
+    "directory": "packages/local-runtime"
+  },
+  "bugs": {
+    "url": "https://github.com/cravessant/valedictorian/issues"
+  },
+  "homepage": "https://github.com/cravessant/valedictorian#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "files": [
     "dist",
     "drizzle"
@@ -556,7 +570,7 @@
   "dependencies": {
     "@electric-sql/pglite": "0.5.4",
     "@sparxie/sdk": "0.36.0",
-    "@sparxie/valedictorian-connectors-core": "0.19.0",
+    "@sparxie/valedictorian-connectors-core": "workspace:0.19.1",
     "@sparxie/valedictorian-connectors-jobright": "0.19.0",
     "@sparxie/valedictorian-workspace-server": "workspace:0.1.0",
     "cosmiconfig": "9.0.2",

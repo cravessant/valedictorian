@@ -1,9 +1,23 @@
 {
   "name": "@sparxie/valedictorian-workspace-client",
   "version": "0.1.0",
-  "private": true,
-  "description": "Generated private workspace HTTP client.",
+  "description": "Generated workspace HTTP client.",
+  "author": "Keni",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cravessant/valedictorian.git",
+    "directory": "packages/workspace/client"
+  },
+  "bugs": {
+    "url": "https://github.com/cravessant/valedictorian/issues"
+  },
+  "homepage": "https://github.com/cravessant/valedictorian#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "files": ["dist"],
   "types": "./dist/generated.d.ts",
   "exports": {

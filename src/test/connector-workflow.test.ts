@@ -10,8 +10,8 @@ const CONNECTOR_PACKAGES = [
 
 const CONNECTOR_PACKAGE_VERSIONS = {
   '@sparxie/valedictorian-connectors-jobright': '0.19.0',
-  '@sparxie/valedictorian-connectors-core': '0.19.0',
-  '@sparxie/valedictorian-connectors-test-harness': '0.19.0',
+  '@sparxie/valedictorian-connectors-core': '0.19.1',
+  '@sparxie/valedictorian-connectors-test-harness': '0.19.1',
 } as const satisfies Record<(typeof CONNECTOR_PACKAGES)[number], string>
 
 function readPackageJson() {
@@ -43,11 +43,15 @@ describe('connector workflow dependencies', () => {
     const packageJson = readPackageJson()
 
     expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.19.0')
-    expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.19.0')
-    expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.19.0')
+    expect(packageJson.dependencies['@sparxie/valedictorian-connectors-core']).toBe(
+      'workspace:*',
+    )
+    expect(
+      packageJson.devDependencies['@sparxie/valedictorian-connectors-test-harness'],
+    ).toBe('workspace:0.19.1')
   })
 
-  it('resolves connector packages from the public npm registry without alternate sources', () => {
+  it('links product-owned connector packages and keeps Jobright on public npm', () => {
     const packageJson = readPackageJson()
     const lockfile = readLockfile()
 
@@ -65,37 +69,40 @@ describe('connector workflow dependencies', () => {
     const patched = [...patchedBlock.matchAll(/^ {2}(\S+):/gm)].map((match) => match[1])
     expect(patched).toEqual(['brace-expansion@1.1.16'])
 
-    for (const name of CONNECTOR_PACKAGES) {
-      const specifier = connectorSpecifier(packageJson, name)
-      const expectedVersion = CONNECTOR_PACKAGE_VERSIONS[name]
-      expect(specifier).toBe(expectedVersion)
-      expect(specifier).not.toMatch(/^(workspace:|file:|link:|github:|git\+|https?:)/)
-
-      const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const escapedVersion = expectedVersion.replaceAll('.', '\\.')
+    expect(connectorSpecifier(packageJson, CONNECTOR_PACKAGES[0])).toBe('0.19.0')
+    expect(lockfile).toMatch(
+      /'@sparxie\/valedictorian-connectors-jobright':\n\s+specifier: 0\.19\.0\n\s+version: 0\.19\.0/,
+    )
+    expect(lockfile).toMatch(
+      /'@sparxie\/valedictorian-connectors-jobright@0\.19\.0':\n\s+resolution: \{integrity: sha512-/,
+    )
+    for (const [name, workspacePath] of [
+      ['@sparxie/valedictorian-connectors-core', 'packages/connector-api'],
+      [
+        '@sparxie/valedictorian-connectors-test-harness',
+        'packages/connector-testkit',
+      ],
+    ]) {
+      const version = CONNECTOR_PACKAGE_VERSIONS[
+        name as keyof typeof CONNECTOR_PACKAGE_VERSIONS
+      ]
+      const specifier = name === '@sparxie/valedictorian-connectors-core'
+        ? 'workspace:*'
+        : `workspace:${version}`
+      expect(connectorSpecifier(
+        packageJson,
+        name as (typeof CONNECTOR_PACKAGES)[number],
+      )).toBe(specifier)
       expect(lockfile).toMatch(
         new RegExp(
-          `'${escapedName}':\\n\\s+specifier: ${escapedVersion}\\n\\s+version: ${escapedVersion}`,
-        ),
-      )
-      expect(lockfile).toContain(`'${name}@${expectedVersion}':`)
-      expect(lockfile).toMatch(
-        new RegExp(
-          `'${escapedName}@${escapedVersion}':\\n\\s+resolution: \\{integrity: sha512-[A-Za-z0-9+/=]+\\}`,
-        ),
-      )
-      expect(lockfile).not.toMatch(
-        new RegExp(
-          `'${escapedName}@${escapedVersion}':\\n(?: {2}.*\\n)*? {4}(tarball:|type: (directory|git)|repo:|path:)`,
+          `'${name}':\\n\\s+specifier: ${specifier.replaceAll('.', '\\.').replace('*', '\\*')}\\n`
+            + `\\s+version: link:${workspacePath}`,
         ),
       )
     }
 
     expect(lockfile).toMatch(
       /'@sparxie\/valedictorian-connectors-jobright@0\.19\.0':\n\s+dependencies:\n\s+'@sparxie\/valedictorian-connectors-core': 0\.19\.0/,
-    )
-    expect(lockfile).toMatch(
-      /'@sparxie\/valedictorian-connectors-test-harness@0\.19\.0':\n\s+dependencies:\n\s+'@sparxie\/valedictorian-connectors-core': 0\.19\.0/,
     )
     expect(lockfile).not.toContain("'@sparxie/sdk@0.29.0'")
   })

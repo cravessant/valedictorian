@@ -1,9 +1,23 @@
 {
   "name": "@sparxie/valedictorian-workspace-server",
   "version": "0.1.0",
-  "private": true,
   "description": "Producer-owned workspace HTTP schemas and deterministic generation.",
+  "author": "Keni",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cravessant/valedictorian.git",
+    "directory": "packages/workspace/server"
+  },
+  "bugs": {
+    "url": "https://github.com/cravessant/valedictorian/issues"
+  },
+  "homepage": "https://github.com/cravessant/valedictorian#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "files": ["dist"],
   "types": "./dist/index.d.ts",
   "exports": {

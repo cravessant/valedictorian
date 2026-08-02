@@ -9,7 +9,7 @@ import {
 
 const ciWorkflowPath = path.resolve('.github/workflows/ci.yml')
 const releaseWorkflowPath = path.resolve('.github/workflows/release-cli.yml')
-const publishWorkflowPath = path.resolve('.github/workflows/publish.yml')
+const publishWorkflowPath = path.resolve('../..', '.github/workflows/publish-cli.yml')
 const readmePath = path.resolve('README.md')
 const skillPath = path.resolve('skills/valedictorian-cli/SKILL.md')
 const lifecycleReferencePath = path.resolve('skills/valedictorian-cli/references/lifecycle.md')
@@ -55,8 +55,8 @@ describe('CLI release workflow', () => {
     const workflow = fs.readFileSync(publishWorkflowPath, 'utf8')
 
     expect(workflow).not.toContain('workflow_dispatch:')
-    expect(workflow).toContain('tags:')
-    expect(workflow).toContain("'v*.*.*'")
+    expect(workflow).toContain("'cli-migration-v*.*.*'")
+    expect(workflow).toContain("'cli-v*.*.*'")
     expect(workflow).toContain('contents: read')
     expect(workflow).toContain('id-token: write')
     expect(workflow).toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true')
@@ -72,17 +72,24 @@ describe('CLI release workflow', () => {
     expect(workflow).toContain('registry-url: https://registry.npmjs.org')
     expect(workflow).not.toContain('corepack enable')
     expect(workflow).toContain('pnpm install --frozen-lockfile')
-    expect(workflow).toContain('Verify release tag')
+    expect(workflow).toContain('Resolve release version and channel')
     expect(workflow).toContain('pnpm --filter @sparxie/valedictorian-cli run lint')
     expect(workflow).toContain('pnpm --filter @sparxie/valedictorian-cli run test')
-    expect(workflow).toContain('pnpm --filter @sparxie/valedictorian-cli run build')
-    expect(workflow).toContain('pnpm --dir packages/cli pack --dry-run')
-    expect(workflow).toContain('Resolve npm dist-tag')
-    expect(workflow).toContain('packageJson.version.match(/-(alpha|beta|rc)\\./)')
+    expect(workflow).toContain('pnpm --dir packages/cli pack --out')
+    expect(workflow).toContain('valedictorian-cli.tgz')
+    expect(workflow).toContain('publish-package-tarball.mjs --verify-only')
+    expect(workflow).toContain("migration ? 'migration' : (prerelease ?? 'latest')")
     expect(workflow).toContain('NPM_DIST_TAG')
-    expect(workflow).toContain('publish_args=(publish --access public)')
-    expect(workflow).not.toContain('--provenance')
-    expect(workflow).toContain('publish_args+=(--tag "$NPM_DIST_TAG")')
+    expect(workflow).toContain('publish-package-tarball.mjs')
+    expect(workflow).toContain(
+      '.release-packs/valedictorian-cli.tgz "$NPM_DIST_TAG"',
+    )
+    expect(workflow).toContain(
+      'add "@sparxie/valedictorian-cli@0.1.0-alpha.20"',
+    )
+    expect(workflow).toContain(
+      'add "@sparxie/valedictorian-cli@$RELEASE_VERSION"',
+    )
   })
 
   it('documents the alpha install tag and explicit workspace commands', () => {

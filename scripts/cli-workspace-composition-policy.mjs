@@ -6,7 +6,7 @@ import { load as loadYaml } from 'js-yaml'
 import { listCodeFiles, readModuleRecord } from './architecture-source-graph.mjs'
 
 export const cliPackageName = '@sparxie/valedictorian-cli'
-export const cliVersion = '0.1.0-alpha.20'
+export const cliVersion = '0.1.0-alpha.21'
 export const cliWorkspaceDependency = `workspace:${cliVersion}`
 export const cliSourceCommit = 'd576ebfa84119e809666faac668ccd33b5fa3946'
 export const approvedLicenseSha256 =

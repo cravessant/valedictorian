@@ -10,6 +10,11 @@ and downstream-gating decisions in [P01](https://github.com/cravessant/valedicto
 [P08](https://github.com/cravessant/valedictorian-app/issues/544), and
 [P09](https://github.com/cravessant/valedictorian-app/issues/545).
 
+The original #521 decision did not itself authorize implementation or package
+changes. The later [P22](https://github.com/cravessant/valedictorian-app/issues/562)
+gate authorizes publication from `cravessant/valedictorian` without changing
+the compatibility policy or package identities recorded here.
+
 ## Context
 
 The connector boundary is a product-owned, in-process TypeScript runtime ABI.

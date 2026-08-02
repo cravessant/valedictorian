@@ -1,0 +1,135 @@
+name: Publish Connectors
+
+on:
+  push:
+    tags:
+      - 'connectors-migration-v*.*.*'
+      - 'connectors-v*.*.*'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: Publish connector packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          version: 11.3.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 26.5.0
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Resolve release version and channel
+        id: release
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+
+          const tag = process.env.GITHUB_REF_NAME
+          const migrationPrefix = 'connectors-migration-v'
+          const releasePrefix = 'connectors-v'
+          const migration = tag.startsWith(migrationPrefix)
+          const prefix = migration ? migrationPrefix : releasePrefix
+
+          if (!tag.startsWith(prefix)) throw new Error(`Unsupported connector tag ${tag}`)
+
+          const version = tag.slice(prefix.length)
+          if (!migration && version === '0.19.1') {
+            throw new Error('Connector 0.19.1 must publish only as a migration canary')
+          }
+          const paths = [
+            'packages/connector-api/package.json',
+            'packages/connector-testkit/package.json',
+          ]
+          const packages = paths.map(path => JSON.parse(fs.readFileSync(path, 'utf8')))
+          if (packages.some(packageJson => packageJson.version !== version)) {
+            throw new Error(`Connector tag ${tag} does not match both package versions`)
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `dist_tag=${migration ? 'migration' : 'latest'}\n`)
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`)
+          NODE
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build connector packages
+        run: pnpm run build:connector-packages
+
+      - name: Test connector packages
+        run: >-
+          pnpm exec vitest run
+          --config vitest.publish.config.ts
+          packages/connector-api
+          packages/connector-testkit
+
+      - name: Pack exact connector artifacts
+        run: |
+          mkdir -p .release-packs
+          pnpm --dir packages/connector-api pack --out "$PWD/.release-packs/connectors-core.tgz"
+          pnpm --dir packages/connector-testkit pack --out "$PWD/.release-packs/connectors-test-harness.tgz"
+          node scripts/publish-package-tarball.mjs --verify-only .release-packs/connectors-core.tgz migration
+          node scripts/publish-package-tarball.mjs --verify-only .release-packs/connectors-test-harness.tgz migration
+
+      - name: Publish connector API
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: >-
+          node scripts/publish-package-tarball.mjs
+          .release-packs/connectors-core.tgz "$NPM_DIST_TAG"
+          | tee .release-packs/connectors-core-receipt.log
+
+      - name: Publish connector test harness
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: >-
+          node scripts/publish-package-tarball.mjs
+          .release-packs/connectors-test-harness.tgz "$NPM_DIST_TAG"
+          | tee .release-packs/connectors-test-harness-receipt.log
+
+      - name: Verify clean registry consumer
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          consumer="$(mktemp -d)"
+          cd "$consumer"
+          pnpm init
+          pnpm --registry=https://registry.npmjs.org/ \
+            --config.minimumReleaseAge=0 \
+            add \
+            "@sparxie/valedictorian-connectors-core@$RELEASE_VERSION" \
+            "@sparxie/valedictorian-connectors-test-harness@$RELEASE_VERSION" \
+            "@sparxie/valedictorian-connectors-jobright@0.19.0"
+          node --input-type=module <<'NODE'
+          await import('@sparxie/valedictorian-connectors-core')
+          await import('@sparxie/valedictorian-connectors-test-harness')
+          await import('@sparxie/valedictorian-connectors-jobright')
+          NODE
+
+      - name: Retain connector registry receipts
+        if: ${{ always() && hashFiles('.release-packs/*-receipt.log') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: connector-registry-receipts-${{ steps.release.outputs.version }}
+          path: .release-packs/*-receipt.log
+          if-no-files-found: error
+          retention-days: 90

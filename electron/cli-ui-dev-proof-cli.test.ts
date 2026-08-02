@@ -9,6 +9,7 @@ import {
   createCliUiDevProofSession,
   expectedCliCommit,
   expectedCliDependency,
+  expectedCliVersion,
 } from './cli-ui-dev-proof-cli'
 
 const captureId = '01986e01-4030-7000-8000-000000000001'
@@ -53,7 +54,7 @@ describe('CLI/UI development proof CLI boundary', () => {
       commit: expectedCliCommit,
       dependency: expectedCliDependency,
       packageSha256: fixture.packageSha256,
-      version: '0.1.0-alpha.20',
+      version: expectedCliVersion,
     })
     expect(session.diagnostics().map((entry) => entry.label)).toEqual([
       'capture-before',
@@ -182,7 +183,7 @@ function cliFixture() {
     bin: { 'valedictorian-cli': 'dist/valedictorian.mjs' },
     name: '@sparxie/valedictorian-cli',
     valedictorianSourceCommit: expectedCliCommit,
-    version: '0.1.0-alpha.20',
+    version: expectedCliVersion,
   }))
   const statePath = path.join(packageDirectory, 'state.json')
   fs.writeFileSync(statePath, JSON.stringify(defaultState()))
