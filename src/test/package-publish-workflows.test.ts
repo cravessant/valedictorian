@@ -164,7 +164,9 @@ describe('product npm publish workflows', () => {
     for (const workflow of [connectors, cli, workspace]) {
       expect(workflow).toContain('Verify clean registry consumer')
       expect(workflow).toContain('--registry=https://registry.npmjs.org/')
-      expect(workflow).toContain('--config.minimumReleaseAge=0')
+      expect(workflow).toMatch(
+        /- name: Verify clean registry consumer\n        env:\n(?:          .+\n)*          PNPM_CONFIG_MINIMUM_RELEASE_AGE: '0'/,
+      )
       expect(workflow).toContain(
         "if: ${{ always() && hashFiles('.release-packs/*-receipt.log') != '' }}",
       )
