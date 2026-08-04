@@ -115,5 +115,6 @@ jobs:
         with:
           name: cli-registry-receipt-${{ steps.release.outputs.version }}
           path: .release-packs/*-receipt.log
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 90
