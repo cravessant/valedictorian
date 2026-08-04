@@ -102,7 +102,7 @@ describe('build configuration', () => {
     const scripts = Object.values(packageJson.scripts ?? {})
 
     expect(packageJson.version).toMatch(/^0\.\d+\.\d+-alpha\.\d+$/)
-    expect(packageJson.scripts?.['prebuild:mac']).toBe('pnpm run build:local-runtime-package')
+    expect(packageJson.scripts?.['prebuild:mac']).toBe('pnpm run build:dependency-packages')
     expect(packageJson.scripts?.['build:mac']).toContain('--publish never')
     expect(packageJson.scripts?.['build:mac']).not.toContain('--mac dmg')
     expect(packageJson.scripts?.['build:mac:release']).toBeUndefined()
