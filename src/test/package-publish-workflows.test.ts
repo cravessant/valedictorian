@@ -168,6 +168,7 @@ describe('product npm publish workflows', () => {
       expect(workflow).toContain(
         "if: ${{ always() && hashFiles('.release-packs/*-receipt.log') != '' }}",
       )
+      expect(workflow).toContain('include-hidden-files: true')
     }
   })
 })
