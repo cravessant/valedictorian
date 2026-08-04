@@ -94,6 +94,15 @@ describe('product npm publish workflows', () => {
     }
   })
 
+  it('builds connector dependencies before testing local runtime', () => {
+    const workspace = readWorkflow('publish-workspace.yml')
+
+    expect(workspace).toContain('pnpm run build:connector-packages')
+    expect(workspace.indexOf('Build connector dependencies')).toBeLessThan(
+      workspace.indexOf('Test local runtime'),
+    )
+  })
+
   it('makes only the four P25 package boundaries public', () => {
     const packages = [
       ['packages/workspace/server', 'packages/workspace/server'],
