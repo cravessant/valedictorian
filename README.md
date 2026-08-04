@@ -112,7 +112,14 @@ git tag v0.1.0-alpha.1
 git push origin v0.1.0-alpha.1
 ```
 
-Signed desktop downloads and checksums are published on
-[GitHub Releases](https://github.com/cravessant/valedictorian/releases).
+The current signed and notarized macOS alpha is `0.1.0-alpha.55`:
+
+- [DMG installer](https://updates.valedictorian.app/mac/alpha/Valedictorian-Mac-0.1.0-alpha.55-Installer.dmg) — SHA-256 `db920bafe4db708a2eb117dbeb3ac78197927cc75ef4b95d26a29f7e405a1515`
+- [ZIP archive](https://updates.valedictorian.app/mac/alpha/Valedictorian-Mac-0.1.0-alpha.55-Installer.zip) — SHA-256 `b2c96824959e1d9d12b392d35ab03bc3df9b9729946fdbb0114b5e075db526d3`
+- [Update metadata](https://updates.valedictorian.app/mac/alpha/latest-mac.yml)
+
+[GitHub Releases](https://github.com/cravessant/valedictorian/releases) will
+provide versioned release history in the future; the update feed above is the
+current download source.
 Package publishers, tag namespaces, migration canaries, and promotion commands
 are documented in [`RELEASING.md`](RELEASING.md).
