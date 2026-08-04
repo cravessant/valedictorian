@@ -62,12 +62,9 @@ describe('connector workflow dependencies', () => {
     expect(workspace).toContain('- "packages/connector-api"')
     expect(workspace).toContain('- "packages/connector-testkit"')
     expect(workspace).not.toContain('packages/*')
-    expect(lockfile).not.toMatch(/^overrides:/m)
-    // Patches are allowed only as security backports into transitive packaging
-    // dependencies; no connector or @sparxie package may be altered locally.
-    const patchedBlock = lockfile.match(/^patchedDependencies:\n((?: {2}\S+: \S+\n)+)/m)?.[1] ?? ''
-    const patched = [...patchedBlock.matchAll(/^ {2}(\S+):/gm)].map((match) => match[1])
-    expect(patched).toEqual(['brace-expansion@1.1.16'])
+    const overridesBlock = lockfile.match(/^overrides:\n((?: {2}.+\n)+)/m)?.[1] ?? ''
+    expect(overridesBlock).not.toContain('@sparxie')
+    expect(lockfile).not.toMatch(/^patchedDependencies:/m)
 
     expect(connectorSpecifier(packageJson, CONNECTOR_PACKAGES[0])).toBe('0.19.0')
     expect(lockfile).toMatch(
