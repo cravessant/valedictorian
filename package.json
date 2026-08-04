@@ -19,6 +19,7 @@
     "validate:app": "tsx scripts/run-supervised.ts validation",
     "validate:isolated": "tsx scripts/run-isolated-validation.ts",
     "build": "pnpm run typecheck && vite build && electron-builder && pnpm run proof:packaged-declared-sources",
+    "prebuild:mac": "pnpm run build:local-runtime-package",
     "build:mac": "vite build && electron-builder --mac --publish never && pnpm run proof:packaged-declared-sources",
     "build:connector-packages": "pnpm --filter @sparxie/valedictorian-connectors-core run build && pnpm --filter @sparxie/valedictorian-connectors-test-harness run build",
     "build:cli-package": "pnpm --filter @sparxie/valedictorian-cli run build",
