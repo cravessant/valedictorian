@@ -102,6 +102,9 @@ jobs:
       - name: Verify generated workspace contract
         run: pnpm --filter @sparxie/valedictorian-workspace-server run check:generated
 
+      - name: Build connector dependencies
+        run: pnpm run build:connector-packages
+
       - name: Build workspace packages
         run: pnpm run build:workspace-packages
 
