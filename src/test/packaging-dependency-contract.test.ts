@@ -63,12 +63,13 @@ describe('packaging dependency contract', () => {
     expect(resolvedVersions(lockfile, '@electron/asar')).toEqual(['3.4.1', '4.2.1'])
   })
 
-  it('carries no vulnerable brace-expansion or form-data copy that a patch exists for', () => {
+  it('carries no vulnerable packaging utility copy with an upstream fix', () => {
     const lockfile = readLockfile()
 
     expect(resolvedVersions(lockfile, 'form-data').filter((v) => v.startsWith('4.') && v < '4.0.6'))
       .toEqual([])
-    expect(resolvedVersions(lockfile, 'brace-expansion')).toEqual(['1.1.16', '2.1.3', '5.0.8'])
+    expect(resolvedVersions(lockfile, 'brace-expansion')).toEqual(['1.1.18', '2.1.4', '5.0.9'])
+    expect(resolvedVersions(lockfile, 'fast-uri')).toEqual(['3.1.5'])
   })
 
   it('gates high-severity advisories through the lint quality entrypoint', () => {
@@ -78,48 +79,36 @@ describe('packaging dependency contract', () => {
     expect(packageJson.scripts?.lint).toContain('pnpm run audit:high')
   })
 
-  it('admits exactly one advisory ignore and no dependency overrides', () => {
+  it('admits no advisory ignore and pins exact line-compatible security overrides', () => {
     const packageJson = readPackageJson()
     const workspaceConfig = readWorkspaceConfig()
     const ignored = [...workspaceConfig.matchAll(/^ {4}- (GHSA-[\w-]+)$/gm)].map((m) => m[1])
 
-    expect(ignored).toEqual(['GHSA-mh99-v99m-4gvg'])
+    expect(ignored).toEqual([])
     expect(workspaceConfig).not.toContain('ignoreCves')
-    expect(workspaceConfig).not.toContain('overrides')
+    expect(workspaceConfig).toContain("'brace-expansion@1.1.16': 1.1.18")
+    expect(workspaceConfig).toContain("'brace-expansion@2.1.3': 2.1.4")
+    expect(workspaceConfig).toContain("'brace-expansion@5.0.8': 5.0.9")
+    expect(workspaceConfig).toContain("'fast-uri@3.1.4': 3.1.5")
     expect(packageJson.pnpm).toBeUndefined()
   })
 
-  // The ignore above is only defensible because every copy it matches carries
-  // the fix — 2.1.3 from upstream, 1.1.16 from the tracked backport — while npm
-  // audit keys on the unchanged upstream version numbers.
-  it('tracks a patch only for the matched copy with no fixed upstream release', () => {
+  it('carries no local dependency patch or audit suppression', () => {
     const workspaceConfig = readWorkspaceConfig()
-    const patched = [...workspaceConfig.matchAll(/^ {2}(\S+): (patches\/\S+\.patch)$/gm)]
 
-    expect(patched.map((m) => m[1])).toEqual(['brace-expansion@1.1.16'])
-    for (const [, name, patchPath] of patched) {
-      expect(fs.existsSync(path.resolve(patchPath)), patchPath).toBe(true)
-      expect(resolvedVersions(readLockfile(), name.split('@')[0]).join()).toContain(
-        name.split('@')[1],
-      )
-    }
-    expect(readLockfile()).not.toContain('brace-expansion@2.1.2')
-    expect(workspaceConfig).toContain('is NOT risk-accepted')
+    expect(workspaceConfig).not.toContain('patchedDependencies:')
+    expect(workspaceConfig).not.toContain('auditConfig:')
+    expect(readLockfile()).not.toMatch(/^patchedDependencies:/m)
   })
 
-  // Adopting 2.1.3 inside its 48-hour quarantine needed an exception. It has to
-  // stay pinned to that one version, or it would silently waive the quarantine
-  // for every future brace-expansion release too.
-  it('waives the release-age quarantine for one exact version and nothing more', () => {
+  it('keeps security fixes inside the normal release-age quarantine', () => {
     const workspaceConfig = readWorkspaceConfig()
     const excluded = [...workspaceConfig.matchAll(/^ {2}- '([^']+)'$/gm)].map((m) => m[1])
 
-    expect(excluded).toEqual(['@sparxie/*', 'brace-expansion@2.1.3'])
+    expect(excluded).toEqual(['@sparxie/*'])
     expect(excluded).not.toContain('brace-expansion')
+    expect(excluded).not.toContain('fast-uri')
     expect(workspaceConfig).not.toMatch(/^minimumReleaseAge:/m)
     expect(workspaceConfig).not.toMatch(/^trustLockfile:/m)
-    // The exception is temporary, so it has to carry its own removal condition.
-    expect(workspaceConfig).toContain('#503')
-    expect(workspaceConfig).toContain('2026-07-30T10:16:15Z')
   })
 })
